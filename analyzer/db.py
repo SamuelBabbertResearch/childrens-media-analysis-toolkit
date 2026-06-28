@@ -242,6 +242,25 @@ def query_shows(
 # Notes
 # ---------------------------------------------------------------------------
 
+def remove_stale_episodes(conn: sqlite3.Connection) -> int:
+    """Delete episode rows whose file_path no longer exists on disk.
+
+    Also removes show rows that are left with zero episodes.
+    Returns the number of episode rows deleted.
+    """
+    rows = conn.execute("SELECT file_path FROM episodes").fetchall()
+    stale = [r["file_path"] for r in rows if not Path(r["file_path"]).exists()]
+    if not stale:
+        return 0
+    conn.executemany("DELETE FROM episodes WHERE file_path = ?", [(p,) for p in stale])
+    conn.execute("""
+        DELETE FROM shows
+        WHERE show_name NOT IN (SELECT DISTINCT show_name FROM episodes)
+    """)
+    conn.commit()
+    return len(stale)
+
+
 def get_note(conn: sqlite3.Connection, file_path: str) -> str:
     """Return the saved note for an episode, or '' if none."""
     row = conn.execute(

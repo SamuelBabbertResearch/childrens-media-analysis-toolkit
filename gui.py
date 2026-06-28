@@ -25,7 +25,7 @@ from analyzer.metrics_sensory import rescore_episode
 from analyzer.schema import EpisodeResult, ShowAggregate
 from analyzer.db import (
     get_db, upsert_episode, upsert_show, query_episodes, query_shows,
-    get_note, save_note, get_episode_percentile,
+    get_note, save_note, get_episode_percentile, remove_stale_episodes,
 )
 from analyzer.show_index import list_episodes, list_shows
 from gui_live import LiveAnalysisWindow
@@ -988,6 +988,20 @@ class App(tk.Tk):
         save_note(self._db_conn, str(self._current_ep_path), note)
         self._status_var.set(f"Note saved for {self._current_ep_path.name}.")
 
+    def _remove_stale_index(self) -> None:
+        """Delete DB rows whose files no longer exist (e.g. after a folder rename)."""
+        if not self._db_conn:
+            return
+        n = remove_stale_episodes(self._db_conn)
+        self._refresh_index()
+        if n:
+            self._status_var.set(
+                f"Removed {n} stale entr{'y' if n == 1 else 'ies'} "
+                f"(files no longer on disk). Re-analyze to re-index them."
+            )
+        else:
+            self._status_var.set("No stale entries found — all indexed files still exist.")
+
     # -----------------------------------------------------------------------
     # Index tab (Phase 5)
     # -----------------------------------------------------------------------
@@ -1003,6 +1017,9 @@ class App(tk.Tk):
                  width=15).pack(side=tk.LEFT, padx=(4, 6), fill=tk.X, expand=True)
         tk.Button(filter_frame, text="Refresh", command=self._refresh_index,
                   padx=4).pack(side=tk.RIGHT)
+        tk.Button(filter_frame, text="Remove Stale",
+                  command=self._remove_stale_index,
+                  padx=4).pack(side=tk.RIGHT, padx=(0, 4))
 
         # Sub-notebook: Episodes / Shows
         sub_nb = ttk.Notebook(parent)
