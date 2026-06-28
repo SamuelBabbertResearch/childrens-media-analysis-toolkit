@@ -23,7 +23,10 @@ from analyzer.config_loader import load_config, _base_dir
 from analyzer.engine import analyze_episode
 from analyzer.metrics_sensory import rescore_episode
 from analyzer.schema import EpisodeResult, ShowAggregate
-from analyzer.db import get_db, upsert_episode, upsert_show, query_episodes, query_shows
+from analyzer.db import (
+    get_db, upsert_episode, upsert_show, query_episodes, query_shows,
+    get_note, save_note, get_episode_percentile,
+)
 from analyzer.show_index import list_episodes, list_shows
 from gui_live import LiveAnalysisWindow
 
@@ -42,6 +45,7 @@ class App(tk.Tk):
         self._analyzing: Path | None = None   # episode currently running
         self._watch_live_active = False        # live window open
         self._current_ep_result: EpisodeResult | None = None   # for export/chart
+        self._current_ep_path: Path | None = None               # for DB look-ups
         self._current_show_results: list[EpisodeResult] | None = None  # for export
         self._db_conn = None                                   # SQLite index (opened with root)
         self._idx_ep_sort:   dict = {"col": "analyzed_at", "asc": False}
@@ -90,10 +94,21 @@ class App(tk.Tk):
         self._folder_var = tk.StringVar(value="(none chosen)")
         tk.Label(bar, textvariable=self._folder_var, anchor="w",
                  fg="navy").pack(side=tk.LEFT, fill=tk.X, expand=True)
+        # Pack right-to-left: Settings is rightmost, then Choose, then preset
         tk.Button(bar, text="Settings...", command=self._open_settings,
                   padx=6).pack(side=tk.RIGHT, padx=4, pady=2)
         tk.Button(bar, text="Choose...", command=self._choose_folder,
-                  padx=6).pack(side=tk.RIGHT, padx=4, pady=2)
+                  padx=6).pack(side=tk.RIGHT, padx=(0, 4), pady=2)
+        ttk.Separator(bar, orient=tk.VERTICAL).pack(side=tk.RIGHT, fill=tk.Y, pady=3)
+        self._toolbar_preset_var = tk.StringVar()
+        self._toolbar_preset_cb = ttk.Combobox(
+            bar, textvariable=self._toolbar_preset_var,
+            state="readonly", width=22,
+        )
+        self._toolbar_preset_cb.pack(side=tk.RIGHT, padx=(0, 4), pady=2)
+        self._toolbar_preset_cb.bind("<<ComboboxSelected>>", self._on_toolbar_preset_change)
+        tk.Label(bar, text="Preset:").pack(side=tk.RIGHT, padx=(6, 2), pady=3)
+        self._refresh_toolbar_presets()
 
     def _build_main_pane(self) -> None:
         pane = tk.PanedWindow(self, orient=tk.HORIZONTAL,
@@ -187,8 +202,24 @@ class App(tk.Tk):
         self._txt.tag_configure("h2",    font=("TkDefaultFont", 9, "bold"), foreground="#003080")
         self._txt.tag_configure("score", font=("TkDefaultFont", 14, "bold"), foreground="#005500")
         self._txt.tag_configure("dim",   foreground="#666666")
+        self._txt.tag_configure("pct",   foreground="#336633", font=("TkDefaultFont", 8))
         self._txt.tag_configure("err",   foreground="red")
         self._txt.tag_configure("mono",  font=("Consolas", 9))
+
+        # Notes panel — below results text, always visible
+        notes_frame = tk.LabelFrame(right, text="Episode Notes", padx=4, pady=4)
+        notes_frame.pack(fill=tk.X, padx=4, pady=(0, 4))
+        self._notes_text = tk.Text(
+            notes_frame, height=3, wrap=tk.WORD,
+            font=("TkDefaultFont", 9), state=tk.DISABLED,
+            bg="#f5f5f5", relief=tk.SUNKEN, bd=1,
+        )
+        self._notes_text.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._btn_save_note = tk.Button(
+            notes_frame, text="Save", command=self._save_note,
+            padx=6, state=tk.DISABLED,
+        )
+        self._btn_save_note.pack(side=tk.RIGHT, padx=(6, 0), anchor="n", pady=2)
 
     def _build_status_bar(self) -> None:
         bar = tk.Frame(self, bd=1, relief=tk.SUNKEN)
@@ -296,6 +327,7 @@ class App(tk.Tk):
         show_dir = ep_path.parent
         cached = load_cached(self._root_folder, show_dir.name, ep_path.stem)
         if cached:
+            self._current_ep_path = ep_path
             result = rescore_episode(EpisodeResult.from_dict(cached), self._cfg)
             self._render_episode(result)
         else:
@@ -334,11 +366,16 @@ class App(tk.Tk):
         self._txt.insert(tk.END, text)
         self._txt.config(state=tk.DISABLED)
         self._current_ep_result = None
+        self._current_ep_path = None
         self._current_show_results = None
         self._btn_chart.config(state=tk.DISABLED)
         self._file_menu.entryconfig("Export Results as JSON...", state=tk.DISABLED)
         self._file_menu.entryconfig("Export Results as CSV...", state=tk.DISABLED)
         self._file_menu.entryconfig("Export Report as PDF...", state=tk.DISABLED)
+        self._notes_text.config(state=tk.NORMAL)
+        self._notes_text.delete("1.0", tk.END)
+        self._notes_text.config(state=tk.DISABLED)
+        self._btn_save_note.config(state=tk.DISABLED)
 
     def _render_episode(self, result: EpisodeResult) -> None:
         self._current_ep_result = result if result.status == "ok" else None
@@ -364,6 +401,10 @@ class App(tk.Tk):
         if result.status == "failed":
             t.insert(tk.END, f"Analysis failed:\n{result.error}\n", "err")
             t.config(state=tk.DISABLED)
+            self._notes_text.config(state=tk.NORMAL)
+            self._notes_text.delete("1.0", tk.END)
+            self._notes_text.config(state=tk.DISABLED)
+            self._btn_save_note.config(state=tk.DISABLED)
             return
 
         m = result.metrics
@@ -374,7 +415,24 @@ class App(tk.Tk):
         t.insert(tk.END, "  (0 = low stimulation  ·  1 = high)")
         if not m.sensory_load.audio_available:
             t.insert(tk.END, "  [visual only — no audio]", "dim")
-        t.insert(tk.END, "\n\n")
+        t.insert(tk.END, "\n")
+
+        # Percentile ranking (only when this episode is indexed in DB)
+        if self._db_conn and self._current_ep_path:
+            pct = get_episode_percentile(self._db_conn, str(self._current_ep_path))
+            if pct:
+                def _ordinal(n: int) -> str:
+                    sfx = {1: "st", 2: "nd", 3: "rd"}.get(
+                        n % 10 if n % 100 not in (11, 12, 13) else 0, "th"
+                    )
+                    return f"{n}{sfx}"
+                line = (f"  {_ordinal(pct['percentile'])} percentile  "
+                        f"({pct['global_total']} episodes indexed)")
+                if pct["show_total"] >= 3:
+                    line += (f"  ·  {_ordinal(pct['show_rank'])} highest "
+                             f"of {pct['show_total']} in {pct['show_name']}")
+                t.insert(tk.END, line + "\n", "pct")
+        t.insert(tk.END, "\n")
 
         cfg = result.config.get("sensory_load_weights", {})
         c = m.sensory_load.components
@@ -450,6 +508,16 @@ class App(tk.Tk):
             t.insert(tk.END, "  Not available (FFmpeg not found or no audio track)\n", "dim")
 
         t.config(state=tk.DISABLED)
+
+        # Load saved note into the notes panel
+        note = ""
+        if self._db_conn and self._current_ep_path:
+            note = get_note(self._db_conn, str(self._current_ep_path))
+        self._notes_text.config(state=tk.NORMAL)
+        self._notes_text.delete("1.0", tk.END)
+        if note:
+            self._notes_text.insert("1.0", note)
+        self._btn_save_note.config(state=tk.NORMAL)
 
     def _render_show(self, agg: ShowAggregate, results: list[EpisodeResult],
                      total_eps: int) -> None:
@@ -668,6 +736,7 @@ class App(tk.Tk):
                 # Show result if this episode is currently selected
                 sel_kind, sel_path = self._selected_item()
                 if sel_kind == "episode" and Path(sel_path) == ep_path:
+                    self._current_ep_path = ep_path
                     self._render_episode(rescore_episode(result, self._cfg))
                 self._maybe_save_show_aggregate(ep_path)
                 if self._db_conn:
@@ -844,7 +913,9 @@ class App(tk.Tk):
     # -----------------------------------------------------------------------
 
     def _open_settings(self) -> None:
-        SettingsDialog(self)
+        dlg = SettingsDialog(self)
+        self.wait_window(dlg)
+        self._refresh_toolbar_presets()
 
     def _refresh_current_view(self) -> None:
         """Re-render whatever is currently selected, rescoring from cache with self._cfg."""
@@ -853,6 +924,7 @@ class App(tk.Tk):
             ep_path = Path(path)
             cached = load_cached(self._root_folder, ep_path.parent.name, ep_path.stem)
             if cached:
+                self._current_ep_path = ep_path
                 result = rescore_episode(EpisodeResult.from_dict(cached), self._cfg)
                 self._render_episode(result)
         elif kind == "show":
@@ -866,6 +938,53 @@ class App(tk.Tk):
             if ok_results:
                 agg = compute_show_aggregate(show_dir.name, ok_results)
                 self._render_show(agg, ok_results, total_eps=len(episodes))
+
+    # -----------------------------------------------------------------------
+    # Toolbar preset helpers
+    # -----------------------------------------------------------------------
+
+    def _refresh_toolbar_presets(self) -> None:
+        """Update combobox values and select whichever preset matches current cfg."""
+        presets = list(self._cfg.get("presets", {}).keys()) + ["Custom"]
+        self._toolbar_preset_cb.config(values=presets)
+        self._toolbar_preset_var.set(self._detect_toolbar_preset())
+
+    def _detect_toolbar_preset(self) -> str:
+        cur_w = self._cfg.get("sensory_load_weights", {})
+        cur_r = self._cfg.get("normalization_reference_ranges", {})
+        for name, p in self._cfg.get("presets", {}).items():
+            if (p.get("sensory_load_weights") == cur_w
+                    and p.get("normalization_reference_ranges") == cur_r):
+                return name
+        return "Custom"
+
+    def _on_toolbar_preset_change(self, _event=None) -> None:
+        name = self._toolbar_preset_var.get()
+        presets = self._cfg.get("presets", {})
+        if name == "Custom" or name not in presets:
+            return
+        p = presets[name]
+        self._cfg["sensory_load_weights"] = copy.deepcopy(p["sensory_load_weights"])
+        self._cfg["normalization_reference_ranges"] = copy.deepcopy(
+            p["normalization_reference_ranges"]
+        )
+        self._refresh_current_view()
+        # Update DB index scores and refresh the Index tab
+        if self._db_conn and self._root_folder:
+            self._backfill_index()
+            self._refresh_index()
+        self._status_var.set(f"Preset '{name}' applied — displayed scores updated.")
+
+    # -----------------------------------------------------------------------
+    # Notes
+    # -----------------------------------------------------------------------
+
+    def _save_note(self) -> None:
+        if not self._db_conn or not self._current_ep_path:
+            return
+        note = self._notes_text.get("1.0", tk.END).rstrip("\n")
+        save_note(self._db_conn, str(self._current_ep_path), note)
+        self._status_var.set(f"Note saved for {self._current_ep_path.name}.")
 
     # -----------------------------------------------------------------------
     # Index tab (Phase 5)
@@ -1083,6 +1202,7 @@ class App(tk.Tk):
         show_name = ep_path.parent.name
         cached = load_cached(self._root_folder, show_name, ep_path.stem)
         if cached:
+            self._current_ep_path = ep_path
             result = rescore_episode(EpisodeResult.from_dict(cached), self._cfg)
             self._render_episode(result)
         else:

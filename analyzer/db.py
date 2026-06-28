@@ -70,6 +70,7 @@ def _init_db(conn: sqlite3.Connection) -> None:
         "ALTER TABLE episodes ADD COLUMN color_contrast_mean REAL",
         "ALTER TABLE shows ADD COLUMN avg_contrast REAL",
         "ALTER TABLE shows ADD COLUMN avg_flashing REAL",
+        "ALTER TABLE episodes ADD COLUMN notes TEXT",
     ]:
         try:
             conn.execute(sql)
@@ -235,3 +236,81 @@ def query_shows(
         f"SELECT * FROM shows ORDER BY {col} {direction}"
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Notes
+# ---------------------------------------------------------------------------
+
+def get_note(conn: sqlite3.Connection, file_path: str) -> str:
+    """Return the saved note for an episode, or '' if none."""
+    row = conn.execute(
+        "SELECT notes FROM episodes WHERE file_path = ?", (file_path,)
+    ).fetchone()
+    if row is None:
+        return ""
+    return row["notes"] or ""
+
+
+def save_note(conn: sqlite3.Connection, file_path: str, note: str) -> None:
+    """Persist a note for an episode (no-op if file_path not yet in DB)."""
+    conn.execute(
+        "UPDATE episodes SET notes = ? WHERE file_path = ?",
+        (note, file_path),
+    )
+    conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Percentile / rank
+# ---------------------------------------------------------------------------
+
+def get_episode_percentile(conn: sqlite3.Connection, file_path: str) -> dict:
+    """Return rank and percentile info for an episode by sensory_load_score.
+
+    Returns {} if the episode is not in the DB or has no score.
+    Returned dict keys:
+      percentile   — 0-100: % of all indexed episodes that score lower
+      global_total — total episodes with a score in the DB
+      show_rank    — 1-based rank within the show (1 = most stimulating)
+      show_total   — episodes from this show in the DB
+      show_name    — show the episode belongs to
+    """
+    row = conn.execute(
+        "SELECT show_name, sensory_load_score FROM episodes WHERE file_path = ?",
+        (file_path,),
+    ).fetchone()
+    if row is None or row["sensory_load_score"] is None:
+        return {}
+
+    score: float = row["sensory_load_score"]
+    show_name: str = row["show_name"]
+
+    below = conn.execute(
+        "SELECT COUNT(*) FROM episodes WHERE sensory_load_score < ?",
+        (score,),
+    ).fetchone()[0]
+    total = conn.execute(
+        "SELECT COUNT(*) FROM episodes WHERE sensory_load_score IS NOT NULL"
+    ).fetchone()[0]
+
+    # Within-show rank: 1 = most stimulating (highest score)
+    show_above = conn.execute(
+        "SELECT COUNT(*) FROM episodes WHERE show_name = ? AND sensory_load_score > ?",
+        (show_name, score),
+    ).fetchone()[0]
+    show_total = conn.execute(
+        "SELECT COUNT(*) FROM episodes "
+        "WHERE show_name = ? AND sensory_load_score IS NOT NULL",
+        (show_name,),
+    ).fetchone()[0]
+
+    percentile = int(round(below / total * 100)) if total > 1 else 0
+
+    return {
+        "percentile":   percentile,
+        "global_total": total,
+        "show_rank":    show_above + 1,
+        "show_total":   show_total,
+        "show_name":    show_name,
+    }
