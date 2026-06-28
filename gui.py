@@ -90,11 +90,8 @@ class App(tk.Tk):
     def _build_toolbar(self) -> None:
         bar = tk.Frame(self, bd=1, relief=tk.SUNKEN)
         bar.pack(side=tk.TOP, fill=tk.X, padx=2, pady=(2, 0))
-        tk.Label(bar, text="Root folder:").pack(side=tk.LEFT, padx=(6, 2), pady=3)
-        self._folder_var = tk.StringVar(value="(none chosen)")
-        tk.Label(bar, textvariable=self._folder_var, anchor="w",
-                 fg="navy").pack(side=tk.LEFT, fill=tk.X, expand=True)
-        # Pack right-to-left: Settings is rightmost, then Choose, then preset
+        # RIGHT-side widgets must be packed BEFORE the expand=True left label,
+        # otherwise Tkinter allocates all horizontal space to the label first.
         tk.Button(bar, text="Settings...", command=self._open_settings,
                   padx=6).pack(side=tk.RIGHT, padx=4, pady=2)
         tk.Button(bar, text="Choose...", command=self._choose_folder,
@@ -108,6 +105,11 @@ class App(tk.Tk):
         self._toolbar_preset_cb.pack(side=tk.RIGHT, padx=(0, 4), pady=2)
         self._toolbar_preset_cb.bind("<<ComboboxSelected>>", self._on_toolbar_preset_change)
         tk.Label(bar, text="Preset:").pack(side=tk.RIGHT, padx=(6, 2), pady=3)
+        # Left-side label with expand=True packs last so it fills only the remainder
+        tk.Label(bar, text="Root folder:").pack(side=tk.LEFT, padx=(6, 2), pady=3)
+        self._folder_var = tk.StringVar(value="(none chosen)")
+        tk.Label(bar, textvariable=self._folder_var, anchor="w",
+                 fg="navy").pack(side=tk.LEFT, fill=tk.X, expand=True)
         self._refresh_toolbar_presets()
 
     def _build_main_pane(self) -> None:
