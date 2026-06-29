@@ -25,9 +25,12 @@ Grounded in the Huston & Wright formal features framework, Lang's Limited Capaci
 ---
 
 ## Screenshots
+<img width="740" height="502" alt="image" src="https://github.com/user-attachments/assets/29a4dc19-16bf-4a44-95df-fa976fb51ecb" />
+<img width="357" height="440" alt="image" src="https://github.com/user-attachments/assets/51a6030d-e4c0-4102-92ea-a81a472b54ba" />
+<img width="416" height="313" alt="image" src="https://github.com/user-attachments/assets/9cc86a50-f268-47dc-89d7-3e8b92d2968f" />
 
-![Main window showing episode analysis results](docs/screenshot_results.png)
-![Index browser showing all analyzed shows sorted by sensory load](docs/screenshot_index.png)
+
+
 
 ---
 
