@@ -27,7 +27,9 @@ from analyzer.db import (
     get_db, upsert_episode, upsert_show, query_episodes, query_shows,
     get_note, save_note, get_episode_percentile, remove_stale_episodes,
 )
-from analyzer.show_index import list_episodes, list_shows
+from analyzer.show_index import (
+    list_episodes, list_shows, list_top_level, list_category_shows, show_key,
+)
 from gui_live import LiveAnalysisWindow
 
 
@@ -47,9 +49,11 @@ class App(tk.Tk):
         self._current_ep_result: EpisodeResult | None = None   # for export/chart
         self._current_ep_path: Path | None = None               # for DB look-ups
         self._current_show_results: list[EpisodeResult] | None = None  # for export
+        self._pinned: tuple[str, Path] | None = None            # ("episode"|"show", path)
         self._db_conn = None                                   # SQLite index (opened with root)
         self._idx_ep_sort:   dict = {"col": "analyzed_at", "asc": False}
         self._idx_show_sort: dict = {"col": "avg_load",    "asc": False}
+        self._cut_pulse_job: str | None = None  # after() ID for cut-detection animation
 
         self._build_ui()
         self._poll_queue()
@@ -61,8 +65,10 @@ class App(tk.Tk):
     def _build_ui(self) -> None:
         self._build_menu()
         self._build_toolbar()
-        self._build_main_pane()
+        # Status bar must be packed BEFORE the expand=True main pane.
+        # In Tkinter pack, a side=BOTTOM widget packed after expand=True gets zero height.
         self._build_status_bar()
+        self._build_main_pane()
 
     def _build_menu(self) -> None:
         menubar = tk.Menu(self)
@@ -104,6 +110,19 @@ class App(tk.Tk):
         )
         self._toolbar_preset_cb.pack(side=tk.RIGHT, padx=(0, 4), pady=2)
         self._toolbar_preset_cb.bind("<<ComboboxSelected>>", self._on_toolbar_preset_change)
+        _WidgetTooltip(
+            self._toolbar_preset_cb,
+            "Scoring preset — sets the reference-range ceilings used to normalize "
+            "each metric before weighting.\n\n"
+            "Use Preschool or Early Childhood when your library contains only "
+            "children's content. The General / All Ages preset is calibrated for "
+            "a wide range of content (e.g., 60 cuts/min max), which can make "
+            "fast-paced animation look mild and allow high-contrast or loud "
+            "lecture content to rank unexpectedly high.\n\n"
+            "Changing the preset rescores the current results instantly from cache. "
+            "Re-analyze episodes to store updated scores in the index.",
+            wraplength=320,
+        )
         tk.Label(bar, text="Preset:").pack(side=tk.RIGHT, padx=(6, 2), pady=3)
         # Left-side label with expand=True packs last so it fills only the remainder
         tk.Label(bar, text="Root folder:").pack(side=tk.LEFT, padx=(6, 2), pady=3)
@@ -151,6 +170,18 @@ class App(tk.Tk):
                                      command=self._watch_live, state=tk.DISABLED,
                                      fg="navy")
         self._btn_watch.pack(fill=tk.X, pady=2)
+
+        ttk.Separator(btn_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(6, 4))
+        self._btn_pin = tk.Button(btn_frame, text="Pin for Compare",
+                                   command=self._pin_for_compare, state=tk.DISABLED)
+        self._btn_pin.pack(fill=tk.X, pady=2)
+        self._pinned_var = tk.StringVar(value="")
+        tk.Label(btn_frame, textvariable=self._pinned_var,
+                 font=("TkDefaultFont", 8), fg="#555555",
+                 wraplength=190, anchor="w", justify="left").pack(fill=tk.X, padx=2)
+        self._btn_compare = tk.Button(btn_frame, text="Compare with Pinned",
+                                       command=self._open_compare, state=tk.DISABLED)
+        self._btn_compare.pack(fill=tk.X, pady=2)
 
         # Queue panel
         queue_outer = tk.LabelFrame(lib_tab, text="Analysis Queue", padx=4, pady=4)
@@ -255,7 +286,7 @@ class App(tk.Tk):
             self._root_folder = Path(folder)
             self._folder_var.set(str(self._root_folder))
             self._populate_tree()
-            if list_shows(self._root_folder):
+            if list_top_level(self._root_folder):
                 self._write_txt("Choose a show or episode in the library to see results.\n\n"
                                 "Cached results load instantly; new episodes need to be analyzed.")
             # If nothing found, _populate_tree already writes an explanation
@@ -270,18 +301,18 @@ class App(tk.Tk):
         self._tree.delete(*self._tree.get_children())
         if not self._root_folder:
             return
-        shows = list_shows(self._root_folder)
-        for show_dir in shows:
-            show_node = self._tree.insert(
-                "", tk.END, text=f"  {show_dir.name}",
-                values=("show", str(show_dir)), open=True,
-            )
-            for ep in list_episodes(show_dir):
-                cached = load_cached(self._root_folder, show_dir.name, ep.stem)
-                label = f"    {ep.name}" + ("  [analyzed]" if cached else "")
-                self._tree.insert(show_node, tk.END, text=label,
-                                   values=("episode", str(ep)))
-        if not shows:
+        items = list_top_level(self._root_folder)
+        for kind, d in items:
+            if kind == "category":
+                cat_node = self._tree.insert(
+                    "", tk.END, text=f"  [{d.name}]",
+                    values=("category", str(d)), open=True,
+                )
+                for show_dir in list_category_shows(d):
+                    self._insert_show_node(cat_node, show_dir)
+            else:
+                self._insert_show_node("", d)
+        if not items:
             self._write_txt(
                 "No show folders found under:\n"
                 f"  {self._root_folder}\n\n"
@@ -289,8 +320,24 @@ class App(tk.Tk):
                 "  Root Folder/\n"
                 "    Show Name/\n"
                 "      episode01.mp4\n"
-                "      episode02.mp4\n"
+                "  OR with categories:\n"
+                "    Category Name/\n"
+                "      Show Name/\n"
+                "        episode01.mp4\n"
             )
+
+    def _insert_show_node(self, parent_iid: str, show_dir: Path) -> None:
+        """Insert a show and its episodes into the library tree."""
+        skey = show_key(self._root_folder, show_dir)
+        show_node = self._tree.insert(
+            parent_iid, tk.END, text=f"  {show_dir.name}",
+            values=("show", str(show_dir)), open=True,
+        )
+        for ep in list_episodes(show_dir):
+            cached = load_cached(self._root_folder, skey, ep.stem)
+            label = f"    {ep.name}" + ("  [analyzed]" if cached else "")
+            self._tree.insert(show_node, tk.END, text=label,
+                               values=("episode", str(ep)))
 
     # -----------------------------------------------------------------------
     # Tree selection
@@ -301,6 +348,8 @@ class App(tk.Tk):
         self._btn_ep.config(state=tk.DISABLED)
         self._btn_show.config(state=tk.DISABLED)
         self._btn_watch.config(state=tk.DISABLED)
+        self._btn_pin.config(state=tk.DISABLED)
+        self._btn_compare.config(state=tk.DISABLED)
         if not sel:
             return
         queue_busy = self._analyzing is not None or self._watch_live_active
@@ -313,6 +362,16 @@ class App(tk.Tk):
         elif kind == "show":
             self._btn_show.config(state=tk.NORMAL)
             self._show_show_cached(Path(path))
+        elif kind == "category":
+            return  # category selected — no actions available
+        # Pin is available for shows and episodes
+        if kind in ("show", "episode"):
+            self._btn_pin.config(state=tk.NORMAL)
+        # Compare is available when pin exists and selection is same type, different item
+        if kind in ("show", "episode") and self._pinned:
+            pin_kind, pin_path = self._pinned
+            if kind == pin_kind and Path(path) != pin_path:
+                self._btn_compare.config(state=tk.NORMAL)
 
     def _selected_item(self) -> tuple[str, str]:
         sel = self._tree.selection()
@@ -327,7 +386,7 @@ class App(tk.Tk):
 
     def _show_episode_cached(self, ep_path: Path) -> None:
         show_dir = ep_path.parent
-        cached = load_cached(self._root_folder, show_dir.name, ep_path.stem)
+        cached = load_cached(self._root_folder, show_key(self._root_folder, show_dir), ep_path.stem)
         if cached:
             self._current_ep_path = ep_path
             result = rescore_episode(EpisodeResult.from_dict(cached), self._cfg)
@@ -341,10 +400,11 @@ class App(tk.Tk):
             )
 
     def _show_show_cached(self, show_dir: Path) -> None:
+        skey = show_key(self._root_folder, show_dir)
         episodes = list_episodes(show_dir)
         ok_results = []
         for ep in episodes:
-            c = load_cached(self._root_folder, show_dir.name, ep.stem)
+            c = load_cached(self._root_folder, skey, ep.stem)
             if c:
                 ok_results.append(rescore_episode(EpisodeResult.from_dict(c), self._cfg))
 
@@ -355,7 +415,7 @@ class App(tk.Tk):
                 "Click  Analyze Show (Batch)  to analyze all episodes."
             )
         else:
-            agg = compute_show_aggregate(show_dir.name, ok_results)
+            agg = compute_show_aggregate(skey, ok_results)
             self._render_show(agg, ok_results, total_eps=len(episodes))
 
     # -----------------------------------------------------------------------
@@ -663,6 +723,7 @@ class App(tk.Tk):
             self._analyzing = None
             self._update_queue_display()
             self._on_tree_select()   # re-enable Watch Live
+            self._stop_cut_pulse()
             self._progress["value"] = 0
             if not self._watch_live_active:
                 self._status_var.set("Ready.")
@@ -680,12 +741,16 @@ class App(tk.Tk):
         for ep in self._ep_queue:
             self._queue_lb.insert(tk.END, f"  {ep.name}")
         has_items = self._analyzing is not None or bool(self._ep_queue)
-        self._btn_clear.config(state=tk.NORMAL if self._ep_queue else tk.DISABLED)
+        self._btn_clear.config(state=tk.NORMAL if has_items else tk.DISABLED)
 
     def _clear_queue(self) -> None:
         self._ep_queue.clear()
+        self._analyzing = None      # abandon any stuck worker (daemon thread will exit)
+        self._stop_cut_pulse()
+        self._progress["value"] = 0
         self._update_queue_display()
-        self._status_var.set("Queue cleared — current analysis will still complete.")
+        self._on_tree_select()
+        self._status_var.set("Queue cleared.")
 
     # -----------------------------------------------------------------------
     # Worker thread targets (never touch Tkinter directly)
@@ -693,81 +758,134 @@ class App(tk.Tk):
 
     def _worker_episode(self, ep_path: Path) -> None:
         show_dir = ep_path.parent
-        pos = len(self._ep_queue) + 1   # remaining after this one starts
-        total = pos + 1 if self._ep_queue else 1
+        skey = show_key(self._root_folder, show_dir)
 
         def cb(frac: float) -> None:
             remaining = len(self._ep_queue)
-            if remaining:
-                s = (f"Analyzing {ep_path.name}  ({int(frac * 100)}%)"
-                     f"  |  {remaining} waiting")
+            tail = f"  |  {remaining} waiting" if remaining else ""
+            if frac < 0:
+                s = f"Detecting cuts — {ep_path.name}{tail}"
             else:
-                s = f"Analyzing {ep_path.name}  ({int(frac * 100)}%)"
+                s = f"Analyzing {ep_path.name}  ({int(frac * 100)}%){tail}"
             self._queue.put({"t": "progress", "v": frac, "s": s})
 
-        result = analyze_episode(ep_path, config=self._cfg, progress_cb=cb)
-        if result.status == "ok":
-            save_cache(self._root_folder, show_dir.name, ep_path.stem, result.to_dict())
-            self._queue.put({"t": "ep_done", "result": result, "ep_path": ep_path})
-        else:
-            self._queue.put({"t": "ep_done", "result": result, "ep_path": ep_path})
+        print(f"[worker] starting analysis: {ep_path.name}", flush=True)
+        try:
+            result = analyze_episode(ep_path, config=self._cfg, progress_cb=cb)
+            print(f"[worker] analysis done: status={result.status}", flush=True)
+            if result.status == "ok":
+                save_cache(self._root_folder, skey, ep_path.stem, result.to_dict())
+                print(f"[worker] cache saved", flush=True)
+            else:
+                print(f"[worker] analysis failed: {result.error}", flush=True)
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            result = EpisodeResult(file=ep_path.name, status="failed",
+                                   error=f"Unexpected worker error: {exc}")
+        print(f"[worker] posting ep_done", flush=True)
+        self._queue.put({"t": "ep_done", "result": result, "ep_path": ep_path})
 
     # -----------------------------------------------------------------------
     # Queue polling — runs on the main thread every 50 ms
+    # -----------------------------------------------------------------------
+    # Cut-detection progress animation (timer-based, avoids indeterminate mode)
+    # -----------------------------------------------------------------------
+
+    def _start_cut_pulse(self) -> None:
+        """Begin a 5→50% looping animation while PySceneDetect runs."""
+        self._stop_cut_pulse()
+        self._progress["value"] = 5
+        self._cut_pulse_job = self.after(250, self._cut_pulse_tick)
+
+    def _cut_pulse_tick(self) -> None:
+        v = self._progress["value"]
+        next_v = (v + 1) if v < 50 else 5
+        self._progress["value"] = next_v
+        self._cut_pulse_job = self.after(250, self._cut_pulse_tick)
+
+    def _stop_cut_pulse(self) -> None:
+        if self._cut_pulse_job is not None:
+            self.after_cancel(self._cut_pulse_job)
+            self._cut_pulse_job = None
+
     # -----------------------------------------------------------------------
 
     def _poll_queue(self) -> None:
         try:
             while True:
-                self._handle(self._queue.get_nowait())
-        except queue.Empty:
-            pass
-        self.after(50, self._poll_queue)
+                try:
+                    self._handle(self._queue.get_nowait())
+                except queue.Empty:
+                    break
+                except Exception as exc:
+                    import traceback
+                    traceback.print_exc()
+                    self._status_var.set(f"UI error: {exc}")
+        finally:
+            # always reschedule so the loop never dies permanently
+            self.after(50, self._poll_queue)
 
     def _handle(self, msg: dict) -> None:
         kind = msg["t"]
 
         if kind == "progress":
-            self._progress["value"] = msg["v"] * 100
-            self._status_var.set(msg["s"])
+            v = msg["v"]
+            if v < 0:
+                # Cut detection phase: PySceneDetect gives no callbacks, so
+                # animate via a repeating after() timer (5→50%, looping).
+                self._start_cut_pulse()
+                self._status_var.set(msg["s"])
+            else:
+                self._stop_cut_pulse()
+                self._progress["value"] = v * 100
+                self._status_var.set(msg["s"])
 
         elif kind == "ep_done":
             result: EpisodeResult = msg["result"]
             ep_path: Path = msg["ep_path"]
-            if result.status == "ok":
-                # Show result if this episode is currently selected
-                sel_kind, sel_path = self._selected_item()
-                if sel_kind == "episode" and Path(sel_path) == ep_path:
-                    self._current_ep_path = ep_path
-                    self._render_episode(rescore_episode(result, self._cfg))
-                self._maybe_save_show_aggregate(ep_path)
-                if self._db_conn:
-                    upsert_episode(self._db_conn, result, ep_path.parent.name, str(ep_path))
-                    self._refresh_index()
-            else:
-                messagebox.showerror(
-                    "Analysis failed",
-                    f"{ep_path.name}:\n{result.error}",
-                )
-            self._populate_tree()
-            self._start_next()
+            try:
+                if result.status == "ok":
+                    # Show result if this episode is currently selected
+                    sel_kind, sel_path = self._selected_item()
+                    if sel_kind == "episode" and Path(sel_path) == ep_path:
+                        self._current_ep_path = ep_path
+                        self._render_episode(rescore_episode(result, self._cfg))
+                    self._maybe_save_show_aggregate(ep_path)
+                    if self._db_conn:
+                        upsert_episode(self._db_conn, result,
+                                       show_key(self._root_folder, ep_path.parent), str(ep_path))
+                        self._refresh_index()
+                else:
+                    messagebox.showerror(
+                        "Analysis failed",
+                        f"{ep_path.name}:\n{result.error}",
+                    )
+                self._populate_tree()
+            except Exception as exc:
+                import traceback
+                traceback.print_exc()
+                self._status_var.set(f"Display error after analysis: {exc}")
+            finally:
+                self._start_next()
 
     def _maybe_save_show_aggregate(self, ep_path: Path) -> None:
         """If all episodes of the show are now cached, compute and save the aggregate."""
         show_dir = ep_path.parent
+        skey = show_key(self._root_folder, show_dir)
         episodes = list_episodes(show_dir)
         if not episodes:
             return
         all_results = []
         for ep in episodes:
-            c = load_cached(self._root_folder, show_dir.name, ep.stem)
+            c = load_cached(self._root_folder, skey, ep.stem)
             if c:
                 all_results.append(EpisodeResult.from_dict(c))
         if len(all_results) == len(episodes):
-            agg = compute_show_aggregate(show_dir.name, all_results)
-            save_show_results(self._root_folder, show_dir.name, all_results, agg)
+            agg = compute_show_aggregate(skey, all_results)
+            save_show_results(self._root_folder, skey, all_results, agg)
             if self._db_conn:
-                upsert_show(self._db_conn, agg, show_dir.name)
+                upsert_show(self._db_conn, agg, skey)
 
     # -----------------------------------------------------------------------
     # Export
@@ -924,21 +1042,23 @@ class App(tk.Tk):
         kind, path = self._selected_item()
         if kind == "episode":
             ep_path = Path(path)
-            cached = load_cached(self._root_folder, ep_path.parent.name, ep_path.stem)
+            skey = show_key(self._root_folder, ep_path.parent)
+            cached = load_cached(self._root_folder, skey, ep_path.stem)
             if cached:
                 self._current_ep_path = ep_path
                 result = rescore_episode(EpisodeResult.from_dict(cached), self._cfg)
                 self._render_episode(result)
         elif kind == "show":
             show_dir = Path(path)
+            skey = show_key(self._root_folder, show_dir)
             episodes = list_episodes(show_dir)
             ok_results = []
             for ep in episodes:
-                c = load_cached(self._root_folder, show_dir.name, ep.stem)
+                c = load_cached(self._root_folder, skey, ep.stem)
                 if c:
                     ok_results.append(rescore_episode(EpisodeResult.from_dict(c), self._cfg))
             if ok_results:
-                agg = compute_show_aggregate(show_dir.name, ok_results)
+                agg = compute_show_aggregate(skey, ok_results)
                 self._render_show(agg, ok_results, total_eps=len(episodes))
 
     # -----------------------------------------------------------------------
@@ -988,6 +1108,54 @@ class App(tk.Tk):
         save_note(self._db_conn, str(self._current_ep_path), note)
         self._status_var.set(f"Note saved for {self._current_ep_path.name}.")
 
+    def _pin_for_compare(self) -> None:
+        kind, path = self._selected_item()
+        if not kind:
+            return
+        self._pinned = (kind, Path(path))
+        name = Path(path).name
+        self._pinned_var.set(f"Pinned: {name}")
+        self._on_tree_select()   # re-evaluate compare button state
+
+    def _open_compare(self) -> None:
+        if not self._pinned or not self._root_folder:
+            return
+        kind, path = self._selected_item()
+        if not kind:
+            return
+        pin_kind, pin_path = self._pinned
+
+        if kind == "episode" and pin_kind == "episode":
+            def _load_ep(ep: Path) -> EpisodeResult | None:
+                c = load_cached(self._root_folder, show_key(self._root_folder, ep.parent), ep.stem)
+                return rescore_episode(EpisodeResult.from_dict(c), self._cfg) if c else None
+            a = _load_ep(pin_path)
+            b = _load_ep(Path(path))
+            if not a or not b:
+                messagebox.showinfo("Not analyzed",
+                                    "Both episodes must be analyzed before comparing.",
+                                    parent=self)
+                return
+            CompareWindow(self, a, b)
+
+        elif kind == "show" and pin_kind == "show":
+            def _load_show(show_dir: Path) -> ShowAggregate | None:
+                skey = show_key(self._root_folder, show_dir)
+                results = []
+                for ep in list_episodes(show_dir):
+                    c = load_cached(self._root_folder, skey, ep.stem)
+                    if c:
+                        results.append(rescore_episode(EpisodeResult.from_dict(c), self._cfg))
+                return compute_show_aggregate(skey, results) if results else None
+            a = _load_show(pin_path)
+            b = _load_show(Path(path))
+            if not a or not b:
+                messagebox.showinfo("Not analyzed",
+                                    "Both shows need at least one analyzed episode.",
+                                    parent=self)
+                return
+            CompareWindow(self, a, b)
+
     def _remove_stale_index(self) -> None:
         """Delete DB rows whose files no longer exist (e.g. after a folder rename)."""
         if not self._db_conn:
@@ -1029,14 +1197,14 @@ class App(tk.Tk):
         ep_tab = tk.Frame(sub_nb)
         sub_nb.add(ep_tab, text="Episodes")
 
-        _ep_cols   = ("show", "file", "dur", "cpm", "sat", "con", "mot", "flash", "rms", "load", "date")
-        _ep_hdrs   = ("Show", "File", "Dur(s)", "C/min", "Sat", "Contrast", "Motion", "Flash/m", "RMS", "Load", "Date")
-        _ep_widths = (80, 110, 48, 48, 42, 55, 50, 55, 48, 48, 82)
+        _ep_cols   = ("show", "file", "dur", "cpm", "sat", "con", "mot", "flash", "rms", "load", "date", "notes")
+        _ep_hdrs   = ("Show", "File", "Dur(s)", "C/min", "Sat", "Contrast", "Motion", "Flash/m", "RMS", "Load", "Date", "Notes")
+        _ep_widths = (80, 110, 48, 48, 42, 55, 50, 55, 48, 48, 82, 130)
         self._idx_ep_db_cols = (
             "show_name", "file_name", "duration_sec", "cuts_per_min",
             "color_saturation_mean", "color_contrast_mean", "motion_mean",
             "flashing_events_per_min", "audio_rms_mean",
-            "sensory_load_score", "analyzed_at",
+            "sensory_load_score", "analyzed_at", "notes",
         )
 
         ep_tree_frame = tk.Frame(ep_tab)
@@ -1109,24 +1277,57 @@ class App(tk.Tk):
             "dur":   "Duration in seconds",
             "cpm":   "Cuts per minute — how often the camera cuts to a new shot.\nHigher = faster-paced.",
             "sat":   "Color saturation mean (0-1) — how vivid and pure the colors are.\nTypically higher in cartoons, lower in live-action.",
-            "con":   "Color contrast mean (0-1) — spatial spread of brightness within frames.\nCaptures dark/light extremes; useful for live-action content.",
+            "con":   "Color contrast mean (0-1) — spatial spread of brightness within frames.\n"
+                     "High for stark dark/light content such as presentation slides or whiteboards.\n"
+                     "Can push live-action/lecture scores up unexpectedly relative to animation.",
             "mot":   "Motion mean (0-1) — average frame-to-frame movement across the episode.",
             "flash": "Flashing events per minute — luminance changes above threshold.\nRelevant to photosensitivity and overstimulation.",
-            "rms":   "Audio RMS loudness mean — average volume level.\n'n/a' if no audio track detected.",
-            "load":  "Sensory load composite score (0-1) — weighted combination of all metrics.\nHigher = more stimulating.",
+            "rms":   "Audio RMS loudness mean — average volume level.\n"
+                     "Spoken-word content (lectures, narration) often scores higher here\n"
+                     "than music-backed animation with quieter dialogue.\n"
+                     "'n/a' if no audio track detected.",
+            "load":  "Sensory load composite score (0-1) — weighted combination of all metrics.\n"
+                     "Higher = more stimulating.\n\n"
+                     "Scores are calibrated to the preset active when each episode was analyzed.\n"
+                     "Cross-genre comparisons (e.g., cartoons vs. lectures) may be misleading\n"
+                     "under the General preset — see Help → About metrics for details.",
             "date":  "Date and time this episode was last analyzed.",
+            "notes": "Your saved note for this episode. Hover a row to read the full text.",
         })
+        _CellTooltip(self._idx_ep_tree, "notes")
         _IndexTooltip(self._idx_sh_tree, {
             "show":  "Show name",
             "eps":   "Number of analyzed episodes in the index",
-            "load":  "Average sensory load score across all episodes (0-1).",
+            "load":  "Average sensory load score across all episodes (0-1).\n\n"
+                     "Scores are calibrated to the preset used at analysis time.\n"
+                     "A lecture with high-contrast slides and loud speech can\n"
+                     "score above an animated show under the General preset because\n"
+                     "contrast and audio don't scale with genre expectations.\n"
+                     "Use Preschool or Early Childhood presets for children's-only libraries.",
             "cpm":   "Average cuts per minute across all episodes.",
             "mot":   "Average motion mean across all episodes.",
             "sat":   "Average color saturation mean across all episodes.",
-            "con":   "Average color contrast mean across all episodes.",
+            "con":   "Average color contrast mean across all episodes.\n"
+                     "High for content with stark bright/dark frames (slides, whiteboards).",
             "flash": "Average flashing events per minute across all episodes.",
-            "rms":   "Average audio RMS loudness across all episodes.",
+            "rms":   "Average audio RMS loudness across all episodes.\n"
+                     "Spoken-word content typically scores higher than animation.",
         })
+
+        # Genre/preset guidance note below the Shows table
+        note_text = (
+            "Tip: scores are most meaningful when comparing content of the same genre "
+            "analyzed under the same preset. Lectures with high-contrast slides or loud "
+            "speech may outscore animated shows under General/All Ages — this is "
+            "mathematically correct but not always intuitive. Use the Preschool or Early "
+            "Childhood preset for a children's-content-only library, or see "
+            "Help → About metrics for a full explanation."
+        )
+        tk.Label(
+            sh_tab, text=note_text, justify=tk.LEFT,
+            fg="#555555", font=("TkDefaultFont", 8),
+            wraplength=260, anchor="w",
+        ).pack(side=tk.BOTTOM, fill=tk.X, padx=4, pady=(2, 4))
 
     def _refresh_index(self) -> None:
         """Re-query the DB and repopulate both index Treeviews."""
@@ -1146,6 +1347,8 @@ class App(tk.Tk):
         for r in ep_rows:
             def _fmt(v, fmt):
                 return fmt % v if v is not None else ""
+            note_full = r.get("notes") or ""
+            note_disp = (note_full[:28] + "…") if len(note_full) > 28 else note_full
             self._idx_ep_tree.insert("", tk.END,
                 values=(
                     r["show_name"],
@@ -1159,6 +1362,7 @@ class App(tk.Tk):
                     _fmt(r["audio_rms_mean"], "%.4f") if r["audio_rms_mean"] is not None else "n/a",
                     _fmt(r["sensory_load_score"], "%.3f"),
                     r["analyzed_at"] or "",
+                    note_disp,
                 ),
                 tags=(r["file_path"],),
             )
@@ -1218,8 +1422,7 @@ class App(tk.Tk):
             messagebox.showinfo("No root folder",
                                 "Choose a root folder first.", parent=self)
             return
-        show_name = ep_path.parent.name
-        cached = load_cached(self._root_folder, show_name, ep_path.stem)
+        cached = load_cached(self._root_folder, show_key(self._root_folder, ep_path.parent), ep_path.stem)
         if cached:
             self._current_ep_path = ep_path
             result = rescore_episode(EpisodeResult.from_dict(cached), self._cfg)
@@ -1234,22 +1437,23 @@ class App(tk.Tk):
         if not self._db_conn or not self._root_folder:
             return
         for show_dir in list_shows(self._root_folder):
+            skey = show_key(self._root_folder, show_dir)
             show_results = []
             for ep in list_episodes(show_dir):
-                c = load_cached(self._root_folder, show_dir.name, ep.stem)
+                c = load_cached(self._root_folder, skey, ep.stem)
                 if c:
                     try:
                         result = EpisodeResult.from_dict(c)
                         if result.status == "ok":
                             result = rescore_episode(result, self._cfg)
-                            upsert_episode(self._db_conn, result, show_dir.name, str(ep))
+                            upsert_episode(self._db_conn, result, skey, str(ep))
                             show_results.append(result)
                     except Exception:
                         pass
             if show_results:
                 try:
-                    agg = compute_show_aggregate(show_dir.name, show_results)
-                    upsert_show(self._db_conn, agg, show_dir.name)
+                    agg = compute_show_aggregate(skey, show_results)
+                    upsert_show(self._db_conn, agg, skey)
                 except Exception:
                     pass
 
@@ -1258,38 +1462,90 @@ class App(tk.Tk):
     # -----------------------------------------------------------------------
 
     def _show_about(self) -> None:
-        text = (
-            "About these metrics\n\n"
-            "This tool measures formal/structural features of video — not content.\n\n"
-            "SHOT LENGTH & SCENE PACING\n"
-            "  Faster cutting triggers more frequent orienting responses and higher\n"
-            "  processing load (Lillard & Peterson, 2011; Lang LC4MP model).\n\n"
-            "MOTION\n"
-            "  High on-screen motion is a pre-attentive attention magnet and\n"
-            "  a repeated arousal trigger (Itti & Koch, visual saliency).\n\n"
-            "COLOR SATURATION\n"
-            "  High saturation and contrast draw attention bottom-up and\n"
-            "  are associated with heightened arousal.\n\n"
-            "FLASHING\n"
-            "  Rapid luminance changes are a photosensitivity concern and\n"
-            "  an overstimulation marker.\n\n"
-            "SENSORY LOAD COMPOSITE\n"
-            "  Weighted combination of normalized sub-metrics using fixed reference\n"
-            "  ranges — comparable across shows and runs.\n\n"
-            "IMPORTANT LIMITATIONS\n"
-            "  This tool measures the stimulus, not the viewer. It cannot account\n"
-            "  for the child's age, temperament, or sensory-processing profile.\n"
-            "  The evidence base is largely correlational. Output is a transparent\n"
-            "  profile to inform caregiver judgment — not a rating or verdict."
-        )
         win = tk.Toplevel(self)
         win.title("About Metrics")
-        win.geometry("560x480")
-        win.resizable(False, False)
+        win.geometry("580x640")
+        win.resizable(True, True)
         txt = tk.Text(win, wrap=tk.WORD, font=("TkDefaultFont", 9),
                       padx=12, pady=10, relief=tk.FLAT, bg=win.cget("bg"))
+        vsb = ttk.Scrollbar(win, orient=tk.VERTICAL, command=txt.yview)
+        txt.configure(yscrollcommand=vsb.set)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
         txt.pack(fill=tk.BOTH, expand=True)
-        txt.insert(tk.END, text)
+
+        txt.tag_configure("h1",  font=("TkDefaultFont", 10, "bold"))
+        txt.tag_configure("h2",  font=("TkDefaultFont", 9,  "bold"))
+        txt.tag_configure("tip", foreground="#003080")
+
+        def h1(s):  txt.insert(tk.END, s + "\n", "h1")
+        def h2(s):  txt.insert(tk.END, s + "\n", "h2")
+        def tip(s): txt.insert(tk.END, s + "\n", "tip")
+        def p(s):   txt.insert(tk.END, s + "\n")
+        def br():   txt.insert(tk.END, "\n")
+
+        h1("About these metrics")
+        p("This tool measures formal/structural features of video — not content.")
+        br()
+
+        h2("SHOT LENGTH & SCENE PACING")
+        p("  Faster cutting triggers more frequent orienting responses and higher\n"
+          "  processing load (Lillard & Peterson, 2011; Lang LC4MP model).")
+        br()
+
+        h2("MOTION")
+        p("  High on-screen motion is a pre-attentive attention magnet and\n"
+          "  a repeated arousal trigger (Itti & Koch, visual saliency).")
+        br()
+
+        h2("COLOR SATURATION & CONTRAST")
+        p("  High saturation draws attention bottom-up and is associated with arousal.\n"
+          "  Contrast captures the brightness spread within frames — it is high for\n"
+          "  content with stark dark/light regions (presentation slides, whiteboards,\n"
+          "  whiteboard-style animation). Unlike saturation, contrast can be elevated\n"
+          "  in live-action and lecture footage even when the content is calm.")
+        br()
+
+        h2("FLASHING")
+        p("  Rapid luminance changes are a photosensitivity concern and\n"
+          "  an overstimulation marker.")
+        br()
+
+        h2("SENSORY LOAD COMPOSITE")
+        p("  Weighted combination of normalized sub-metrics using fixed reference\n"
+          "  ranges — comparable across shows and runs. Each metric is divided by\n"
+          "  the preset's reference-range ceiling before weighting, so the ceiling\n"
+          "  choice matters (see Presets below).")
+        br()
+
+        h2("PRESETS & CROSS-GENRE COMPARISON")
+        tip("  Scores are only directly comparable when content was analyzed\n"
+            "  under the same preset with the same reference ranges.")
+        p("\n"
+          "  Each preset sets a ceiling for each metric. The General / All Ages\n"
+          "  preset uses wide ceilings calibrated for all content types — for example,\n"
+          "  60 cuts/min. Against that ceiling, even a fast children's cartoon at\n"
+          "  11 cuts/min looks like only 18% of the scale. A children's-only preset\n"
+          "  (Preschool: 15 cuts/min max) would score that same 11 cuts/min at 74%,\n"
+          "  making pacing differences between shows far more visible.\n\n"
+          "  Cross-genre comparison can also produce counterintuitive rankings.\n"
+          "  A lecture video with high-contrast slides (bright text, dark background)\n"
+          "  and louder speech audio may score above an animated children's show\n"
+          "  under the General preset — because contrast and audio are absolute\n"
+          "  measurements that do not adjust for genre. This is mathematically correct\n"
+          "  but may not match your intuition about which content is more stimulating\n"
+          "  for a child.")
+        br()
+        tip("  Best practice: use Preschool or Early Childhood presets when your\n"
+            "  library contains only children's content. Use General only when you\n"
+            "  intentionally want to compare across all content types on a single scale.")
+        br()
+
+        h2("IMPORTANT LIMITATIONS")
+        p("  This tool measures the stimulus, not the viewer. It cannot account\n"
+          "  for the child's age, temperament, or sensory-processing profile.\n"
+          "  The evidence base is largely correlational. Output is a transparent\n"
+          "  profile to inform caregiver judgment — not a rating or verdict.")
+
         txt.config(state=tk.DISABLED)
         tk.Button(win, text="Close", command=win.destroy,
                   padx=20).pack(pady=8)
@@ -1337,6 +1593,102 @@ class _IndexTooltip:
 
     def _hide(self, _event=None) -> None:
         self._current_col = ""
+        if self._win:
+            self._win.destroy()
+            self._win = None
+
+
+class _CellTooltip:
+    """Shows full cell content as a tooltip when hovering over a specific Treeview column."""
+
+    def __init__(self, tree: ttk.Treeview, col_id: str) -> None:
+        self._tree = tree
+        self._col_id = col_id
+        self._col_idx: int = -1
+        self._win: tk.Toplevel | None = None
+        self._current_item: str = ""
+        tree.bind("<Motion>", self._on_motion, add=True)
+        tree.bind("<Leave>",  self._hide,      add=True)
+
+    def _get_col_idx(self) -> int:
+        if self._col_idx < 0:
+            try:
+                self._col_idx = list(self._tree["columns"]).index(self._col_id)
+            except ValueError:
+                pass
+        return self._col_idx
+
+    def _on_motion(self, event: tk.Event) -> None:
+        if self._tree.identify_region(event.x, event.y) != "cell":
+            self._hide()
+            return
+        col_tag = self._tree.identify_column(event.x)
+        try:
+            col_id = self._tree["columns"][int(col_tag.lstrip("#")) - 1]
+        except (ValueError, IndexError):
+            self._hide()
+            return
+        if col_id != self._col_id:
+            self._hide()
+            return
+        item = self._tree.identify_row(event.y)
+        if not item or item == self._current_item:
+            return
+        self._hide()
+        idx = self._get_col_idx()
+        if idx < 0:
+            return
+        try:
+            text = str(self._tree.item(item, "values")[idx])
+        except IndexError:
+            return
+        if not text:
+            return
+        self._current_item = item
+        x = self._tree.winfo_rootx() + event.x + 14
+        y = self._tree.winfo_rooty() + event.y + 18
+        self._win = tw = tk.Toplevel(self._tree)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        tk.Label(
+            tw, text=text, justify=tk.LEFT,
+            background="#ffffcc", relief=tk.SOLID, borderwidth=1,
+            font=("TkDefaultFont", 9), wraplength=340, padx=6, pady=4,
+        ).pack()
+
+    def _hide(self, _event=None) -> None:
+        self._current_item = ""
+        if self._win:
+            self._win.destroy()
+            self._win = None
+
+
+class _WidgetTooltip:
+    """Simple hover tooltip for any widget."""
+
+    def __init__(self, widget: tk.Widget, text: str, wraplength: int = 300) -> None:
+        self._widget = widget
+        self._text = text
+        self._wraplength = wraplength
+        self._win: tk.Toplevel | None = None
+        widget.bind("<Enter>", self._show)
+        widget.bind("<Leave>", self._hide)
+
+    def _show(self, event: tk.Event) -> None:
+        if self._win:
+            return
+        x = self._widget.winfo_rootx() + 20
+        y = self._widget.winfo_rooty() + self._widget.winfo_height() + 4
+        self._win = tw = tk.Toplevel(self._widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        tk.Label(
+            tw, text=self._text, justify=tk.LEFT,
+            background="#ffffcc", relief=tk.SOLID, borderwidth=1,
+            font=("TkDefaultFont", 8), wraplength=self._wraplength, padx=6, pady=4,
+        ).pack()
+
+    def _hide(self, _event=None) -> None:
         if self._win:
             self._win.destroy()
             self._win = None
@@ -1586,8 +1938,9 @@ class SettingsDialog(tk.Toplevel):
         root = self._app._root_folder
         if root:
             for show_dir in list_shows(root):
+                skey = show_key(root, show_dir)
                 for ep in list_episodes(show_dir):
-                    if load_cached(root, show_dir.name, ep.stem):
+                    if load_cached(root, skey, ep.stem):
                         rescored += 1
 
         self._app._refresh_current_view()
@@ -1664,6 +2017,166 @@ class SettingsDialog(tk.Toplevel):
                                 parent=self)
         except Exception as exc:
             messagebox.showerror("Save failed", str(exc), parent=self)
+
+
+class CompareWindow(tk.Toplevel):
+    """Side-by-side metric comparison for two episodes or two shows."""
+
+    def __init__(self, parent: "App",
+                 item_a: "EpisodeResult | ShowAggregate",
+                 item_b: "EpisodeResult | ShowAggregate") -> None:
+        super().__init__(parent)
+        self.resizable(True, True)
+        is_ep = isinstance(item_a, EpisodeResult)
+        name_a = item_a.file if is_ep else item_a.show_name
+        name_b = item_b.file if is_ep else item_b.show_name
+        self.title(f"Compare — {name_a[:40]}  vs  {name_b[:40]}")
+        self.geometry("700x560")
+        self._build(item_a, item_b, is_ep, name_a, name_b)
+
+    def _build(self, a, b, is_ep: bool, name_a: str, name_b: str) -> None:
+        tree_frame = tk.Frame(self)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=6, pady=(8, 0))
+
+        tree = ttk.Treeview(tree_frame, columns=("metric", "a", "b"),
+                             show="headings", selectmode="none")
+        tree.heading("metric", text="Metric")
+        tree.heading("a", text=name_a[:38])
+        tree.heading("b", text=name_b[:38])
+        tree.column("metric", width=210, minwidth=140, anchor="w")
+        tree.column("a",      width=220, minwidth=100, anchor="center")
+        tree.column("b",      width=220, minwidth=100, anchor="center")
+
+        vsb = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        tree.pack(fill=tk.BOTH, expand=True)
+
+        tree.tag_configure("section",  font=("TkDefaultFont", 9, "bold"),
+                           background="#e8e8e8")
+        tree.tag_configure("a_better", foreground="#003080")
+        tree.tag_configure("b_better", foreground="#006600")
+
+        def row(label: str, va, vb,
+                lower_better: bool = True, fmt: str = ".3f",
+                section: bool = False) -> None:
+            if section:
+                tree.insert("", tk.END, values=(label, "", ""), tags=("section",))
+                return
+            if not isinstance(va, (int, float)) or not isinstance(vb, (int, float)):
+                tree.insert("", tk.END, values=(
+                    label,
+                    str(va) if va is not None else "n/a",
+                    str(vb) if vb is not None else "n/a",
+                ))
+                return
+            sa, sb = format(va, fmt), format(vb, fmt)
+            tag = None
+            diff = va - vb
+            tol = max(abs(va), abs(vb)) * 0.002 + 1e-9   # 0.2% relative tolerance
+            if lower_better:
+                if diff < -tol:
+                    sa, tag = sa + "  ◀", "a_better"
+                elif diff > tol:
+                    sb, tag = sb + "  ◀", "b_better"
+            else:
+                if diff > tol:
+                    sa, tag = sa + "  ◀", "a_better"
+                elif diff < -tol:
+                    sb, tag = sb + "  ◀", "b_better"
+            tree.insert("", tk.END, values=(label, sa, sb),
+                        tags=(tag,) if tag else ())
+
+        if is_ep:
+            self._fill_episode(row, a, b)
+        else:
+            self._fill_show(row, a, b)
+
+        ttk.Separator(self, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=6, pady=(6, 2))
+        tk.Label(self, text="◀  =  calmer / less stimulating on this metric",
+                 font=("TkDefaultFont", 8), fg="#555555").pack()
+        tk.Button(self, text="Close", command=self.destroy,
+                  padx=20).pack(pady=(4, 10))
+
+    @staticmethod
+    def _fill_episode(row, a: EpisodeResult, b: EpisodeResult) -> None:
+        ma, mb = a.metrics, b.metrics
+        row("Duration (min)", a.duration_sec / 60, b.duration_sec / 60,
+            lower_better=False, fmt=".1f")
+
+        row("Sensory Load", section=True, va=None, vb=None)
+        row("Composite score", ma.sensory_load.score, mb.sensory_load.score)
+        ca, cb = ma.sensory_load.components, mb.sensory_load.components
+        row("  Pacing",     ca.pacing,     cb.pacing)
+        row("  Saturation", ca.saturation, cb.saturation)
+        row("  Contrast",   ca.contrast,   cb.contrast)
+        row("  Motion",     ca.motion,     cb.motion)
+        row("  Flashing",   ca.flashing,   cb.flashing)
+        if ma.sensory_load.audio_available or mb.sensory_load.audio_available:
+            row("  Audio",  ca.audio,      cb.audio)
+
+        row("Scene Pacing", section=True, va=None, vb=None)
+        row("Cuts / min", ma.scene_pacing.cuts_per_min, mb.scene_pacing.cuts_per_min, fmt=".1f")
+        row("Mean shot length (s)", ma.shot_length.mean_sec, mb.shot_length.mean_sec,
+            lower_better=False)
+        row("Shot-length CV", ma.scene_pacing.shot_length_cv, mb.scene_pacing.shot_length_cv)
+
+        row("Color", section=True, va=None, vb=None)
+        row("Saturation mean", ma.color_saturation.mean,        mb.color_saturation.mean)
+        row("Contrast mean",   ma.color_saturation.contrast_mean, mb.color_saturation.contrast_mean)
+
+        row("Motion", section=True, va=None, vb=None)
+        row("Motion mean", ma.motion.mean, mb.motion.mean)
+        row("Motion peak", ma.motion.peak, mb.motion.peak)
+
+        row("Flashing", section=True, va=None, vb=None)
+        row("Events / min", ma.flashing.luminance_delta_events_per_min,
+            mb.flashing.luminance_delta_events_per_min, fmt=".1f")
+
+        if ma.audio.available or mb.audio.available:
+            row("Audio", section=True, va=None, vb=None)
+            va = ma.audio.rms_mean        if ma.audio.available else None
+            vb = mb.audio.rms_mean        if mb.audio.available else None
+            row("RMS loudness mean", va, vb, fmt=".4f")
+            va = ma.audio.dynamic_range_db if ma.audio.available else None
+            vb = mb.audio.dynamic_range_db if mb.audio.available else None
+            row("Dynamic range (dB)", va, vb, lower_better=False, fmt=".1f")
+
+    @staticmethod
+    def _fill_show(row, a: ShowAggregate, b: ShowAggregate) -> None:
+        row("Episodes analyzed",
+            float(a.episode_count - a.failed_count),
+            float(b.episode_count - b.failed_count),
+            lower_better=False, fmt=".0f")
+
+        row("Sensory Load", section=True, va=None, vb=None)
+        row("Mean score",   a.sensory_load_score.mean,   b.sensory_load_score.mean)
+        row("Median score", a.sensory_load_score.median, b.sensory_load_score.median)
+        row("Std dev",      a.sensory_load_score.std,    b.sensory_load_score.std)
+        row("Min score",    a.sensory_load_score.min,    b.sensory_load_score.min)
+        row("Max score",    a.sensory_load_score.max,    b.sensory_load_score.max)
+
+        row("Scene Pacing", section=True, va=None, vb=None)
+        row("Avg cuts / min",      a.cuts_per_min.mean,        b.cuts_per_min.mean,        fmt=".1f")
+        row("Avg shot length (s)", a.shot_length_mean_sec.mean, b.shot_length_mean_sec.mean,
+            lower_better=False)
+
+        row("Color", section=True, va=None, vb=None)
+        row("Avg saturation", a.color_saturation_mean.mean, b.color_saturation_mean.mean)
+        row("Avg contrast",   a.color_contrast_mean.mean,   b.color_contrast_mean.mean)
+
+        row("Motion", section=True, va=None, vb=None)
+        row("Avg motion mean", a.motion_mean.mean, b.motion_mean.mean)
+
+        row("Flashing", section=True, va=None, vb=None)
+        row("Avg events / min", a.flashing_events_per_min.mean,
+            b.flashing_events_per_min.mean, fmt=".1f")
+
+        if a.audio_rms_mean.mean > 0 or b.audio_rms_mean.mean > 0:
+            row("Audio", section=True, va=None, vb=None)
+            va = a.audio_rms_mean.mean if a.audio_rms_mean.mean > 0 else None
+            vb = b.audio_rms_mean.mean if b.audio_rms_mean.mean > 0 else None
+            row("Avg RMS loudness", va, vb, fmt=".4f")
 
 
 def main() -> None:
