@@ -26,13 +26,203 @@ from analyzer.schema import EpisodeResult, ShowAggregate
 from analyzer.db import (
     get_db, upsert_episode, upsert_show, query_episodes, query_shows,
     get_note, save_note, get_episode_percentile, remove_stale_episodes,
+    get_episode_metadata, upsert_episode_metadata, auto_set_season,
+    get_show_metadata, upsert_show_metadata,
+    get_show_eras, save_show_eras,
 )
 from analyzer.show_index import (
-    list_episodes, list_shows, list_top_level, list_category_shows, show_key,
+    list_episodes, list_shows, list_top_level, list_category_shows,
+    show_key, display_show_name,
 )
 from gui_live import LiveAnalysisWindow
 from gui_sampler import SamplerWindow
+from gui_wiki_import import WikiImportDialog
+from gui_tvmaze_import import TVMazeImportDialog
 
+
+# ---------------------------------------------------------------------------
+# Era editor dialog
+# ---------------------------------------------------------------------------
+
+class EraEditorDialog(tk.Toplevel):
+    """Define named date-range eras for chart colour stratification.
+
+    Eras are stored per-show in the index DB (show_eras table).
+    The ``on_apply`` callback fires immediately when the user clicks Apply,
+    so the chart redraws without closing the window first.
+    """
+
+    _DATE_FMTS = [
+        "%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y", "%Y/%m/%d",
+        "%d %B %Y", "%B %d, %Y", "%B %d %Y",
+        "%d-%b-%Y", "%d %b %Y", "%b %d, %Y", "%b %d %Y",
+    ]
+
+    def __init__(
+        self,
+        parent: tk.Misc,
+        show_name: str,
+        initial_eras: list[dict],
+        db_conn=None,
+        on_apply=None,
+    ) -> None:
+        super().__init__(parent)
+        self.title(f"Define Eras — {show_name}")
+        self.resizable(True, False)
+        self._show_name = show_name
+        self._db_conn   = db_conn
+        self._on_apply  = on_apply
+        self._eras: list[dict] = [dict(e) for e in initial_eras]
+
+        self._build_ui()
+        self._populate_tree()
+        self.transient(parent)
+        self.grab_set()
+        self.update_idletasks()
+        px = parent.winfo_rootx() + parent.winfo_width() // 2 - self.winfo_width() // 2
+        py = parent.winfo_rooty() + parent.winfo_height() // 2 - self.winfo_height() // 2
+        self.geometry(f"+{max(0, px)}+{max(0, py)}")
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _norm_date(raw: str) -> str:
+        from datetime import datetime
+        raw = raw.strip()
+        if not raw:
+            return ""
+        for fmt in EraEditorDialog._DATE_FMTS:
+            try:
+                return datetime.strptime(raw, fmt).strftime("%Y-%m-%d")
+            except ValueError:
+                pass
+        return raw
+
+    # ------------------------------------------------------------------
+    # UI
+    # ------------------------------------------------------------------
+
+    def _build_ui(self) -> None:
+        pad = dict(padx=10, pady=4)
+
+        tk.Label(
+            self,
+            text=(
+                "Define date ranges to colour episodes by production era instead of season.\n"
+                "Leave Start or End blank for open-ended ranges.  "
+                "Colour is optional (hex, e.g. #E05C00)."
+            ),
+            justify=tk.LEFT, anchor="w", bg="#eef4ff", relief=tk.GROOVE,
+            padx=8, pady=6, font=("TkDefaultFont", 9),
+        ).pack(fill=tk.X, padx=10, pady=(10, 4))
+
+        # treeview
+        tree_frame = tk.Frame(self)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 4))
+        cols   = ("name", "start", "end", "color")
+        hdrs   = ("Era Name", "Start Date", "End Date", "Colour")
+        widths = (190, 90, 90, 80)
+        self._tree = ttk.Treeview(tree_frame, columns=cols, show="headings",
+                                   selectmode="browse", height=6)
+        for col, hdr, w in zip(cols, hdrs, widths):
+            self._tree.heading(col, text=hdr)
+            self._tree.column(col, width=w, minwidth=30, stretch=(col == "name"))
+        vsb = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self._tree.yview)
+        self._tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        self._tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        tk.Button(self, text="Remove Selected", command=self._remove_selected,
+                  padx=6).pack(anchor="w", padx=10, pady=(0, 2))
+
+        ttk.Separator(self, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=10, pady=6)
+
+        # add-era form
+        form = tk.Frame(self)
+        form.pack(fill=tk.X, **pad)
+        for col, lbl in enumerate(["Era Name *", "Start Date", "End Date", "Colour (optional)"]):
+            tk.Label(form, text=lbl, anchor="w").grid(row=0, column=col, padx=4, sticky="w")
+        self._ent_name  = tk.Entry(form, width=24)
+        self._ent_start = tk.Entry(form, width=12)
+        self._ent_end   = tk.Entry(form, width=12)
+        self._ent_color = tk.Entry(form, width=10)
+        for col, ent in enumerate([self._ent_name, self._ent_start,
+                                    self._ent_end, self._ent_color]):
+            ent.grid(row=1, column=col, padx=4, pady=2, sticky="w")
+        tk.Label(form, text="(any date format — blank = open-ended)",
+                 fg="#666666", font=("TkDefaultFont", 8),
+                 ).grid(row=2, column=0, columnspan=4, sticky="w", padx=4)
+
+        tk.Button(self, text="Add Era", command=self._add_era, padx=8,
+                  ).pack(anchor="w", **pad)
+
+        ttk.Separator(self, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=10, pady=6)
+
+        # bottom buttons
+        btn_row = tk.Frame(self)
+        btn_row.pack(fill=tk.X, padx=10, pady=(0, 10))
+        tk.Button(btn_row, text="Cancel", command=self.destroy,
+                  padx=8).pack(side=tk.RIGHT, padx=4)
+        tk.Button(btn_row, text="Apply", command=self._apply,
+                  fg="white", bg="#225522", padx=8).pack(side=tk.RIGHT, padx=4)
+        if self._db_conn:
+            tk.Button(btn_row, text="Save to Database", command=self._save_to_db,
+                      padx=8).pack(side=tk.LEFT)
+
+    def _populate_tree(self) -> None:
+        self._tree.delete(*self._tree.get_children())
+        for era in self._eras:
+            self._tree.insert("", tk.END, values=(
+                era.get("era_name", ""),
+                era.get("start_date") or "",
+                era.get("end_date") or "",
+                era.get("color") or "",
+            ))
+
+    # ------------------------------------------------------------------
+    # Actions
+    # ------------------------------------------------------------------
+
+    def _add_era(self) -> None:
+        name = self._ent_name.get().strip()
+        if not name:
+            messagebox.showwarning("Era Name Required",
+                                   "Please enter an era name.", parent=self)
+            return
+        self._eras.append({
+            "era_name":   name,
+            "start_date": self._norm_date(self._ent_start.get()),
+            "end_date":   self._norm_date(self._ent_end.get()),
+            "color":      self._ent_color.get().strip() or "",
+        })
+        self._populate_tree()
+        for ent in (self._ent_name, self._ent_start, self._ent_end, self._ent_color):
+            ent.delete(0, tk.END)
+
+    def _remove_selected(self) -> None:
+        sel = self._tree.selection()
+        if not sel:
+            return
+        del self._eras[self._tree.index(sel[0])]
+        self._populate_tree()
+
+    def _apply(self) -> None:
+        if self._on_apply:
+            self._on_apply(list(self._eras))
+        self.destroy()
+
+    def _save_to_db(self) -> None:
+        save_show_eras(self._db_conn, self._show_name, self._eras)
+        messagebox.showinfo(
+            "Saved",
+            f"{len(self._eras)} era(s) saved for '{self._show_name}'.",
+            parent=self,
+        )
+
+
+# ---------------------------------------------------------------------------
 
 class App(tk.Tk):
     def __init__(self) -> None:
@@ -77,6 +267,10 @@ class App(tk.Tk):
         file_menu = tk.Menu(menubar, tearoff=0)
         file_menu.add_command(label="Choose Root Folder...", command=self._choose_folder)
         file_menu.add_command(label="Episode Sampler...", command=self._open_sampler)
+        file_menu.add_command(label="Import Episode Metadata from Wikipedia...",
+                              command=self._open_wiki_import)
+        file_menu.add_command(label="Import Episode Metadata from TVMaze...",
+                              command=self._open_tvmaze_import)
         file_menu.add_separator()
         self._menu_export_json = file_menu.add_command(
             label="Export Results as JSON...", command=self._export_json, state=tk.DISABLED)
@@ -262,6 +456,40 @@ class App(tk.Tk):
         self._txt.tag_configure("err",   foreground="red")
         self._txt.tag_configure("mono",  font=("Consolas", 9))
 
+        # Episode Metadata panel — air date, season, episode number
+        meta_frame = tk.LabelFrame(right, text="Episode Metadata", padx=4, pady=4)
+        meta_frame.pack(fill=tk.X, padx=4, pady=(0, 2))
+        self._meta_air_date = tk.StringVar()
+        self._meta_season   = tk.StringVar()
+        self._meta_ep_num   = tk.StringVar()
+        tk.Label(meta_frame, text="Air Date:").pack(side=tk.LEFT)
+        self._entry_air_date = tk.Entry(
+            meta_frame, textvariable=self._meta_air_date, width=11,
+            state=tk.DISABLED, bg="#f5f5f5",
+        )
+        self._entry_air_date.pack(side=tk.LEFT, padx=(2, 8))
+        tk.Label(meta_frame, text="Season:").pack(side=tk.LEFT)
+        self._entry_season = tk.Entry(
+            meta_frame, textvariable=self._meta_season, width=4,
+            state=tk.DISABLED, bg="#f5f5f5",
+        )
+        self._entry_season.pack(side=tk.LEFT, padx=(2, 8))
+        tk.Label(meta_frame, text="Ep #:").pack(side=tk.LEFT)
+        self._entry_ep_num = tk.Entry(
+            meta_frame, textvariable=self._meta_ep_num, width=4,
+            state=tk.DISABLED, bg="#f5f5f5",
+        )
+        self._entry_ep_num.pack(side=tk.LEFT, padx=(2, 8))
+        self._btn_save_meta = tk.Button(
+            meta_frame, text="Save", command=self._save_metadata,
+            padx=6, state=tk.DISABLED,
+        )
+        self._btn_save_meta.pack(side=tk.LEFT)
+        tk.Label(
+            meta_frame, text="(any date format)", fg="#888888",
+            font=("TkDefaultFont", 8),
+        ).pack(side=tk.LEFT, padx=(6, 0))
+
         # Notes panel — below results text, always visible
         notes_frame = tk.LabelFrame(right, text="Episode Notes", padx=4, pady=4)
         notes_frame.pack(fill=tk.X, padx=4, pady=(0, 4))
@@ -425,6 +653,7 @@ class App(tk.Tk):
 
     def _show_show_cached(self, show_dir: Path) -> None:
         skey = show_key(self._root_folder, show_dir)
+        dname, _ = display_show_name(self._root_folder, show_dir)
         episodes = list_episodes(show_dir)
         ok_results = []
         for ep in episodes:
@@ -434,12 +663,12 @@ class App(tk.Tk):
 
         if not ok_results:
             self._write_txt(
-                f"Show: {show_dir.name}\n\n"
+                f"Show: {dname}\n\n"
                 f"{len(episodes)} episode(s) — none analyzed yet.\n\n"
                 "Click  Analyze Show (Batch)  to analyze all episodes."
             )
         else:
-            agg = compute_show_aggregate(skey, ok_results)
+            agg = compute_show_aggregate(dname, ok_results)
             self._render_show(agg, ok_results, total_eps=len(episodes))
 
     def _load_sample_results(self) -> None:
@@ -600,6 +829,7 @@ class App(tk.Tk):
         self._current_ep_result = None
         self._current_ep_path = None
         self._current_show_results = None
+        self._current_show_name = None
         self._btn_chart.config(state=tk.DISABLED)
         self._file_menu.entryconfig("Export Results as JSON...", state=tk.DISABLED)
         self._file_menu.entryconfig("Export Results as CSV...", state=tk.DISABLED)
@@ -608,10 +838,19 @@ class App(tk.Tk):
         self._notes_text.delete("1.0", tk.END)
         self._notes_text.config(state=tk.DISABLED)
         self._btn_save_note.config(state=tk.DISABLED)
+        self._clear_metadata_fields()
+
+    def _clear_metadata_fields(self) -> None:
+        for entry in (self._entry_air_date, self._entry_season, self._entry_ep_num):
+            entry.config(state=tk.NORMAL)
+            entry.delete(0, tk.END)
+            entry.config(state=tk.DISABLED, bg="#f5f5f5")
+        self._btn_save_meta.config(state=tk.DISABLED)
 
     def _render_episode(self, result: EpisodeResult) -> None:
         self._current_ep_result = result if result.status == "ok" else None
         self._current_show_results = None
+        self._current_show_name = None
         can_chart = result.status == "ok"
         self._btn_chart.config(state=tk.NORMAL if can_chart else tk.DISABLED)
         self._file_menu.entryconfig("Export Results as JSON...",
@@ -751,11 +990,27 @@ class App(tk.Tk):
             self._notes_text.insert("1.0", note)
         self._btn_save_note.config(state=tk.NORMAL)
 
+        # Load saved metadata into the metadata panel
+        meta = {}
+        if self._db_conn and self._current_ep_path:
+            meta = get_episode_metadata(self._db_conn, str(self._current_ep_path))
+        for entry in (self._entry_air_date, self._entry_season, self._entry_ep_num):
+            entry.config(state=tk.NORMAL, bg="white")
+        self._meta_air_date.set(meta.get("air_date") or "")
+        self._meta_season.set(str(meta["season_num"]) if meta.get("season_num") is not None else "")
+        self._meta_ep_num.set(str(meta["episode_num"]) if meta.get("episode_num") is not None else "")
+        self._btn_save_meta.config(state=tk.NORMAL)
+
     def _render_show(self, agg: ShowAggregate, results: list[EpisodeResult],
                      total_eps: int, sample_info: dict | None = None) -> None:
         self._current_ep_result = None
+        self._current_ep_path = None
         self._current_show_results = [r for r in results if r.status == "ok"]
-        self._btn_chart.config(state=tk.DISABLED)  # chart is episode-only for now
+        self._current_show_name = agg.show_name
+        self._clear_metadata_fields()
+        self._btn_chart.config(
+            state=tk.NORMAL if bool(self._current_show_results) else tk.DISABLED
+        )
         has = bool(self._current_show_results)
         self._file_menu.entryconfig("Export Results as JSON...",
                                      state=tk.NORMAL if has else tk.DISABLED)
@@ -1046,8 +1301,10 @@ class App(tk.Tk):
                         self._render_episode(rescore_episode(result, self._cfg))
                     self._maybe_save_show_aggregate(ep_path)
                     if self._db_conn:
-                        upsert_episode(self._db_conn, result,
-                                       show_key(self._root_folder, ep_path.parent), str(ep_path))
+                        dname, auto_s = display_show_name(self._root_folder, ep_path.parent)
+                        upsert_episode(self._db_conn, result, dname, str(ep_path))
+                        if auto_s is not None:
+                            auto_set_season(self._db_conn, str(ep_path), auto_s)
                         self._refresh_index()
                 else:
                     messagebox.showerror(
@@ -1066,6 +1323,7 @@ class App(tk.Tk):
         """If all episodes of the show are now cached, compute and save the aggregate."""
         show_dir = ep_path.parent
         skey = show_key(self._root_folder, show_dir)
+        dname, _ = display_show_name(self._root_folder, show_dir)
         episodes = list_episodes(show_dir)
         if not episodes:
             return
@@ -1075,10 +1333,10 @@ class App(tk.Tk):
             if c:
                 all_results.append(EpisodeResult.from_dict(c))
         if len(all_results) == len(episodes):
-            agg = compute_show_aggregate(skey, all_results)
+            agg = compute_show_aggregate(dname, all_results)
             save_show_results(self._root_folder, skey, all_results, agg)
             if self._db_conn:
-                upsert_show(self._db_conn, agg, skey)
+                upsert_show(self._db_conn, agg, dname)
 
     # -----------------------------------------------------------------------
     # Export
@@ -1178,6 +1436,12 @@ class App(tk.Tk):
     # -----------------------------------------------------------------------
 
     def _show_chart(self) -> None:
+        if self._current_show_results:
+            self._show_series_chart()
+        elif self._current_ep_result:
+            self._show_episode_chart()
+
+    def _show_episode_chart(self) -> None:
         result = self._current_ep_result
         if not result:
             return
@@ -1221,12 +1485,294 @@ class App(tk.Tk):
         canvas.draw()
         canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
+    def _show_series_chart(self) -> None:
+        """Bar chart: one bar per episode. User picks x-axis, y-axis, and colour mode."""
+        from matplotlib.figure import Figure
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        from matplotlib.patches import Patch
+        from matplotlib.lines import Line2D
+        import statistics as _stats
+        from analyzer.db import query_episodes
+        from analyzer.wiki_importer import extract_season_ep
+
+        results = self._current_show_results
+        if not results:
+            return
+
+        _PALETTE = [
+            "#4472C4", "#ED7D31", "#70AD47", "#FFC000", "#7030A0",
+            "#00B0F0", "#FF0000", "#92D050", "#FF7C80", "#002060",
+        ]
+
+        # -- metric definitions -----------------------------------------------
+        def _safe(fn, r):
+            try:
+                v = fn(r)
+                return float(v) if v is not None else None
+            except (AttributeError, TypeError):
+                return None
+
+        _METRIC_DEFS = [
+            ("Sensory Load Score",
+             lambda r: r.metrics.sensory_load.score,
+             "Sensory Load Score (0–1)"),
+            ("Cuts per Minute",
+             lambda r: r.metrics.scene_pacing.cuts_per_min,
+             "Cuts per Minute"),
+            ("Color Saturation",
+             lambda r: r.metrics.color_saturation.mean,
+             "Saturation (mean, 0–1)"),
+            ("Color Contrast",
+             lambda r: r.metrics.color_saturation.contrast_mean,
+             "Contrast (mean, 0–1)"),
+            ("Motion",
+             lambda r: r.metrics.motion.mean,
+             "Motion (mean, 0–1)"),
+            ("Flashing / min",
+             lambda r: r.metrics.flashing.luminance_delta_events_per_min,
+             "Flashing Events per Minute"),
+            ("Audio RMS",
+             lambda r: r.metrics.audio.rms_mean if r.metrics.audio.available else None,
+             "Audio RMS (dBFS)"),
+        ]
+        metric_names  = [m[0] for m in _METRIC_DEFS]
+        metric_lookup = {m[0]: (m[1], m[2]) for m in _METRIC_DEFS}
+
+        # per-file metric values (extracted once)
+        data_by_file: dict[str, dict[str, float | None]] = {}
+        for r in results:
+            data_by_file[r.file] = {name: _safe(fn, r) for name, fn, _ in _METRIC_DEFS}
+
+        # -- build x-axis orderings and collect air dates ---------------------
+        ordering_by_date: list[tuple[str, str, int]] = []  # (label, file_name, season_num)
+        ordering_by_ep:   list[tuple[str, str, int]] = []
+        air_date_by_file: dict[str, str] = {}
+        has_dates = False
+
+        db_joined: list[dict] = []
+        if self._db_conn and self._current_show_name:
+            rows = query_episodes(
+                self._db_conn,
+                filter_show=self._current_show_name,
+                sort_by="season_num",
+                ascending=True,
+            )
+            db_joined = [
+                {
+                    "file_name":   r["file_name"],
+                    "air_date":    r.get("air_date") or "",
+                    "season_num":  r.get("season_num") or 0,
+                    "episode_num": r.get("episode_num") or 0,
+                }
+                for r in rows
+                if r["file_name"] in data_by_file
+            ]
+            for d in db_joined:
+                air_date_by_file[d["file_name"]] = d["air_date"]
+
+        if db_joined:
+            with_date = sum(1 for d in db_joined if d["air_date"])
+            has_dates = with_date >= len(db_joined) * 0.8
+            for d in sorted(db_joined, key=lambda d: d["air_date"] or "9999-99-99"):
+                ordering_by_date.append((d["air_date"] or "—", d["file_name"], d["season_num"]))
+            for d in sorted(db_joined, key=lambda d: (d["season_num"], d["episode_num"])):
+                lbl = (f"S{d['season_num']}E{d['episode_num']:02d}"
+                       if (d["season_num"] or d["episode_num"]) else d["file_name"][:14])
+                ordering_by_ep.append((lbl, d["file_name"], d["season_num"]))
+
+        if not ordering_by_ep:
+            for r in sorted(results, key=lambda r: extract_season_ep(r.file) or (99, 99)):
+                pair   = extract_season_ep(r.file)
+                lbl    = f"S{pair[0]}E{pair[1]:02d}" if pair else r.file[:14]
+                season = pair[0] if pair else 0
+                ordering_by_ep.append((lbl, r.file, season))
+            if not ordering_by_date:
+                ordering_by_date = list(ordering_by_ep)
+
+        if not ordering_by_ep:
+            return
+
+        # -- load saved eras from DB ------------------------------------------
+        _state: dict = {"eras": []}
+        if self._db_conn and self._current_show_name:
+            _state["eras"] = get_show_eras(self._db_conn, self._current_show_name)
+
+        # -- era colour helper ------------------------------------------------
+        def _era_color(air_date: str, eras: list[dict]) -> str:
+            if not air_date or not eras:
+                return "#AAAAAA"
+            for i, era in enumerate(eras):
+                start = era.get("start_date") or "0000-00-00"
+                end   = era.get("end_date")   or "9999-99-99"
+                if start <= air_date <= end:
+                    return era.get("color") or _PALETTE[i % len(_PALETTE)]
+            return "#CCCCCC"
+
+        # -- window -----------------------------------------------------------
+        n = len(ordering_by_ep)
+        fig_w = max(8.0, min(22.0, n * 0.15 + 2.5))
+        win_w = int(fig_w * 100)
+
+        win = tk.Toplevel(self)
+        win.title(f"Chart: {self._current_show_name}")
+        win.geometry(f"{win_w}x620")
+        win.resizable(True, True)
+
+        # -- control bar ------------------------------------------------------
+        ctrl = tk.Frame(win, bd=1, relief=tk.GROOVE)
+        ctrl.pack(fill=tk.X, padx=8, pady=(6, 2))
+
+        tk.Label(ctrl, text="X-axis:").pack(side=tk.LEFT, padx=(8, 4))
+        mode_var = tk.StringVar()
+        mode_options = (["Air Date"] if has_dates else []) + ["Episode Number"]
+        mode_cb = ttk.Combobox(ctrl, textvariable=mode_var, values=mode_options,
+                               state="readonly", width=16)
+        mode_cb.pack(side=tk.LEFT, padx=(0, 14), pady=4)
+        mode_var.set(mode_options[0])
+
+        tk.Label(ctrl, text="Y-axis:").pack(side=tk.LEFT, padx=(0, 4))
+        yaxis_var = tk.StringVar()
+        yaxis_cb = ttk.Combobox(ctrl, textvariable=yaxis_var, values=metric_names,
+                                state="readonly", width=20)
+        yaxis_cb.pack(side=tk.LEFT, padx=(0, 14), pady=4)
+        yaxis_var.set(metric_names[0])
+
+        tk.Label(ctrl, text="Colour by:").pack(side=tk.LEFT, padx=(0, 4))
+        colby_var = tk.StringVar(value="Season")
+        colby_cb = ttk.Combobox(ctrl, textvariable=colby_var,
+                                values=["Season", "Era"],
+                                state="readonly", width=10)
+        colby_cb.pack(side=tk.LEFT, padx=(0, 8), pady=4)
+
+        era_btn = tk.Button(ctrl, text="Edit Eras…", padx=6,
+                            command=lambda: _open_era_editor())
+        era_btn.pack(side=tk.LEFT, padx=(0, 8), pady=4)
+
+        # -- figure / canvas --------------------------------------------------
+        bottom_pad = 0.24 if n > 15 else 0.12
+        fig = Figure(figsize=(fig_w, 5.0), dpi=100)
+        ax  = fig.add_subplot(111)
+        fig.subplots_adjust(left=0.09, right=0.97, top=0.90, bottom=bottom_pad)
+
+        canvas = FigureCanvasTkAgg(fig, master=win)
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        # -- draw / redraw ----------------------------------------------------
+        def _redraw(*_):
+            xmode   = mode_var.get()
+            ymetric = yaxis_var.get()
+            colby   = colby_var.get()
+            ordering = ordering_by_date if xmode == "Air Date" else ordering_by_ep
+            _, y_axis_label = metric_lookup[ymetric]
+
+            x_labels = [t[0] for t in ordering]
+            files    = [t[1] for t in ordering]
+            seasons  = [t[2] for t in ordering]
+            raw_vals = [data_by_file.get(f, {}).get(ymetric) for f in files]
+            scores   = [v if v is not None else 0.0 for v in raw_vals]
+            n_ep     = len(scores)
+
+            # -- colour assignment -------------------------------------------
+            handles_extra: list = []
+            if colby == "Era":
+                eras = _state["eras"]
+                bar_colors = [_era_color(air_date_by_file.get(f, ""), eras)
+                              for f in files]
+                used_era_indices = []
+                outside = any(c == "#CCCCCC" for c in bar_colors)
+                no_date = any(c == "#AAAAAA" for c in bar_colors)
+                for i, era in enumerate(eras):
+                    era_color = era.get("color") or _PALETTE[i % len(_PALETTE)]
+                    if era_color in bar_colors:
+                        handles_extra.append(
+                            Patch(color=era_color, label=era["era_name"])
+                        )
+                        used_era_indices.append(i)
+                if outside:
+                    handles_extra.append(Patch(color="#CCCCCC", label="Outside all eras"))
+                if no_date:
+                    handles_extra.append(Patch(color="#AAAAAA", label="No air date"))
+            else:
+                unique_seasons = sorted(set(seasons))
+                season_colors  = {s: _PALETTE[i % len(_PALETTE)]
+                                  for i, s in enumerate(unique_seasons)}
+                bar_colors = [season_colors[s] for s in seasons]
+                if len(unique_seasons) > 1:
+                    for s in unique_seasons:
+                        handles_extra.append(
+                            Patch(color=season_colors[s],
+                                  label=f"Season {s}" if s else "Unknown season")
+                        )
+
+            valid = [v for v in scores if v > 0]
+            mean_score   = sum(valid) / len(valid) if valid else 0.0
+            median_score = _stats.median(valid) if valid else 0.0
+
+            ax.clear()
+            ax.bar(list(range(n_ep)), scores, color=bar_colors, width=0.8, zorder=2)
+            ax.axhline(mean_score,   color="#c00000", linestyle="--", linewidth=1.3, zorder=3)
+            ax.axhline(median_score, color="#e07000", linestyle=":",  linewidth=1.3, zorder=3)
+
+            step  = max(1, n_ep // 60)
+            ticks = list(range(0, n_ep, step))
+            rot   = 90 if n_ep > 15 else 45
+            fsize = max(5, 9 - n_ep // 15)
+            ax.set_xticks(ticks)
+            ax.set_xticklabels([x_labels[i] for i in ticks], rotation=rot,
+                               ha="right" if rot < 90 else "center", fontsize=fsize)
+
+            ax.set_xlim(-0.6, n_ep - 0.4)
+            y_max = max(scores) if scores else 1.0
+            ax.set_ylim(0, y_max * 1.25 if y_max > 0 else 1.0)
+            ax.set_ylabel(y_axis_label)
+            ax.set_xlabel(xmode, labelpad=4)
+            ax.set_title(
+                f"{self._current_show_name}  —  {ymetric}  ({n_ep} episodes)",
+                fontsize=10,
+            )
+            ax.yaxis.grid(True, alpha=0.35, zorder=1)
+            ax.set_axisbelow(True)
+
+            handles = [
+                Line2D([0], [0], color="#c00000", linestyle="--", linewidth=1.3,
+                       label=f"Mean: {mean_score:.3f}"),
+                Line2D([0], [0], color="#e07000", linestyle=":",  linewidth=1.3,
+                       label=f"Median: {median_score:.3f}"),
+            ] + handles_extra
+            ax.legend(handles=handles, fontsize=8, loc="upper right")
+            canvas.draw()
+
+        # -- era editor launcher ----------------------------------------------
+        def _open_era_editor() -> None:
+            def _on_apply(new_eras: list[dict]) -> None:
+                _state["eras"] = new_eras
+                _redraw()
+
+            EraEditorDialog(
+                win,
+                show_name=self._current_show_name or "",
+                initial_eras=_state["eras"],
+                db_conn=self._db_conn,
+                on_apply=_on_apply,
+            )
+
+        mode_cb.bind("<<ComboboxSelected>>", _redraw)
+        yaxis_cb.bind("<<ComboboxSelected>>", _redraw)
+        colby_cb.bind("<<ComboboxSelected>>", _redraw)
+        _redraw()
+
     # -----------------------------------------------------------------------
     # Settings
     # -----------------------------------------------------------------------
 
     def _open_sampler(self) -> None:
         SamplerWindow(self, app_ref=self)
+
+    def _open_wiki_import(self) -> None:
+        WikiImportDialog(self, app_ref=self)
+
+    def _open_tvmaze_import(self) -> None:
+        TVMazeImportDialog(self, app_ref=self)
 
     def _open_settings(self) -> None:
         dlg = SettingsDialog(self)
@@ -1247,6 +1793,7 @@ class App(tk.Tk):
         elif kind == "show":
             show_dir = Path(path)
             skey = show_key(self._root_folder, show_dir)
+            dname, _ = display_show_name(self._root_folder, show_dir)
             episodes = list_episodes(show_dir)
             ok_results = []
             for ep in episodes:
@@ -1254,7 +1801,7 @@ class App(tk.Tk):
                 if c:
                     ok_results.append(rescore_episode(EpisodeResult.from_dict(c), self._cfg))
             if ok_results:
-                agg = compute_show_aggregate(skey, ok_results)
+                agg = compute_show_aggregate(dname, ok_results)
                 self._render_show(agg, ok_results, total_eps=len(episodes))
 
     # -----------------------------------------------------------------------
@@ -1303,6 +1850,72 @@ class App(tk.Tk):
         note = self._notes_text.get("1.0", tk.END).rstrip("\n")
         save_note(self._db_conn, str(self._current_ep_path), note)
         self._status_var.set(f"Note saved for {self._current_ep_path.name}.")
+
+    @staticmethod
+    def _parse_air_date(raw: str) -> str | None:
+        """Accept many date formats; return normalized YYYY-MM-DD or None if unparseable."""
+        from datetime import datetime
+        raw = raw.strip()
+        if not raw:
+            return None
+        _fmts = [
+            "%Y-%m-%d",    # 1995-09-04
+            "%m/%d/%Y",    # 9/4/1995  or  11/8/1995
+            "%m-%d-%Y",    # 09-04-1995
+            "%Y/%m/%d",    # 1995/09/04
+            "%-m/%-d/%Y",  # single-digit m/d (Linux)
+            "%d %B %Y",    # 4 September 1995
+            "%B %d, %Y",   # September 4, 1995
+            "%B %d %Y",    # September 4 1995
+            "%d-%b-%Y",    # 04-Sep-1995
+            "%d %b %Y",    # 8 Nov 1995
+            "%b %d, %Y",   # Sep 4, 1995
+            "%b %d %Y",    # Sep 4 1995
+            "%d/%m/%Y",    # European: 8/11/1995
+        ]
+        for fmt in _fmts:
+            try:
+                return datetime.strptime(raw, fmt).strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+        return False  # sentinel: unparseable but non-empty
+
+    def _save_metadata(self) -> None:
+        if not self._db_conn or not self._current_ep_path:
+            return
+        air_date_raw = self._meta_air_date.get().strip()
+        air_date = self._parse_air_date(air_date_raw) if air_date_raw else None
+        if air_date is False:
+            messagebox.showwarning(
+                "Invalid date",
+                f"Could not parse \"{air_date_raw}\" as a date.\n\n"
+                "Accepted formats include:\n"
+                "  11/8/1995   •   1995-11-08\n"
+                "  November 8, 1995   •   8 Nov 1995",
+                parent=self,
+            )
+            return
+        if air_date:
+            # Reflect the normalized form back into the field
+            self._meta_air_date.set(air_date)
+        season_raw = self._meta_season.get().strip()
+        ep_raw     = self._meta_ep_num.get().strip()
+        try:
+            season_num = int(season_raw) if season_raw else None
+            episode_num = int(ep_raw) if ep_raw else None
+        except ValueError:
+            messagebox.showwarning(
+                "Invalid value",
+                "Season and Episode # must be whole numbers.",
+                parent=self,
+            )
+            return
+        upsert_episode_metadata(
+            self._db_conn, str(self._current_ep_path),
+            air_date, season_num, episode_num,
+        )
+        self._status_var.set(f"Metadata saved for {self._current_ep_path.name}.")
+        self._refresh_index()
 
     def _pin_for_compare(self) -> None:
         kind, path = self._selected_item()
@@ -1393,11 +2006,12 @@ class App(tk.Tk):
         ep_tab = tk.Frame(sub_nb)
         sub_nb.add(ep_tab, text="Episodes")
 
-        _ep_cols   = ("show", "file", "dur", "load", "cpm", "sat", "con", "mot", "flash", "rms", "date", "notes")
-        _ep_hdrs   = ("Show", "File", "Dur(s)", "Load", "C/min", "Sat", "Contrast", "Motion", "Flash/m", "RMS", "Date", "Notes")
-        _ep_widths = (80, 110, 48, 48, 48, 42, 55, 50, 55, 48, 82, 130)
+        _ep_cols   = ("show", "file", "airdate", "seas", "epn", "dur", "load", "cpm", "sat", "con", "mot", "flash", "rms", "date", "notes")
+        _ep_hdrs   = ("Show", "File", "Air Date", "S", "Ep", "Dur(s)", "Load", "C/min", "Sat", "Contrast", "Motion", "Flash/m", "RMS", "Date", "Notes")
+        _ep_widths = (80, 110, 72, 26, 30, 48, 48, 48, 42, 55, 50, 55, 48, 82, 130)
         self._idx_ep_db_cols = (
-            "show_name", "file_name", "duration_sec", "sensory_load_score",
+            "show_name", "file_name", "air_date", "season_num", "episode_num",
+            "duration_sec", "sensory_load_score",
             "cuts_per_min", "color_saturation_mean", "color_contrast_mean",
             "motion_mean", "flashing_events_per_min", "audio_rms_mean",
             "analyzed_at", "notes",
@@ -1487,8 +2101,11 @@ class App(tk.Tk):
                      "Scores are calibrated to the preset active when each episode was analyzed.\n"
                      "Cross-genre comparisons (e.g., cartoons vs. lectures) may be misleading\n"
                      "under the General preset — see Help → About metrics for details.",
-            "date":  "Date and time this episode was last analyzed.",
-            "notes": "Your saved note for this episode. Hover a row to read the full text.",
+            "airdate": "Original broadcast / air date (YYYY-MM-DD).\nEnter this in the Episode Metadata panel after analyzing.",
+            "seas":    "Season number (entered in Episode Metadata panel).",
+            "epn":     "Episode number within the season (entered in Episode Metadata panel).",
+            "date":    "Date and time this episode was last analyzed by CMAT.",
+            "notes":   "Your saved note for this episode. Hover a row to read the full text.",
         })
         _CellTooltip(self._idx_ep_tree, "notes")
         _IndexTooltip(self._idx_sh_tree, {
@@ -1549,6 +2166,9 @@ class App(tk.Tk):
                 values=(
                     r["show_name"],
                     r["file_name"],
+                    r.get("air_date") or "",
+                    str(r["season_num"]) if r.get("season_num") is not None else "",
+                    str(r["episode_num"]) if r.get("episode_num") is not None else "",
                     _fmt(r["duration_sec"], "%.0f"),
                     _fmt(r["sensory_load_score"], "%.3f"),
                     _fmt(r["cuts_per_min"], "%.1f"),
@@ -1634,6 +2254,7 @@ class App(tk.Tk):
             return
         for show_dir in list_shows(self._root_folder):
             skey = show_key(self._root_folder, show_dir)
+            dname, auto_s = display_show_name(self._root_folder, show_dir)
             show_results = []
             for ep in list_episodes(show_dir):
                 c = load_cached(self._root_folder, skey, ep.stem)
@@ -1642,14 +2263,16 @@ class App(tk.Tk):
                         result = EpisodeResult.from_dict(c)
                         if result.status == "ok":
                             result = rescore_episode(result, self._cfg)
-                            upsert_episode(self._db_conn, result, skey, str(ep))
+                            upsert_episode(self._db_conn, result, dname, str(ep))
+                            if auto_s is not None:
+                                auto_set_season(self._db_conn, str(ep), auto_s)
                             show_results.append(result)
                     except Exception:
                         pass
             if show_results:
                 try:
-                    agg = compute_show_aggregate(skey, show_results)
-                    upsert_show(self._db_conn, agg, skey)
+                    agg = compute_show_aggregate(dname, show_results)
+                    upsert_show(self._db_conn, agg, dname)
                 except Exception:
                     pass
 

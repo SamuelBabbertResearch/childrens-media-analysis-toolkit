@@ -10,7 +10,32 @@ Supports one level of category folders:
 """
 
 from __future__ import annotations
+import re
 from pathlib import Path
+
+# Matches "Season 1", "S2", "Series 3", "Part 4" etc.
+_SEASON_RE = re.compile(r"^(?:[Ss]eason|[Ss]eries|[Ss]|[Pp]art)\s*(\d+)$")
+
+
+def parse_season_folder(name: str) -> int | None:
+    """Return the season number if *name* looks like a season folder, else None."""
+    m = _SEASON_RE.match(name.strip())
+    return int(m.group(1)) if m else None
+
+
+def display_show_name(root: Path, show_dir: Path) -> tuple[str, int | None]:
+    """Return (show_name_for_db, auto_season_num) for a show directory.
+
+    When show_dir is a season folder (Season 1, S2, …), the parent folder is
+    used as the show name so all seasons appear under one show in the index.
+    Returns (show_dir.name, None) for normal (non-season) folders.
+    """
+    season_num = parse_season_folder(show_dir.name)
+    if season_num is not None:
+        parent = show_dir.parent
+        # parent == root when the user set root to the show folder itself
+        return parent.name, season_num
+    return show_dir.name, None
 
 
 def _is_show(d: Path) -> bool:
