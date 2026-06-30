@@ -63,6 +63,15 @@ def _init_db(conn: sqlite3.Connection) -> None:
             avg_audio_rms    REAL,
             updated_at       TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS show_eras (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            show_name  TEXT NOT NULL,
+            era_name   TEXT NOT NULL,
+            start_date TEXT,
+            end_date   TEXT,
+            color      TEXT
+        );
     """)
     conn.commit()
     # Migrate existing DBs
@@ -71,6 +80,14 @@ def _init_db(conn: sqlite3.Connection) -> None:
         "ALTER TABLE shows ADD COLUMN avg_contrast REAL",
         "ALTER TABLE shows ADD COLUMN avg_flashing REAL",
         "ALTER TABLE episodes ADD COLUMN notes TEXT",
+        # Phase 1: longitudinal metadata
+        "ALTER TABLE episodes ADD COLUMN air_date TEXT",
+        "ALTER TABLE episodes ADD COLUMN season_num INTEGER",
+        "ALTER TABLE episodes ADD COLUMN episode_num INTEGER",
+        "ALTER TABLE shows ADD COLUMN format TEXT",
+        "ALTER TABLE shows ADD COLUMN target_age_min INTEGER",
+        "ALTER TABLE shows ADD COLUMN target_age_max INTEGER",
+        "ALTER TABLE shows ADD COLUMN show_notes TEXT",
     ]:
         try:
             conn.execute(sql)
@@ -197,6 +214,7 @@ _EP_SORT_COLS = {
     "color_saturation_mean", "color_contrast_mean", "motion_mean",
     "flashing_events_per_min", "audio_rms_mean",
     "sensory_load_score", "analyzed_at", "notes",
+    "air_date", "season_num", "episode_num",
 }
 _SHOW_SORT_COLS = {
     "show_name", "episode_count", "avg_load",
@@ -281,6 +299,85 @@ def save_note(conn: sqlite3.Connection, file_path: str, note: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Episode metadata (longitudinal)
+# ---------------------------------------------------------------------------
+
+def get_episode_metadata(conn: sqlite3.Connection, file_path: str) -> dict:
+    """Return air_date, season_num, episode_num for an episode, or empty strings/None."""
+    row = conn.execute(
+        "SELECT air_date, season_num, episode_num FROM episodes WHERE file_path = ?",
+        (file_path,),
+    ).fetchone()
+    if row is None:
+        return {"air_date": "", "season_num": None, "episode_num": None}
+    return {
+        "air_date":    row["air_date"] or "",
+        "season_num":  row["season_num"],
+        "episode_num": row["episode_num"],
+    }
+
+
+def upsert_episode_metadata(
+    conn: sqlite3.Connection,
+    file_path: str,
+    air_date: str | None,
+    season_num: int | None,
+    episode_num: int | None,
+) -> None:
+    """Save longitudinal metadata fields for an episode row."""
+    conn.execute(
+        """UPDATE episodes
+           SET air_date = ?, season_num = ?, episode_num = ?
+           WHERE file_path = ?""",
+        (air_date or None, season_num, episode_num, file_path),
+    )
+    conn.commit()
+
+
+def get_show_metadata(conn: sqlite3.Connection, show_name: str) -> dict:
+    """Return format, target_age_min/max, show_notes for a show."""
+    row = conn.execute(
+        "SELECT format, target_age_min, target_age_max, show_notes FROM shows WHERE show_name = ?",
+        (show_name,),
+    ).fetchone()
+    if row is None:
+        return {"format": "", "target_age_min": None, "target_age_max": None, "show_notes": ""}
+    return {
+        "format":         row["format"] or "",
+        "target_age_min": row["target_age_min"],
+        "target_age_max": row["target_age_max"],
+        "show_notes":     row["show_notes"] or "",
+    }
+
+
+def auto_set_season(conn: sqlite3.Connection, file_path: str, season_num: int) -> None:
+    """Set season_num only if the row doesn't already have one (won't overwrite manual entry)."""
+    conn.execute(
+        "UPDATE episodes SET season_num = ? WHERE file_path = ? AND season_num IS NULL",
+        (season_num, file_path),
+    )
+    conn.commit()
+
+
+def upsert_show_metadata(
+    conn: sqlite3.Connection,
+    show_name: str,
+    format: str | None,
+    target_age_min: int | None,
+    target_age_max: int | None,
+    show_notes: str | None,
+) -> None:
+    """Save metadata fields for a show row (no-op if show not yet indexed)."""
+    conn.execute(
+        """UPDATE shows
+           SET format = ?, target_age_min = ?, target_age_max = ?, show_notes = ?
+           WHERE show_name = ?""",
+        (format or None, target_age_min, target_age_max, show_notes or None, show_name),
+    )
+    conn.commit()
+
+
+# ---------------------------------------------------------------------------
 # Percentile / rank
 # ---------------------------------------------------------------------------
 
@@ -333,3 +430,39 @@ def get_episode_percentile(conn: sqlite3.Connection, file_path: str) -> dict:
         "show_total":   show_total,
         "show_name":    show_name,
     }
+
+
+# ---------------------------------------------------------------------------
+# Era stratification
+# ---------------------------------------------------------------------------
+
+def get_show_eras(conn: sqlite3.Connection, show_name: str) -> list[dict]:
+    """Return era definitions for a show, ordered by start date."""
+    rows = conn.execute(
+        "SELECT era_name, start_date, end_date, color FROM show_eras "
+        "WHERE show_name = ? ORDER BY COALESCE(start_date, '0') ASC",
+        (show_name,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def save_show_eras(
+    conn: sqlite3.Connection,
+    show_name: str,
+    eras: list[dict],
+) -> None:
+    """Replace all era definitions for a show."""
+    conn.execute("DELETE FROM show_eras WHERE show_name = ?", (show_name,))
+    for era in eras:
+        conn.execute(
+            "INSERT INTO show_eras (show_name, era_name, start_date, end_date, color) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (
+                show_name,
+                era.get("era_name", ""),
+                era.get("start_date") or None,
+                era.get("end_date") or None,
+                era.get("color") or None,
+            ),
+        )
+    conn.commit()
