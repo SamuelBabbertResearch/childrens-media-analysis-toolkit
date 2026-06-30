@@ -1664,23 +1664,53 @@ class _CellTooltip:
 
 
 class _WidgetTooltip:
-    """Simple hover tooltip for any widget."""
+    """Simple hover tooltip for any widget.
+
+    Uses both <Enter> and <Motion>/<Leave> polling so it works on
+    ttk.Combobox on Windows, where mouse events route to the native
+    control subwindow rather than the Python widget frame.
+    """
 
     def __init__(self, widget: tk.Widget, text: str, wraplength: int = 300) -> None:
         self._widget = widget
         self._text = text
         self._wraplength = wraplength
         self._win: tk.Toplevel | None = None
-        widget.bind("<Enter>", self._show)
-        widget.bind("<Leave>", self._hide)
+        self._timer: str | None = None
+        widget.bind("<Enter>", self._on_enter)
+        widget.bind("<Motion>", self._on_enter)
+        widget.bind("<Leave>", self._on_leave)
+        # Also bind to internal children (ttk compound widgets on Windows)
+        widget.after_idle(self._bind_children)
 
-    def _show(self, event: tk.Event) -> None:
+    def _bind_children(self) -> None:
+        for child in self._widget.winfo_children():
+            child.bind("<Enter>", self._on_enter)
+            child.bind("<Motion>", self._on_enter)
+            child.bind("<Leave>", self._on_leave)
+
+    def _on_enter(self, _event=None) -> None:
+        if self._win:
+            return
+        if self._timer:
+            self._widget.after_cancel(self._timer)
+        self._timer = self._widget.after(600, self._show)
+
+    def _on_leave(self, _event=None) -> None:
+        if self._timer:
+            self._widget.after_cancel(self._timer)
+            self._timer = None
+        self._hide()
+
+    def _show(self) -> None:
+        self._timer = None
         if self._win:
             return
         x = self._widget.winfo_rootx() + 20
         y = self._widget.winfo_rooty() + self._widget.winfo_height() + 4
         self._win = tw = tk.Toplevel(self._widget)
         tw.wm_overrideredirect(True)
+        tw.attributes("-topmost", True)
         tw.wm_geometry(f"+{x}+{y}")
         tk.Label(
             tw, text=self._text, justify=tk.LEFT,
