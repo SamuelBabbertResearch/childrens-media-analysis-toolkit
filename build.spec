@@ -1,13 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec for Children's TV Sensory-Load Analyzer.
+PyInstaller spec for Children's Media Analysis Toolkit (CMAT).
 
 Build with:
     python -m PyInstaller build.spec -y
 
-Output: dist/SensoryAnalyzer/SensoryAnalyzer.exe
-        dist/SensoryAnalyzer/config.json   (user-editable weights)
-        dist/SensoryAnalyzer/_internal/ffmpeg.exe  (bundled)
+Output: dist/CMAT/CMAT.exe
+        dist/CMAT/config.json   (user-editable weights)
+        dist/CMAT/_internal/ffmpeg.exe  (bundled)
 """
 
 block_cipher = None
@@ -69,7 +69,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='SensoryAnalyzer',
+    name='CMAT',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -90,5 +90,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name='SensoryAnalyzer',
+    name='CMAT',
 )

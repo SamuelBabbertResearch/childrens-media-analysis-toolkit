@@ -1,4 +1,4 @@
-# Children's TV Sensory-Load Analyzer
+# Children's Media Analysis Toolkit (CMAT)
 
 A desktop Windows application that analyzes MP4 episodes of children's TV shows and produces a **sensory-load profile** for each episode and a cumulative profile for a whole show.
 
@@ -37,9 +37,9 @@ Grounded in the Huston & Wright formal features framework, Lang's Limited Capaci
 ## Download & Install (Windows)
 
 1. Go to the [Releases page](../../releases/latest)
-2. Download `SensoryAnalyzer-v1.0.zip`
-3. Unzip anywhere (e.g. `C:\SensoryAnalyzer\`)
-4. Double-click `SensoryAnalyzer.exe`
+2. Download `CMAT-v1.0.zip`
+3. Unzip anywhere (e.g. `C:\CMAT\`)
+4. Double-click `CMAT.exe`
 
 No Python, no FFmpeg, no other installs required. Everything is bundled.
 
@@ -123,7 +123,7 @@ pytest tests/
 ```bash
 # Place ffmpeg.exe in the project root first, then:
 python -m PyInstaller build.spec -y
-copy config.json dist\SensoryAnalyzer\config.json
+copy config.json dist\CMAT\config.json
 ```
 
 ---

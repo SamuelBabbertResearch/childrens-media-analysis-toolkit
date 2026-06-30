@@ -1,5 +1,5 @@
 """
-Command-line interface for the Children's TV Sensory-Load Analyzer.
+Command-line interface for the Children's Media Analysis Toolkit (CMAT).
 
 Usage:
     python cli.py analyze <file.mp4>            # analyze one episode
@@ -7,6 +7,7 @@ Usage:
     python cli.py shows <root_folder/>          # list all shows under root
     python cli.py db episodes <root_folder/>    # print episode index table
     python cli.py db shows <root_folder/>       # print show index table
+    python cli.py sample <entry_root/>          # build reproducible episode sample
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from analyzer.cache import load_cached, save_cache
 from analyzer.config_loader import load_config
 from analyzer.db import get_db, query_episodes, query_shows
 from analyzer.engine import analyze_episode
+from analyzer.sampler import scan_entry_root, load_registry_csv, sample, write_outputs
 from analyzer.show_index import list_episodes, list_shows
 
 
@@ -250,12 +252,72 @@ def cmd_db(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Sample command
+# ---------------------------------------------------------------------------
+
+def cmd_sample(args: argparse.Namespace) -> None:
+    root = Path(args.entry_root)
+    if args.registry:
+        episodes = load_registry_csv(Path(args.registry), entry_id=args.entry_id)
+    else:
+        if not root.is_dir():
+            print(f"Error: {root} is not a directory.", file=sys.stderr)
+            sys.exit(1)
+        episodes = scan_entry_root(root, entry_id=args.entry_id or None)
+
+    if not episodes:
+        print("No episodes found.", file=sys.stderr)
+        sys.exit(1)
+
+    eid = args.entry_id or root.name
+
+    result = sample(
+        episodes,
+        entry_id=eid,
+        stratify_by=None if args.stratify == "none" else args.stratify,
+        method=args.method,
+        allocation=args.allocation,
+        per_stratum_n=args.per_season_n,
+        total_n=args.total_n,
+        floor=args.floor,
+        interval_k=args.interval_k,
+        sort_col=args.sort,
+        seed=args.seed,
+        manual_list=args.manual_list.split(",") if args.manual_list else None,
+    )
+
+    # Determine output dir
+    if args.output:
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        outdir = Path(args.output) / ts
+    else:
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        outdir = root.parent / f"_samples_{ts}"
+
+    paths = write_outputs(result, outdir, gather=args.gather, copy_files=args.copy)
+
+    print(f"Selected {result.manifest.total_selected} / {result.manifest.total_available} episodes")
+    print(f"  CSV:       {paths['csv']}")
+    print(f"  Manifest:  {paths['manifest']}")
+    print(f"  Worklist:  {paths['worklist']}")
+    if "files" in paths:
+        print(f"  Files:     {paths['files']}")
+
+    if result.manifest.notes:
+        print("\nNotes:")
+        for n in result.manifest.notes:
+            print(f"  * {n}")
+
+
 # Parser
 # ---------------------------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Children's TV Sensory-Load Analyzer",
+        description="Children's Media Analysis Toolkit (CMAT)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -285,6 +347,42 @@ def build_parser() -> argparse.ArgumentParser:
     p_db_sh.add_argument("--sort",  default="", help="Sort column (e.g. avg_load)")
     p_db_sh.add_argument("--desc",  action="store_true", help="Sort descending")
     p_db_sh.set_defaults(func=cmd_db)
+
+    p_sample = sub.add_parser("sample", help="Build a reproducible episode sample for analysis")
+    p_sample.add_argument("entry_root", help="Entry root folder (or pass --registry instead)")
+    p_sample.add_argument("--registry",    default="",    help="Path to a registry CSV (bypasses folder scan)")
+    p_sample.add_argument("--entry-id",    default="",    dest="entry_id", help="Label for this entry/era")
+    p_sample.add_argument("--stratify",    default="season",
+                          choices=["none", "season"],
+                          help="Stratify by: none | season (default: season)")
+    p_sample.add_argument("--method",      default="spread",
+                          choices=["census", "srs", "systematic", "spread", "manual"],
+                          help="Selection method (default: spread)")
+    p_sample.add_argument("--allocation",  default="equal",
+                          choices=["equal", "proportional"],
+                          help="Allocation for stratified sampling (default: equal)")
+    p_sample.add_argument("--per-season-n", dest="per_season_n", type=int, default=2,
+                          help="Episodes per stratum for equal allocation (default: 2)")
+    p_sample.add_argument("--total-n",     dest="total_n",      type=int, default=None,
+                          help="Total episodes for proportional allocation")
+    p_sample.add_argument("--floor",       type=int, default=1,
+                          help="Minimum per stratum for proportional allocation (default: 1)")
+    p_sample.add_argument("--interval-k",  dest="interval_k",   type=int, default=None,
+                          help="Explicit interval for systematic sampling")
+    p_sample.add_argument("--sort",        default="episode",
+                          choices=["episode", "air_date"],
+                          help="Sort key within strata (default: episode)")
+    p_sample.add_argument("--seed",        type=int, default=42,
+                          help="Random seed (default: 42)")
+    p_sample.add_argument("--manual-list", dest="manual_list", default="",
+                          help="Comma-separated episode identifiers for manual method")
+    p_sample.add_argument("--output",      default="",
+                          help="Output directory (default: <entry_root_parent>/_samples_<timestamp>)")
+    p_sample.add_argument("--gather",      action="store_true",
+                          help="Copy/symlink selected files into output folder")
+    p_sample.add_argument("--copy",        action="store_true",
+                          help="Use full copies instead of symlinks when gathering")
+    p_sample.set_defaults(func=cmd_sample)
 
     return parser
 

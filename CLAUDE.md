@@ -1,4 +1,4 @@
-# Children's TV Sensory-Load Analyzer — Project Reference
+# Children's Media Analysis Toolkit (CMAT) — Project Reference
 
 All phases (0–5) are complete. This file documents what's built, the architecture rules,
 and gotchas to be aware of when adding new features.

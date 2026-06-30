@@ -1,5 +1,5 @@
 """
-gui.py — Tkinter front-end for the Children's TV Sensory-Load Analyzer.
+gui.py — Tkinter front-end for the Children's Media Analysis Toolkit (CMAT).
 
 Architecture:
   - All analysis runs on a daemon worker thread.
@@ -31,12 +31,13 @@ from analyzer.show_index import (
     list_episodes, list_shows, list_top_level, list_category_shows, show_key,
 )
 from gui_live import LiveAnalysisWindow
+from gui_sampler import SamplerWindow
 
 
 class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("Children's TV Sensory-Load Analyzer")
+        self.title("Children's Media Analysis Toolkit (CMAT)")
         self.geometry("1050x680")
         self.minsize(800, 500)
 
@@ -75,6 +76,7 @@ class App(tk.Tk):
 
         file_menu = tk.Menu(menubar, tearoff=0)
         file_menu.add_command(label="Choose Root Folder...", command=self._choose_folder)
+        file_menu.add_command(label="Episode Sampler...", command=self._open_sampler)
         file_menu.add_separator()
         self._menu_export_json = file_menu.add_command(
             label="Export Results as JSON...", command=self._export_json, state=tk.DISABLED)
@@ -1032,6 +1034,9 @@ class App(tk.Tk):
     # Settings
     # -----------------------------------------------------------------------
 
+    def _open_sampler(self) -> None:
+        SamplerWindow(self, app_ref=self)
+
     def _open_settings(self) -> None:
         dlg = SettingsDialog(self)
         self.wait_window(dlg)
@@ -1197,14 +1202,14 @@ class App(tk.Tk):
         ep_tab = tk.Frame(sub_nb)
         sub_nb.add(ep_tab, text="Episodes")
 
-        _ep_cols   = ("show", "file", "dur", "cpm", "sat", "con", "mot", "flash", "rms", "load", "date", "notes")
-        _ep_hdrs   = ("Show", "File", "Dur(s)", "C/min", "Sat", "Contrast", "Motion", "Flash/m", "RMS", "Load", "Date", "Notes")
-        _ep_widths = (80, 110, 48, 48, 42, 55, 50, 55, 48, 48, 82, 130)
+        _ep_cols   = ("show", "file", "dur", "load", "cpm", "sat", "con", "mot", "flash", "rms", "date", "notes")
+        _ep_hdrs   = ("Show", "File", "Dur(s)", "Load", "C/min", "Sat", "Contrast", "Motion", "Flash/m", "RMS", "Date", "Notes")
+        _ep_widths = (80, 110, 48, 48, 48, 42, 55, 50, 55, 48, 82, 130)
         self._idx_ep_db_cols = (
-            "show_name", "file_name", "duration_sec", "cuts_per_min",
-            "color_saturation_mean", "color_contrast_mean", "motion_mean",
-            "flashing_events_per_min", "audio_rms_mean",
-            "sensory_load_score", "analyzed_at", "notes",
+            "show_name", "file_name", "duration_sec", "sensory_load_score",
+            "cuts_per_min", "color_saturation_mean", "color_contrast_mean",
+            "motion_mean", "flashing_events_per_min", "audio_rms_mean",
+            "analyzed_at", "notes",
         )
 
         ep_tree_frame = tk.Frame(ep_tab)
