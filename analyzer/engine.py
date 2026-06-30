@@ -5,8 +5,9 @@ Stages (reported via progress_cb):
   0.00–0.05  duration probe
   0.05–0.55  cut detection (PySceneDetect, most expensive)
   0.55–0.88  frame sampling (color / motion / flashing)
-  0.88–0.96  audio extraction & loudness (FFmpeg)
-  0.96–1.00  sensory-load composite + return
+  0.88–0.93  audio extraction & loudness (FFmpeg)
+  0.93–0.97  speech metrics (CC file parse or Whisper — fast when CC exists)
+  0.97–1.00  sensory-load composite + return
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from .metrics_cuts import compute_cut_metrics
 from .metrics_frames import compute_frame_metrics
 from .metrics_sensory import compute_sensory_load
 from .schema import EpisodeMetrics, EpisodeResult
+from .speech import compute_speech_metrics
 
 
 def _get_duration(video_path: Path) -> float:
@@ -101,9 +103,14 @@ def analyze_episode(
             progress_cb(0.88)
         audio_metrics = compute_audio_metrics(video_path)
 
-        # Stage 5: composite
+        # Stage 5: speech (CC file — fast; Whisper — slow; skipped by default)
         if progress_cb:
-            progress_cb(0.96)
+            progress_cb(0.93)
+        speech_metrics = compute_speech_metrics(video_path, duration_sec, cfg)
+
+        # Stage 6: composite
+        if progress_cb:
+            progress_cb(0.97)
         sensory_metrics = compute_sensory_load(
             pacing_metrics, color_metrics, motion_metrics,
             flashing_metrics, audio_metrics, cfg,
@@ -130,6 +137,7 @@ def analyze_episode(
             motion=motion_metrics,
             flashing=flashing_metrics,
             audio=audio_metrics,
+            speech=speech_metrics,
             sensory_load=sensory_metrics,
         ),
         config=cfg,

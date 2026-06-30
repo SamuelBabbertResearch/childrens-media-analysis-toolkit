@@ -117,6 +117,7 @@ def rescore_episode(result: EpisodeResult, cfg: dict[str, Any]) -> EpisodeResult
             motion=m.motion,
             flashing=m.flashing,
             audio=m.audio,
+            speech=m.speech,
             sensory_load=new_sensory,
         ),
         config=cfg,

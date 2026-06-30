@@ -51,6 +51,15 @@ class AudioMetrics:
 
 
 @dataclass
+class SpeechMetrics:
+    available: bool = False
+    source: str = "none"           # "srt" | "vtt" | "whisper" | "none"
+    words_per_minute: float = 0.0
+    speech_density: float = 0.0    # fraction of episode duration with speech (0.0–1.0)
+    total_words: int = 0
+
+
+@dataclass
 class SensoryLoadComponents:
     pacing: float = 0.0
     saturation: float = 0.0
@@ -75,6 +84,7 @@ class EpisodeMetrics:
     motion: MotionMetrics = field(default_factory=MotionMetrics)
     flashing: FlashingMetrics = field(default_factory=FlashingMetrics)
     audio: AudioMetrics = field(default_factory=AudioMetrics)
+    speech: SpeechMetrics = field(default_factory=SpeechMetrics)
     sensory_load: SensoryLoadMetrics = field(default_factory=SensoryLoadMetrics)
 
 
@@ -103,6 +113,7 @@ class EpisodeResult:
         mo = m.get("motion", {})
         fl = m.get("flashing", {})
         au = m.get("audio", {})
+        spe = m.get("speech", {})
         sn = m.get("sensory_load", {})
         sc = sn.get("components", {})
         return cls(
@@ -122,6 +133,13 @@ class EpisodeResult:
                 motion=MotionMetrics(**mo) if mo else MotionMetrics(),
                 flashing=FlashingMetrics(**fl) if fl else FlashingMetrics(),
                 audio=AudioMetrics(**au) if au else AudioMetrics(),
+                speech=SpeechMetrics(
+                    available=spe.get("available", False),
+                    source=spe.get("source", "none"),
+                    words_per_minute=spe.get("words_per_minute", 0.0),
+                    speech_density=spe.get("speech_density", 0.0),
+                    total_words=spe.get("total_words", 0),
+                ) if spe else SpeechMetrics(),
                 sensory_load=SensoryLoadMetrics(
                     score=sn.get("score", 0.0),
                     audio_available=sn.get("audio_available", False),

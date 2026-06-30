@@ -2,133 +2,307 @@
   "sample_fps": 2,
   "cut_detection_threshold": 27.0,
   "flashing_luminance_threshold": 0.1,
+  "speech_transcription_enabled": true,
+  "speech_whisper_model": "base",
   "sensory_load_weights": {
     "pacing": 0.25,
     "saturation": 0.05,
-    "color_contrast": 0.10,
+    "color_contrast": 0.1,
     "motion": 0.25,
     "flashing": 0.15,
-    "audio": 0.20
+    "audio": 0.2
   },
   "normalization_reference_ranges": {
-    "cuts_per_min":            {"min": 0.0, "max": 60.0},
-    "color_saturation_mean":   {"min": 0.0, "max": 1.0},
-    "color_contrast_mean":     {"min": 0.0, "max": 0.35},
-    "motion_mean":             {"min": 0.0, "max": 1.0},
-    "flashing_events_per_min": {"min": 0.0, "max": 30.0},
-    "audio_rms_mean":          {"min": 0.0, "max": 0.20}
+    "cuts_per_min": {
+      "min": 0.0,
+      "max": 60.0
+    },
+    "color_saturation_mean": {
+      "min": 0.0,
+      "max": 1.0
+    },
+    "color_contrast_mean": {
+      "min": 0.0,
+      "max": 0.35
+    },
+    "motion_mean": {
+      "min": 0.0,
+      "max": 1.0
+    },
+    "flashing_events_per_min": {
+      "min": 0.0,
+      "max": 30.0
+    },
+    "audio_rms_mean": {
+      "min": 0.0,
+      "max": 0.2
+    }
   },
   "presets": {
     "General / All Ages": {
       "builtin": true,
       "description": "Broad absolute ceilings - good for cross-genre comparison.",
       "sensory_load_weights": {
-        "pacing": 0.25, "saturation": 0.05, "color_contrast": 0.10,
-        "motion": 0.25, "flashing": 0.15, "audio": 0.20
+        "pacing": 0.25,
+        "saturation": 0.05,
+        "color_contrast": 0.1,
+        "motion": 0.25,
+        "flashing": 0.15,
+        "audio": 0.2
       },
       "normalization_reference_ranges": {
-        "cuts_per_min":            {"min": 0.0, "max": 60.0},
-        "color_saturation_mean":   {"min": 0.0, "max": 1.0},
-        "color_contrast_mean":     {"min": 0.0, "max": 0.35},
-        "motion_mean":             {"min": 0.0, "max": 1.0},
-        "flashing_events_per_min": {"min": 0.0, "max": 30.0},
-        "audio_rms_mean":          {"min": 0.0, "max": 0.20}
+        "cuts_per_min": {
+          "min": 0.0,
+          "max": 60.0
+        },
+        "color_saturation_mean": {
+          "min": 0.0,
+          "max": 1.0
+        },
+        "color_contrast_mean": {
+          "min": 0.0,
+          "max": 0.35
+        },
+        "motion_mean": {
+          "min": 0.0,
+          "max": 1.0
+        },
+        "flashing_events_per_min": {
+          "min": 0.0,
+          "max": 30.0
+        },
+        "audio_rms_mean": {
+          "min": 0.0,
+          "max": 0.2
+        }
       }
     },
     "Toddler (0-2)": {
       "builtin": true,
       "description": "Tight ceilings for infants and toddlers. Even a few cuts/min is meaningful at this age. Flashing weighted higher (safety).",
       "sensory_load_weights": {
-        "pacing": 0.20, "saturation": 0.05, "color_contrast": 0.10,
-        "motion": 0.20, "flashing": 0.25, "audio": 0.20
+        "pacing": 0.2,
+        "saturation": 0.05,
+        "color_contrast": 0.1,
+        "motion": 0.2,
+        "flashing": 0.25,
+        "audio": 0.2
       },
       "normalization_reference_ranges": {
-        "cuts_per_min":            {"min": 0.0, "max": 8.0},
-        "color_saturation_mean":   {"min": 0.0, "max": 0.70},
-        "color_contrast_mean":     {"min": 0.0, "max": 0.20},
-        "motion_mean":             {"min": 0.0, "max": 0.50},
-        "flashing_events_per_min": {"min": 0.0, "max": 5.0},
-        "audio_rms_mean":          {"min": 0.0, "max": 0.10}
+        "cuts_per_min": {
+          "min": 0.0,
+          "max": 8.0
+        },
+        "color_saturation_mean": {
+          "min": 0.0,
+          "max": 0.7
+        },
+        "color_contrast_mean": {
+          "min": 0.0,
+          "max": 0.2
+        },
+        "motion_mean": {
+          "min": 0.0,
+          "max": 0.5
+        },
+        "flashing_events_per_min": {
+          "min": 0.0,
+          "max": 5.0
+        },
+        "audio_rms_mean": {
+          "min": 0.0,
+          "max": 0.1
+        }
       }
     },
     "Preschool (2-5)": {
       "builtin": true,
       "description": "Calibrated for preschoolers - the age range in Lillard & Peterson (2011). Pacing and motion weighted higher.",
       "sensory_load_weights": {
-        "pacing": 0.25, "saturation": 0.05, "color_contrast": 0.10,
-        "motion": 0.25, "flashing": 0.15, "audio": 0.20
+        "pacing": 0.25,
+        "saturation": 0.05,
+        "color_contrast": 0.1,
+        "motion": 0.25,
+        "flashing": 0.15,
+        "audio": 0.2
       },
       "normalization_reference_ranges": {
-        "cuts_per_min":            {"min": 0.0, "max": 15.0},
-        "color_saturation_mean":   {"min": 0.0, "max": 0.85},
-        "color_contrast_mean":     {"min": 0.0, "max": 0.25},
-        "motion_mean":             {"min": 0.0, "max": 0.70},
-        "flashing_events_per_min": {"min": 0.0, "max": 10.0},
-        "audio_rms_mean":          {"min": 0.0, "max": 0.15}
+        "cuts_per_min": {
+          "min": 0.0,
+          "max": 15.0
+        },
+        "color_saturation_mean": {
+          "min": 0.0,
+          "max": 0.85
+        },
+        "color_contrast_mean": {
+          "min": 0.0,
+          "max": 0.25
+        },
+        "motion_mean": {
+          "min": 0.0,
+          "max": 0.7
+        },
+        "flashing_events_per_min": {
+          "min": 0.0,
+          "max": 10.0
+        },
+        "audio_rms_mean": {
+          "min": 0.0,
+          "max": 0.15
+        }
       }
     },
     "Early Childhood (5-8)": {
       "builtin": true,
       "description": "For early school-age children. Wider tolerances than preschool; pacing still meaningful.",
       "sensory_load_weights": {
-        "pacing": 0.25, "saturation": 0.05, "color_contrast": 0.10,
-        "motion": 0.25, "flashing": 0.15, "audio": 0.20
+        "pacing": 0.25,
+        "saturation": 0.05,
+        "color_contrast": 0.1,
+        "motion": 0.25,
+        "flashing": 0.15,
+        "audio": 0.2
       },
       "normalization_reference_ranges": {
-        "cuts_per_min":            {"min": 0.0, "max": 25.0},
-        "color_saturation_mean":   {"min": 0.0, "max": 1.0},
-        "color_contrast_mean":     {"min": 0.0, "max": 0.30},
-        "motion_mean":             {"min": 0.0, "max": 0.85},
-        "flashing_events_per_min": {"min": 0.0, "max": 18.0},
-        "audio_rms_mean":          {"min": 0.0, "max": 0.18}
+        "cuts_per_min": {
+          "min": 0.0,
+          "max": 25.0
+        },
+        "color_saturation_mean": {
+          "min": 0.0,
+          "max": 1.0
+        },
+        "color_contrast_mean": {
+          "min": 0.0,
+          "max": 0.3
+        },
+        "motion_mean": {
+          "min": 0.0,
+          "max": 0.85
+        },
+        "flashing_events_per_min": {
+          "min": 0.0,
+          "max": 18.0
+        },
+        "audio_rms_mean": {
+          "min": 0.0,
+          "max": 0.18
+        }
       }
     },
     "Tween (8-12)": {
       "builtin": true,
       "description": "Approaching adult tolerance. Motion weighted slightly higher.",
       "sensory_load_weights": {
-        "pacing": 0.25, "saturation": 0.05, "color_contrast": 0.10,
-        "motion": 0.30, "flashing": 0.15, "audio": 0.15
+        "pacing": 0.25,
+        "saturation": 0.05,
+        "color_contrast": 0.1,
+        "motion": 0.3,
+        "flashing": 0.15,
+        "audio": 0.15
       },
       "normalization_reference_ranges": {
-        "cuts_per_min":            {"min": 0.0, "max": 40.0},
-        "color_saturation_mean":   {"min": 0.0, "max": 1.0},
-        "color_contrast_mean":     {"min": 0.0, "max": 0.35},
-        "motion_mean":             {"min": 0.0, "max": 1.0},
-        "flashing_events_per_min": {"min": 0.0, "max": 25.0},
-        "audio_rms_mean":          {"min": 0.0, "max": 0.20}
+        "cuts_per_min": {
+          "min": 0.0,
+          "max": 40.0
+        },
+        "color_saturation_mean": {
+          "min": 0.0,
+          "max": 1.0
+        },
+        "color_contrast_mean": {
+          "min": 0.0,
+          "max": 0.35
+        },
+        "motion_mean": {
+          "min": 0.0,
+          "max": 1.0
+        },
+        "flashing_events_per_min": {
+          "min": 0.0,
+          "max": 25.0
+        },
+        "audio_rms_mean": {
+          "min": 0.0,
+          "max": 0.2
+        }
       }
     },
     "Animated / Cartoon": {
       "builtin": true,
-      "description": "Optimized for comparing animated shows. Saturation weighted higher — vivid cartoon palettes are a meaningful stimulation dimension in animation. Use this when your library contains only animated content.",
+      "description": "Optimized for comparing animated shows. Saturation weighted higher \u2014 vivid cartoon palettes are a meaningful stimulation dimension in animation. Use this when your library contains only animated content.",
       "sensory_load_weights": {
-        "pacing": 0.25, "saturation": 0.15, "color_contrast": 0.05,
-        "motion": 0.25, "flashing": 0.15, "audio": 0.15
+        "pacing": 0.25,
+        "saturation": 0.15,
+        "color_contrast": 0.05,
+        "motion": 0.25,
+        "flashing": 0.15,
+        "audio": 0.15
       },
       "normalization_reference_ranges": {
-        "cuts_per_min":            {"min": 0.0, "max": 60.0},
-        "color_saturation_mean":   {"min": 0.0, "max": 1.0},
-        "color_contrast_mean":     {"min": 0.0, "max": 0.35},
-        "motion_mean":             {"min": 0.0, "max": 1.0},
-        "flashing_events_per_min": {"min": 0.0, "max": 30.0},
-        "audio_rms_mean":          {"min": 0.0, "max": 0.20}
+        "cuts_per_min": {
+          "min": 0.0,
+          "max": 60.0
+        },
+        "color_saturation_mean": {
+          "min": 0.0,
+          "max": 1.0
+        },
+        "color_contrast_mean": {
+          "min": 0.0,
+          "max": 0.35
+        },
+        "motion_mean": {
+          "min": 0.0,
+          "max": 1.0
+        },
+        "flashing_events_per_min": {
+          "min": 0.0,
+          "max": 30.0
+        },
+        "audio_rms_mean": {
+          "min": 0.0,
+          "max": 0.2
+        }
       }
     },
     "Live-Action / YouTube": {
       "builtin": true,
       "description": "Optimized for live-action and YouTube content. Saturation near-zeroed (blown-out production style makes it unreliable); contrast weighted higher to capture dramatic lighting and visual intensity. Use when comparing YouTube, reality TV, or documentary content.",
       "sensory_load_weights": {
-        "pacing": 0.25, "saturation": 0.00, "color_contrast": 0.20,
-        "motion": 0.25, "flashing": 0.15, "audio": 0.15
+        "pacing": 0.25,
+        "saturation": 0.0,
+        "color_contrast": 0.2,
+        "motion": 0.25,
+        "flashing": 0.15,
+        "audio": 0.15
       },
       "normalization_reference_ranges": {
-        "cuts_per_min":            {"min": 0.0, "max": 60.0},
-        "color_saturation_mean":   {"min": 0.0, "max": 1.0},
-        "color_contrast_mean":     {"min": 0.0, "max": 0.35},
-        "motion_mean":             {"min": 0.0, "max": 1.0},
-        "flashing_events_per_min": {"min": 0.0, "max": 30.0},
-        "audio_rms_mean":          {"min": 0.0, "max": 0.20}
+        "cuts_per_min": {
+          "min": 0.0,
+          "max": 60.0
+        },
+        "color_saturation_mean": {
+          "min": 0.0,
+          "max": 1.0
+        },
+        "color_contrast_mean": {
+          "min": 0.0,
+          "max": 0.35
+        },
+        "motion_mean": {
+          "min": 0.0,
+          "max": 1.0
+        },
+        "flashing_events_per_min": {
+          "min": 0.0,
+          "max": 30.0
+        },
+        "audio_rms_mean": {
+          "min": 0.0,
+          "max": 0.2
+        }
       }
     }
   }

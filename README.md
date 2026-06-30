@@ -1,14 +1,16 @@
 # Children's Media Analysis Toolkit (CMAT)
 
-A desktop Windows application that analyzes MP4 episodes of children's TV shows and produces a **sensory-load profile** — a transparent, labeled breakdown of how visually and aurally stimulating a show is, based on measurable structural features of the video.
+A desktop Windows application that analyzes MP4 episodes of children's TV shows and produces a **sensory-load profile** — a transparent, labeled breakdown of how visually and aurally stimulating a show is, based on measurable structural features of the video. CMAT also measures the **linguistic complexity** of dialogue through speech rate, readability formulas, vocabulary frequency tiers, age of acquisition, and lexical diversity.
 
-CMAT measures pacing, motion, color, flashing, and audio loudness. It does **not** issue a verdict on appropriateness. Every composite score shows its component parts, and every design decision in the scoring model is adjustable.
+CMAT does **not** issue a verdict on appropriateness. Every composite score shows its component parts, and every design decision in the scoring model is adjustable.
 
 > **Part of the Open Children's Media Index** — an ongoing effort to build a publicly accessible, empirically grounded database of sensory-load profiles for children's television.
 
 ---
 
 ## What it measures
+
+### Sensory load metrics
 
 | Metric | What it captures |
 |--------|-----------------|
@@ -19,6 +21,17 @@ CMAT measures pacing, motion, color, flashing, and audio loudness. It does **not
 | **Flashing** | Rapid luminance changes per minute. Relevant to photosensitivity and overstimulation. |
 | **Audio loudness** | Average RMS volume and dynamic range. Loud, consistent audio drives arousal independently of visuals. |
 | **Sensory load score** | A transparent weighted composite of all the above. Always shows its component parts. |
+
+### Language metrics *(optional — requires subtitle files or Whisper AI)*
+
+| Metric | What it captures |
+|--------|-----------------|
+| **Words per minute** | Average spoken word rate during dialogue segments. Sourced from `.srt`/`.vtt` subtitle files; Whisper AI transcription used as fallback when enabled. |
+| **Speech density** | Fraction of episode runtime containing dialogue. Separates talk-heavy shows from those with long musical or silent passages. |
+| **Readability** | Flesch Reading Ease, Flesch-Kincaid Grade Level, Spache, Dale-Chall, Coleman-Liau, ARI — six formulas applied to the cleaned dialogue transcript. |
+| **Vocabulary frequency tiers** | Zipf-scale tier breakdown: Tier 1 (everyday words, ≥ 4.5), Tier 2 (academic/cross-domain, 3.0–4.5), Tier 3 (rare/domain-specific, < 3.0). |
+| **Age of Acquisition** | Mean age at which vocabulary words are typically learned, from Kuperman et al. norms. |
+| **Lexical diversity (MTLD)** | Measure of Textual Lexical Diversity — how widely the dialogue draws on the available vocabulary, robust to text length. |
 
 Grounded in the Huston & Wright formal features framework, Lang's Limited Capacity Model (LC4MP), and Lillard & Peterson (2011).
 
@@ -121,7 +134,54 @@ Once episodes are analyzed, click **Show Chart** from any show-level or full-ser
 
 **Settings → Sensory Load Weights** — change how much each metric contributes to the composite score, or adjust normalization ceilings. Age-range and content-type presets are built in. Switching presets re-scores all cached results instantly — no re-analysis needed.
 
-### 8. Export
+### 8. Analyze speech and vocabulary
+
+The **Language tab** surfaces dialogue-level metrics that are independent of the sensory-load composite.
+
+#### Speech sub-tab
+
+After analyzing episodes, click **Refresh** to load WPM and speech density for every episode that has speech data. The table is sortable by any column. Click **Chart WPM…** to open a dual-axis chart for a show: bars show words per minute per episode; an overlaid line shows speech density (% of runtime with dialogue), ordered by air date when available.
+
+**Getting speech data into your episodes:**
+
+- **Subtitle files (recommended)** — Place a `.srt` or `.vtt` file with the same name alongside each `.mp4` (e.g. `ep01.srt` next to `ep01.mp4`). CMAT detects it automatically during analysis. This path is instant and requires no extra software.
+- **Whisper AI transcription** — Open **Settings**, enable *Auto-transcription with Whisper AI*, and choose a model size. `small` is recommended: it runs on any CPU in roughly 2–5 minutes per episode and is accurate enough for WPM measurement. When an episode is analyzed, CMAT transcribes it and **saves the result as a `.srt` file alongside the video** — so Whisper only runs once per episode, and the saved `.srt` is available for vocabulary analysis on subsequent runs.
+
+#### Vocabulary sub-tab
+
+Analyzes the linguistic complexity of dialogue from subtitle files.
+
+1. Click **Browse CC Files…** to select `.srt` or `.vtt` files directly, or **Browse Folder…** to add all subtitle files in a folder tree.
+2. Click **Analyze** (green button). The pipeline strips stage directions (`[MUSIC]`, `(laughs)`, speaker labels), lemmatizes content words via spaCy, and computes readability and vocabulary metrics.
+3. Results appear in the table. Hover any column header for a full explanation of that metric.
+4. Use the chart dropdown to visualize results:
+
+| Chart | What it shows |
+|-------|--------------|
+| **Stacked Tiers** | T1 / T2 / T3 proportion per file — the most useful cross-show comparison |
+| **Flesch Reading Ease** | With reference lines at 90 (very easy), 60 (standard), 30 (difficult) |
+| **F-K Grade Level** | With reference lines at grades 2, 5, and 8 |
+| **Age of Acquisition** | Mean AoA per file with a 6-year early-childhood boundary line |
+| **MTLD** | Lexical diversity score per file |
+
+5. Click **Export CSV…** to save a flat-row CSV of all metrics for every successfully analyzed file.
+
+**Optional norm files** — For AoA and concreteness scores, place the following in `data/norms/` relative to the project root:
+
+| File | Source | Key columns |
+|------|--------|-------------|
+| `kuperman_aoa.csv` | Kuperman et al. (2012) — [OSF](https://osf.io/bhdsm/) | `Word`, `AoA_Rating_Mean` |
+| `brysbaert_concreteness.csv` | Brysbaert et al. (2014) — [OSF](https://osf.io/u56th/) | `Word`, `Conc.M` |
+
+The norm files are freely available for research use but are not redistributed here. Without them, Zipf tiers and MTLD still work; AoA and concreteness columns will be blank.
+
+**NLP dependencies** — Vocabulary analysis requires additional packages. Install once:
+```bash
+pip install spacy wordfreq textstat lexical-diversity
+python -m spacy download en_core_web_sm
+```
+
+### 9. Export
 
 From the results panel: **Export JSON**, **Export CSV**, or **Export PDF Report** for a printable one-page summary.
 
@@ -154,6 +214,8 @@ Key references:
 - Lillard et al. (2015) — fantastical content as a possible moderator
 - Christakis et al. (2004), *Pediatrics* — early TV exposure and attention (correlational)
 - Itti & Koch — bottom-up visual saliency and motion
+- Kuperman et al. (2012) — Age of Acquisition norms
+- Brysbaert et al. (2014) — Concreteness norms
 
 All findings are correlational. CMAT describes the stimulus; it does not predict outcomes for any individual child.
 
@@ -168,6 +230,17 @@ git clone https://github.com/SamuelBabbertResearch/childrens-media-analysis-tool
 cd childrens-media-analysis-toolkit
 pip install -r requirements.txt
 python gui.py
+```
+
+**Optional — NLP / vocabulary analysis:**
+```bash
+pip install spacy wordfreq textstat lexical-diversity
+python -m spacy download en_core_web_sm
+```
+
+**Optional — Whisper AI transcription:**
+```bash
+pip install faster-whisper
 ```
 
 **Run tests:**
@@ -195,6 +268,12 @@ python cli.py analyze "My Videos/Little Bear/"
 
 # Build a reproducible episode sample
 python cli.py sample "My Videos/Little Bear/" --stratify season --method spread --per-season-n 3 --seed 42
+
+# Run vocabulary complexity analysis on subtitle files
+python cli.py vocab "My Videos/Little Bear/"          # folder of .srt/.vtt files
+python cli.py vocab episode.srt                       # single file
+python cli.py vocab files.txt                         # newline-separated list of paths
+python cli.py vocab "My Videos/" --norms data/norms/ --output results/
 
 # Query the index database
 python cli.py db episodes "My Videos/" --sort sensory_load_score --desc

@@ -24,6 +24,7 @@ from analyzer.db import get_db, query_episodes, query_shows
 from analyzer.engine import analyze_episode
 from analyzer.sampler import scan_entry_root, load_registry_csv, sample, write_outputs
 from analyzer.show_index import list_episodes, list_shows
+from analyzer.speech import _find_cc_file
 
 
 def cmd_analyze(args: argparse.Namespace) -> None:
@@ -312,6 +313,84 @@ def cmd_sample(args: argparse.Namespace) -> None:
             print(f"  * {n}")
 
 
+# ---------------------------------------------------------------------------
+# Vocab complexity command
+# ---------------------------------------------------------------------------
+
+def cmd_vocab(args: argparse.Namespace) -> None:
+    from analyzer.vocab_complexity import load_norms, analyze_caption_file, batch_analyze
+
+    norm_dir = Path(args.norms) if args.norms else None
+    try:
+        norms = load_norms(norm_dir) if norm_dir else load_norms()
+    except FileNotFoundError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    target    = Path(args.target)
+    cc_paths: list[Path] = []
+
+    if target.is_file() and target.suffix.lower() in (".srt", ".vtt"):
+        # Single caption file — print result inline
+        result = analyze_caption_file(target, norms=norms)
+        if result.status == "failed":
+            print(f"Error: {result.error}", file=sys.stderr)
+            sys.exit(1)
+        print(json.dumps(result.to_flat_row(), indent=2))
+        return
+
+    elif target.is_file() and target.suffix.lower() == ".txt":
+        # Worklist file (sampler output: one path per line, # comments ignored)
+        for raw in target.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            p = Path(line)
+            if p.suffix.lower() in (".srt", ".vtt") and p.exists():
+                cc_paths.append(p)
+            elif p.exists():
+                # Video path — try to find a CC file alongside it
+                cc = _find_cc_file(p)
+                if cc:
+                    cc_paths.append(cc)
+                else:
+                    print(f"  [skip] no CC file found alongside {p.name}", flush=True)
+
+    elif target.is_dir():
+        for ext in ("*.srt", "*.vtt"):
+            cc_paths.extend(sorted(target.glob(ext)))
+
+    else:
+        print(
+            f"Error: '{target}' is not a .srt/.vtt file, a .txt worklist, or a directory.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if not cc_paths:
+        print("No caption files found.", file=sys.stderr)
+        sys.exit(1)
+
+    out_dir = Path(args.output) if args.output else None
+    results, paths = batch_analyze(cc_paths, norms=norms, out_dir=out_dir)
+
+    ok      = sum(1 for r in results if r.status == "ok")
+    failed  = sum(1 for r in results if r.status == "failed")
+    skipped = sum(1 for r in results if r.status == "skipped")
+
+    print(f"\nDone — {len(cc_paths)} file(s): {ok} ok, {failed} failed, {skipped} skipped")
+    print(f"  CSV:      {paths['csv']}")
+    print(f"  Manifest: {paths['manifest']}")
+
+    if failed:
+        print("\nFailed:")
+        for r in results:
+            if r.status == "failed":
+                first_line = r.error.splitlines()[0] if r.error else "unknown error"
+                print(f"  {r.episode_id}: {first_line}")
+        sys.exit(1)
+
+
 # Parser
 # ---------------------------------------------------------------------------
 
@@ -383,6 +462,25 @@ def build_parser() -> argparse.ArgumentParser:
     p_sample.add_argument("--copy",        action="store_true",
                           help="Use full copies instead of symlinks when gathering")
     p_sample.set_defaults(func=cmd_sample)
+
+    p_vocab = sub.add_parser(
+        "vocab",
+        help="Analyze vocabulary complexity, readability, and lexical diversity from caption files",
+    )
+    p_vocab.add_argument(
+        "target",
+        help=".srt/.vtt file | .txt worklist (one path per line) | folder of caption files",
+    )
+    p_vocab.add_argument(
+        "--norms", default="",
+        help="Path to norms directory containing kuperman_aoa.csv and brysbaert_concreteness.csv "
+             "(default: data/norms/ relative to project root)",
+    )
+    p_vocab.add_argument(
+        "--output", default="",
+        help="Output directory for CSV and manifest (default: _vocab_<timestamp>/)",
+    )
+    p_vocab.set_defaults(func=cmd_vocab)
 
     return parser
 

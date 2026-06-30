@@ -245,6 +245,10 @@ class App(tk.Tk):
         self._idx_ep_sort:   dict = {"col": "analyzed_at", "asc": False}
         self._idx_show_sort: dict = {"col": "avg_load",    "asc": False}
         self._cut_pulse_job: str | None = None  # after() ID for cut-detection animation
+        self._lang_speech_rows: list[dict] = []
+        self._lang_speech_sort: dict = {"col": "wpm", "asc": False}
+        self._vocab_results: list = []
+        self._vocab_analysis_running = False
 
         self._build_ui()
         self._poll_queue()
@@ -423,6 +427,11 @@ class App(tk.Tk):
         idx_tab = tk.Frame(left_nb)
         left_nb.add(idx_tab, text="Index")
         self._build_index_tab(idx_tab)
+
+        # ---- Language tab ----
+        lang_tab = tk.Frame(left_nb)
+        left_nb.add(lang_tab, text="Language")
+        self._build_language_tab(lang_tab)
 
         # --- Right: results ---
         right = tk.Frame(pane)
@@ -978,6 +987,29 @@ class App(tk.Tk):
         else:
             t.insert(tk.END, "  Not available (FFmpeg not found or no audio track)\n", "dim")
 
+        # Speech
+        t.insert(tk.END, "\nSpeech\n", "h2")
+        sp = m.speech
+        if sp.available:
+            _src = {"srt": "SRT subtitle file", "vtt": "VTT subtitle file",
+                    "whisper": "Whisper AI transcription"}.get(sp.source, sp.source)
+            t.insert(tk.END, f"  Source:            {_src}\n", "dim")
+            t.insert(tk.END, f"  Words per minute:  {sp.words_per_minute:.1f}\n")
+            t.insert(tk.END, f"  Speech density:    {sp.speech_density:.1%}  "
+                             "(fraction of episode with dialogue)\n")
+            t.insert(tk.END, f"  Total words:       {sp.total_words:,}\n")
+        else:
+            _src = sp.source
+            if _src == "disabled" or _src == "none":
+                _msg = "enable auto-transcription in Settings, or place an .srt / .vtt file alongside the video"
+            elif _src == "not_installed":
+                _msg = "faster-whisper is not installed — open a terminal and run:  pip install faster-whisper"
+            elif _src.startswith("error:"):
+                _msg = f"transcription failed: {_src[6:]}"
+            else:
+                _msg = "no CC file found and auto-transcription is disabled"
+            t.insert(tk.END, f"  Not available — {_msg}\n", "dim")
+
         t.config(state=tk.DISABLED)
 
         # Load saved note into the notes panel
@@ -1318,6 +1350,47 @@ class App(tk.Tk):
                 self._status_var.set(f"Display error after analysis: {exc}")
             finally:
                 self._start_next()
+
+        elif kind == "vocab_progress":
+            n, total = msg["n"], msg["total"]
+            self._vocab_progress_var.set(f"Analyzing {n} / {total}…")
+
+        elif kind == "vocab_done":
+            self._vocab_analysis_running = False
+            self._btn_vocab_analyze.config(state=tk.NORMAL)
+            results = msg["results"]
+            self._vocab_results = results
+            self._vocab_tree.delete(*self._vocab_tree.get_children())
+            for r in results:
+                cc_name = Path(r.cc_path).name if r.cc_path else r.episode_id
+                if r.status == "ok":
+                    row  = r.to_flat_row()
+                    fle  = row.get("read_flesch_reading_ease")
+                    fkg  = row.get("read_flesch_kincaid_grade")
+                    t1   = row.get("vocab_tier1_proportion")
+                    t2   = row.get("vocab_tier2_proportion")
+                    t3   = row.get("vocab_tier3_proportion")
+                    aoa  = row.get("vocab_aoa_mean")
+                    mtld = row.get("div_mtld")
+                    self._vocab_tree.insert("", tk.END, values=(
+                        cc_name, "ok",
+                        f"{fle:.1f}"  if fle  is not None else "",
+                        f"{fkg:.1f}"  if fkg  is not None else "",
+                        f"{t1:.0%}"   if t1   is not None else "",
+                        f"{t2:.0%}"   if t2   is not None else "",
+                        f"{t3:.0%}"   if t3   is not None else "",
+                        f"{aoa:.1f}"  if aoa  is not None else "",
+                        f"{mtld:.0f}" if mtld is not None else "",
+                    ))
+                else:
+                    self._vocab_tree.insert("", tk.END,
+                        values=(cc_name, r.status, "", "", "", "", "", "", ""))
+            ok_count = sum(1 for r in results if r.status == "ok")
+            self._vocab_progress_var.set(
+                f"Done — {ok_count} / {len(results)} analyzed successfully."
+            )
+            if ok_count > 0:
+                self._btn_vocab_export.config(state=tk.NORMAL)
 
     def _maybe_save_show_aggregate(self, ep_path: Path) -> None:
         """If all episodes of the show are now cached, compute and save the aggregate."""
@@ -2277,6 +2350,563 @@ class App(tk.Tk):
                     pass
 
     # -----------------------------------------------------------------------
+    # Language tab
+    # -----------------------------------------------------------------------
+
+    def _build_language_tab(self, parent: tk.Frame) -> None:
+        sub_nb = ttk.Notebook(parent)
+        sub_nb.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+
+        # ---- Speech sub-tab ----
+        sp_tab = tk.Frame(sub_nb)
+        sub_nb.add(sp_tab, text="Speech")
+
+        bar = tk.Frame(sp_tab)
+        bar.pack(fill=tk.X, padx=4, pady=(4, 2))
+        tk.Button(bar, text="Refresh", command=self._refresh_speech_data,
+                  padx=4).pack(side=tk.LEFT)
+        tk.Button(bar, text="Chart WPM...", command=self._chart_wpm_for_show,
+                  padx=4).pack(side=tk.LEFT, padx=(4, 0))
+
+        _sp_cols   = ("show", "file", "airdate", "wpm", "density", "words", "source")
+        _sp_hdrs   = ("Show", "File", "Air Date", "WPM", "Density", "Total Words", "Source")
+        _sp_widths = (90, 120, 72, 55, 62, 78, 60)
+
+        sp_tree_frame = tk.Frame(sp_tab)
+        sp_tree_frame.pack(fill=tk.BOTH, expand=True)
+
+        self._lang_sp_tree = ttk.Treeview(
+            sp_tree_frame, columns=_sp_cols, show="headings", selectmode="browse",
+        )
+        for col, hdr, w in zip(_sp_cols, _sp_hdrs, _sp_widths):
+            self._lang_sp_tree.heading(
+                col, text=hdr, command=lambda c=col: self._lang_sp_col_click(c),
+            )
+            self._lang_sp_tree.column(col, width=w, minwidth=28, stretch=False)
+
+        sp_vsb = ttk.Scrollbar(sp_tree_frame, orient=tk.VERTICAL,
+                                command=self._lang_sp_tree.yview)
+        sp_hsb = ttk.Scrollbar(sp_tree_frame, orient=tk.HORIZONTAL,
+                                command=self._lang_sp_tree.xview)
+        self._lang_sp_tree.configure(yscrollcommand=sp_vsb.set, xscrollcommand=sp_hsb.set)
+        sp_vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        sp_hsb.pack(side=tk.BOTTOM, fill=tk.X)
+        self._lang_sp_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self._lang_sp_note = tk.Label(
+            sp_tab, text="Choose a root folder, then click Refresh.",
+            fg="#555555", font=("TkDefaultFont", 8), anchor="w",
+        )
+        self._lang_sp_note.pack(fill=tk.X, padx=4, pady=(2, 4))
+
+        # ---- Vocabulary sub-tab ----
+        vc_tab = tk.Frame(sub_nb)
+        sub_nb.add(vc_tab, text="Vocabulary")
+
+        self._vocab_norm_label_var = tk.StringVar()
+        tk.Label(
+            vc_tab, textvariable=self._vocab_norm_label_var,
+            fg="#444444", font=("TkDefaultFont", 8),
+            anchor="w", justify=tk.LEFT, wraplength=260,
+        ).pack(fill=tk.X, padx=4, pady=(4, 2))
+        self._update_vocab_norm_label()
+
+        pick_frame = tk.Frame(vc_tab)
+        pick_frame.pack(fill=tk.X, padx=4, pady=(2, 2))
+        tk.Button(pick_frame, text="Browse CC Files...",
+                  command=self._vocab_browse_files, padx=4).pack(side=tk.LEFT)
+        tk.Button(pick_frame, text="Browse Folder...",
+                  command=self._vocab_browse_folder, padx=4).pack(side=tk.LEFT, padx=(4, 0))
+
+        list_outer = tk.Frame(vc_tab)
+        list_outer.pack(fill=tk.X, padx=4, pady=(2, 0))
+        lb_vsb = ttk.Scrollbar(list_outer, orient=tk.VERTICAL)
+        lb_hsb = ttk.Scrollbar(list_outer, orient=tk.HORIZONTAL)
+        self._vocab_file_lb = tk.Listbox(
+            list_outer, height=4, font=("Consolas", 8), selectmode=tk.EXTENDED,
+            yscrollcommand=lb_vsb.set, xscrollcommand=lb_hsb.set,
+        )
+        lb_vsb.config(command=self._vocab_file_lb.yview)
+        lb_hsb.config(command=self._vocab_file_lb.xview)
+        lb_vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        lb_hsb.pack(side=tk.BOTTOM, fill=tk.X)
+        self._vocab_file_lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        lb_btn_row = tk.Frame(vc_tab)
+        lb_btn_row.pack(fill=tk.X, padx=4, pady=(2, 4))
+        tk.Button(lb_btn_row, text="Remove Selected",
+                  command=self._vocab_remove_selected, padx=4).pack(side=tk.LEFT)
+        tk.Button(lb_btn_row, text="Clear All",
+                  command=lambda: self._vocab_file_lb.delete(0, tk.END),
+                  padx=4).pack(side=tk.LEFT, padx=(4, 0))
+
+        analyze_frame = tk.Frame(vc_tab)
+        analyze_frame.pack(fill=tk.X, padx=4, pady=(2, 2))
+        self._btn_vocab_analyze = tk.Button(
+            analyze_frame, text="Analyze",
+            command=self._run_vocab_analysis,
+            padx=6, fg="white", bg="#225522",
+        )
+        self._btn_vocab_analyze.pack(side=tk.LEFT)
+        self._vocab_progress_var = tk.StringVar(value="")
+        tk.Label(
+            analyze_frame, textvariable=self._vocab_progress_var,
+            fg="#333333", font=("TkDefaultFont", 8),
+        ).pack(side=tk.LEFT, padx=(8, 0))
+
+        _vc_cols   = ("file", "status", "flesch", "fk", "t1", "t2", "t3", "aoa", "mtld")
+        _vc_hdrs   = ("File", "Status", "Flesch", "F-K Gr", "T1%", "T2%", "T3%", "AoA", "MTLD")
+        _vc_widths = (130, 52, 50, 50, 42, 42, 42, 44, 55)
+
+        vc_tree_frame = tk.Frame(vc_tab)
+        vc_tree_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=(2, 0))
+
+        self._vocab_tree = ttk.Treeview(
+            vc_tree_frame, columns=_vc_cols, show="headings", selectmode="browse",
+        )
+        for col, hdr, w in zip(_vc_cols, _vc_hdrs, _vc_widths):
+            self._vocab_tree.heading(col, text=hdr)
+            self._vocab_tree.column(col, width=w, minwidth=28, stretch=(col == "file"))
+
+        vc_vsb = ttk.Scrollbar(vc_tree_frame, orient=tk.VERTICAL,
+                                command=self._vocab_tree.yview)
+        vc_hsb = ttk.Scrollbar(vc_tree_frame, orient=tk.HORIZONTAL,
+                                command=self._vocab_tree.xview)
+        self._vocab_tree.configure(yscrollcommand=vc_vsb.set, xscrollcommand=vc_hsb.set)
+        vc_vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        vc_hsb.pack(side=tk.BOTTOM, fill=tk.X)
+        self._vocab_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        action_row = tk.Frame(vc_tab)
+        action_row.pack(fill=tk.X, padx=4, pady=(4, 4))
+        self._vocab_chart_var = tk.StringVar(value="Stacked Tiers")
+        ttk.Combobox(
+            action_row, textvariable=self._vocab_chart_var,
+            values=[
+                "Stacked Tiers",
+                "Flesch Reading Ease",
+                "F-K Grade Level",
+                "Age of Acquisition",
+                "MTLD (Lexical Diversity)",
+            ],
+            state="readonly", width=22,
+        ).pack(side=tk.LEFT)
+        tk.Button(action_row, text="Show Chart",
+                  command=self._show_vocab_chart, padx=6).pack(side=tk.LEFT, padx=(4, 0))
+        self._btn_vocab_export = tk.Button(
+            action_row, text="Export CSV...",
+            command=self._vocab_export_csv, padx=6, state=tk.DISABLED,
+        )
+        self._btn_vocab_export.pack(side=tk.RIGHT)
+
+        _IndexTooltip(self._vocab_tree, {
+            "file":   "Caption file that was analyzed.",
+            "status": "ok — analysis succeeded\n"
+                      "skipped — file was empty or contained only stage directions\n"
+                      "failed — an error occurred (check the console for details)",
+            "flesch": "Flesch Reading Ease (0–100).\n"
+                      "Higher = simpler language.\n"
+                      "90–100: very easy (picture-book level)\n"
+                      "60–70:  standard (average adult prose)\n"
+                      "0–30:   very difficult (academic/legal text)\n\n"
+                      "Based on sentence length and syllable count.\n"
+                      "Treat as a relative index across shows, not a grade-level claim.",
+            "fk":     "Flesch-Kincaid Grade Level.\n"
+                      "Approximates the U.S. school grade needed to read the text comfortably.\n"
+                      "Grade 1 ≈ first grade; Grade 12 ≈ senior year of high school.\n\n"
+                      "Derived from sentence length and syllable count.\n"
+                      "Validated on written prose — use as a relative index, not a literal grade.",
+            "t1":     "Tier 1 — everyday words (Zipf frequency ≥ 4.5).\n"
+                      "Words heard and used constantly: 'go', 'big', 'dog', 'want'.\n"
+                      "Higher T1% = more familiar, high-frequency vocabulary.\n\n"
+                      "Zipf scale: log₁₀(occurrences per billion words) + 3.\n"
+                      "Only NOUN, VERB, ADJ, ADV tokens counted; proper nouns excluded.",
+            "t2":     "Tier 2 — academic / cross-domain words (Zipf 3.0–4.5).\n"
+                      "Words that appear across many subjects but aren't everyday: "
+                      "'transform', 'examine', 'curious'.\n"
+                      "High T2% often signals richer, more instructional dialogue.",
+            "t3":     "Tier 3 — rare / domain-specific words (Zipf < 3.0).\n"
+                      "Infrequent or technical vocabulary: 'metamorphosis', 'photosynthesis'.\n"
+                      "High T3% can indicate specialized content or invented proper nouns\n"
+                      "(proper nouns are excluded from counting, but very rare terms remain).",
+            "aoa":    "Mean Age of Acquisition in years (Kuperman et al. norms).\n"
+                      "Average age at which speakers first learn each content word.\n"
+                      "Lower AoA = vocabulary learned earlier in childhood.\n\n"
+                      "Only covers words present in the Kuperman norm list.\n"
+                      "Blank if the norm file is not installed or coverage is zero.",
+            "mtld":   "MTLD — Measure of Textual Lexical Diversity.\n"
+                      "Higher MTLD = greater variety of unique words used.\n"
+                      "Less sensitive to text length than raw type-token ratio.\n\n"
+                      "Computed on lemmatized content tokens (NOUN, VERB, ADJ, ADV).\n"
+                      "Blank if fewer than 50 content tokens were extracted.",
+        })
+
+    def _update_vocab_norm_label(self) -> None:
+        norm_dir = Path(__file__).parent / "data" / "norms"
+        aoa_ok  = (norm_dir / "kuperman_aoa.csv").exists()
+        conc_ok = (norm_dir / "brysbaert_concreteness.csv").exists()
+        self._vocab_norm_label_var.set(
+            f"AoA norms: {'found' if aoa_ok else 'not found — AoA scores will be blank'}"
+            f"   |   "
+            f"Concreteness: {'found' if conc_ok else 'not found — scores will be blank'}"
+        )
+
+    def _refresh_speech_data(self) -> None:
+        if not self._root_folder:
+            self._lang_sp_note.config(text="Choose a root folder first.")
+            return
+        rows: list[dict] = []
+        for show_dir in list_shows(self._root_folder):
+            skey  = show_key(self._root_folder, show_dir)
+            dname, _ = display_show_name(self._root_folder, show_dir)
+            for ep in list_episodes(show_dir):
+                c = load_cached(self._root_folder, skey, ep.stem)
+                if not c:
+                    continue
+                try:
+                    result = EpisodeResult.from_dict(c)
+                    sp = result.metrics.speech
+                    if not sp.available:
+                        continue
+                    air_date = ""
+                    if self._db_conn:
+                        meta = get_episode_metadata(self._db_conn, str(ep))
+                        if meta:
+                            air_date = meta.get("air_date") or ""
+                    rows.append({
+                        "show_name":   dname,
+                        "file_name":   ep.name,
+                        "file_path":   str(ep),
+                        "air_date":    air_date,
+                        "wpm":         sp.words_per_minute,
+                        "density":     sp.speech_density,
+                        "total_words": sp.total_words,
+                        "source":      sp.source,
+                    })
+                except Exception:
+                    continue
+        self._lang_speech_rows = rows
+        self._populate_lang_speech_tree()
+        n = len(rows)
+        note = f"{n} episode{'s' if n != 1 else ''} with speech data."
+        if n == 0:
+            note += "  Analyze episodes with CC files or enable Whisper in Settings."
+        self._lang_sp_note.config(text=note)
+
+    def _populate_lang_speech_tree(self) -> None:
+        col = self._lang_speech_sort["col"]
+        asc = self._lang_speech_sort["asc"]
+
+        def _key(r):
+            v = r.get(col, "")
+            return v if isinstance(v, str) else (v or 0.0)
+
+        sorted_rows = sorted(self._lang_speech_rows, key=_key, reverse=not asc)
+        self._lang_sp_tree.delete(*self._lang_sp_tree.get_children())
+        for r in sorted_rows:
+            self._lang_sp_tree.insert("", tk.END,
+                values=(
+                    r["show_name"],
+                    r["file_name"],
+                    r.get("air_date") or "",
+                    f"{r['wpm']:.1f}",
+                    f"{r['density']:.1%}",
+                    f"{r['total_words']:,}",
+                    r["source"],
+                ),
+                tags=(r["file_path"],),
+            )
+
+    def _lang_sp_col_click(self, col: str) -> None:
+        if self._lang_speech_sort["col"] == col:
+            self._lang_speech_sort["asc"] = not self._lang_speech_sort["asc"]
+        else:
+            self._lang_speech_sort = {"col": col, "asc": True}
+        self._populate_lang_speech_tree()
+
+    def _chart_wpm_for_show(self) -> None:
+        sel = self._lang_sp_tree.selection()
+        if sel:
+            show_filter = self._lang_sp_tree.item(sel[0], "values")[0]
+        elif self._lang_speech_rows:
+            from collections import Counter
+            show_filter = Counter(
+                r["show_name"] for r in self._lang_speech_rows
+            ).most_common(1)[0][0]
+        else:
+            messagebox.showinfo("No Data",
+                                "No speech data loaded — click Refresh first.",
+                                parent=self)
+            return
+
+        rows = [r for r in self._lang_speech_rows if r["show_name"] == show_filter]
+        if len(rows) < 2:
+            messagebox.showinfo(
+                "Not Enough Data",
+                f"Need at least 2 episodes with speech data for \"{show_filter}\".",
+                parent=self,
+            )
+            return
+
+        rows = sorted(rows, key=lambda r: (r.get("air_date") or "", r["file_name"]))
+
+        import matplotlib
+        matplotlib.use("TkAgg")
+        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+        win = tk.Toplevel(self)
+        win.title(f"Speech Metrics — {show_filter}")
+        win.geometry("700x420")
+
+        fig, ax1 = plt.subplots(figsize=(8, 4.5), tight_layout=True)
+        ax2 = ax1.twinx()
+
+        labels   = [r.get("air_date") or r["file_name"] for r in rows]
+        wpm_vals = [r["wpm"] for r in rows]
+        den_vals = [r["density"] * 100 for r in rows]
+        x = list(range(len(labels)))
+
+        ax1.bar(x, wpm_vals, color="#3070b3", alpha=0.8, label="Words per Minute")
+        ax2.plot(x, den_vals, "o-", color="#cc4400", linewidth=1.5,
+                 markersize=4, label="Speech Density %")
+        ax1.set_xticks(x)
+        ax1.set_xticklabels(labels, rotation=45, ha="right", fontsize=7)
+        ax1.set_ylabel("Words per Minute")
+        ax2.set_ylabel("Speech Density (%)", color="#cc4400")
+        ax2.tick_params(axis="y", labelcolor="#cc4400")
+        ax1.set_title(f"Speech Metrics — {show_filter}")
+
+        h1, l1 = ax1.get_legend_handles_labels()
+        h2, l2 = ax2.get_legend_handles_labels()
+        ax1.legend(h1 + h2, l1 + l2, loc="upper left", fontsize=8)
+
+        canvas = FigureCanvasTkAgg(fig, master=win)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        win.protocol("WM_DELETE_WINDOW", lambda: (plt.close(fig), win.destroy()))
+
+    def _vocab_browse_files(self) -> None:
+        paths = filedialog.askopenfilenames(
+            title="Select caption files",
+            filetypes=[("Caption files", "*.srt *.vtt"), ("All files", "*.*")],
+        )
+        existing = set(self._vocab_file_lb.get(0, tk.END))
+        for p in paths:
+            if p not in existing:
+                self._vocab_file_lb.insert(tk.END, p)
+                existing.add(p)
+
+    def _vocab_browse_folder(self) -> None:
+        folder = filedialog.askdirectory(title="Select folder containing CC files")
+        if not folder:
+            return
+        folder_path = Path(folder)
+        existing = set(self._vocab_file_lb.get(0, tk.END))
+        cc_files = sorted(
+            list(folder_path.rglob("*.srt")) + list(folder_path.rglob("*.vtt"))
+        )
+        added = 0
+        for p in cc_files:
+            s = str(p)
+            if s not in existing:
+                self._vocab_file_lb.insert(tk.END, s)
+                existing.add(s)
+                added += 1
+        self._vocab_progress_var.set(f"Added {added} file(s) from folder.")
+
+    def _vocab_remove_selected(self) -> None:
+        for i in reversed(self._vocab_file_lb.curselection()):
+            self._vocab_file_lb.delete(i)
+
+    def _run_vocab_analysis(self) -> None:
+        if self._vocab_analysis_running:
+            return
+        files = list(self._vocab_file_lb.get(0, tk.END))
+        if not files:
+            messagebox.showinfo("No Files", "Add CC files to analyze first.", parent=self)
+            return
+
+        try:
+            import spacy
+            spacy.load("en_core_web_sm")
+        except Exception:
+            messagebox.showerror(
+                "spaCy Not Ready",
+                "spaCy or the en_core_web_sm model is not installed.\n\n"
+                "Run these commands in a terminal:\n"
+                "  pip install spacy\n"
+                "  python -m spacy download en_core_web_sm",
+                parent=self,
+            )
+            return
+
+        try:
+            from analyzer.vocab_complexity import analyze_caption_file, load_norms, NormTables
+        except ImportError as exc:
+            messagebox.showerror("Import Error",
+                                 f"Could not import vocab_complexity: {exc}", parent=self)
+            return
+
+        norm_dir = Path(__file__).parent / "data" / "norms"
+        try:
+            norms = load_norms(norm_dir)
+        except Exception:
+            norms = NormTables(
+                aoa={}, concreteness={},
+                aoa_path="(not found)", conc_path="(not found)",
+                aoa_n=0, conc_n=0,
+            )
+
+        self._vocab_analysis_running = True
+        self._btn_vocab_analyze.config(state=tk.DISABLED)
+        self._vocab_progress_var.set(f"Analyzing 0 / {len(files)}…")
+        self._vocab_tree.delete(*self._vocab_tree.get_children())
+        self._btn_vocab_export.config(state=tk.DISABLED)
+
+        _q     = self._queue
+        _files = list(files)
+
+        def _worker():
+            _results: list = []
+            for i, fpath in enumerate(_files, 1):
+                _q.put({"t": "vocab_progress", "n": i, "total": len(_files)})
+                try:
+                    r = analyze_caption_file(Path(fpath), norms=norms)
+                except Exception as exc:
+                    from analyzer.vocab_complexity import VocabResult
+                    r = VocabResult(
+                        episode_id=Path(fpath).stem,
+                        cc_path=fpath,
+                        status="failed",
+                        error=str(exc),
+                    )
+                _results.append(r)
+            _q.put({"t": "vocab_done", "results": _results})
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _vocab_export_csv(self) -> None:
+        rows = [r.to_flat_row() for r in self._vocab_results if r.status == "ok"]
+        if not rows:
+            messagebox.showinfo("Nothing to Export",
+                                "No successful analyses to export.", parent=self)
+            return
+        path = filedialog.asksaveasfilename(
+            title="Save vocabulary complexity CSV",
+            defaultextension=".csv",
+            filetypes=[("CSV", "*.csv")],
+            initialfile="vocab_complexity.csv",
+        )
+        if not path:
+            return
+        import csv
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+            writer.writeheader()
+            writer.writerows(rows)
+        self._status_var.set(f"Exported {len(rows)} row(s) to {Path(path).name}")
+
+    def _show_vocab_chart(self) -> None:
+        ok_results = [r for r in self._vocab_results if r.status == "ok"]
+        if not ok_results:
+            messagebox.showinfo("No Data",
+                                "Analyze some CC files first.", parent=self)
+            return
+
+        chart_type = self._vocab_chart_var.get()
+        labels = [Path(r.cc_path).stem for r in ok_results]
+        rows   = [r.to_flat_row() for r in ok_results]
+        x      = list(range(len(labels)))
+
+        import matplotlib
+        matplotlib.use("TkAgg")
+        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+        win = tk.Toplevel(self)
+        win.title(f"Vocabulary — {chart_type}")
+        win.geometry("760x460")
+
+        fig, ax = plt.subplots(figsize=(9, 5), tight_layout=True)
+
+        if chart_type == "Stacked Tiers":
+            t1 = [r.get("vocab_tier1_proportion") or 0.0 for r in rows]
+            t2 = [r.get("vocab_tier2_proportion") or 0.0 for r in rows]
+            t3 = [r.get("vocab_tier3_proportion") or 0.0 for r in rows]
+            b2 = t1
+            b3 = [a + b for a, b in zip(t1, t2)]
+            ax.bar(x, t1, label="Tier 1 — everyday",  color="#4a90d9")
+            ax.bar(x, t2, bottom=b2, label="Tier 2 — academic", color="#f5a623")
+            ax.bar(x, t3, bottom=b3, label="Tier 3 — rare",     color="#d0021b")
+            ax.set_ylabel("Proportion of content words")
+            ax.set_ylim(0, 1.08)
+            ax.yaxis.set_major_formatter(
+                plt.FuncFormatter(lambda v, _: f"{v:.0%}")
+            )
+            ax.legend(loc="upper right", fontsize=8)
+
+        elif chart_type == "Flesch Reading Ease":
+            vals = [r.get("read_flesch_reading_ease") for r in rows]
+            bars = ax.bar(x, [v if v is not None else 0.0 for v in vals],
+                          color="#5b9bd5")
+            for bar, v in zip(bars, vals):
+                if v is None:
+                    bar.set_color("#cccccc")
+            ax.axhline(90, color="#27ae60", linestyle="--", linewidth=0.9,
+                       label="90 — very easy")
+            ax.axhline(60, color="#f39c12", linestyle="--", linewidth=0.9,
+                       label="60 — standard")
+            ax.axhline(30, color="#c0392b", linestyle="--", linewidth=0.9,
+                       label="30 — difficult")
+            ax.set_ylabel("Flesch Reading Ease")
+            ax.set_ylim(0, 115)
+            ax.legend(loc="upper right", fontsize=8)
+
+        elif chart_type == "F-K Grade Level":
+            vals = [r.get("read_flesch_kincaid_grade") for r in rows]
+            bars = ax.bar(x, [v if v is not None else 0.0 for v in vals],
+                          color="#8e6bbf")
+            for bar, v in zip(bars, vals):
+                if v is None:
+                    bar.set_color("#cccccc")
+            for grade, lbl in [(2, "Grade 2"), (5, "Grade 5"), (8, "Grade 8")]:
+                ax.axhline(grade, color="#888888", linestyle=":",
+                           linewidth=0.9, label=lbl)
+            ax.set_ylabel("Flesch-Kincaid Grade Level")
+            ax.legend(loc="upper right", fontsize=8)
+
+        elif chart_type == "Age of Acquisition":
+            vals = [r.get("vocab_aoa_mean") for r in rows]
+            bars = ax.bar(x, [v if v is not None else 0.0 for v in vals],
+                          color="#e67e22")
+            for bar, v in zip(bars, vals):
+                if v is None:
+                    bar.set_color("#cccccc")
+            ax.axhline(6.0, color="#2980b9", linestyle="--", linewidth=0.9,
+                       label="6 yrs — early childhood boundary")
+            ax.set_ylabel("Mean Age of Acquisition (years)")
+            ax.legend(loc="upper right", fontsize=8)
+
+        elif chart_type == "MTLD (Lexical Diversity)":
+            vals = [r.get("div_mtld") for r in rows]
+            bars = ax.bar(x, [v if v is not None else 0.0 for v in vals],
+                          color="#27ae60")
+            for bar, v in zip(bars, vals):
+                if v is None:
+                    bar.set_color("#cccccc")
+            ax.set_ylabel("MTLD")
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=7)
+        ax.set_title(chart_type)
+
+        canvas = FigureCanvasTkAgg(fig, master=win)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        win.protocol("WM_DELETE_WINDOW", lambda: (plt.close(fig), win.destroy()))
+
+    # -----------------------------------------------------------------------
     # About
     # -----------------------------------------------------------------------
 
@@ -2580,13 +3210,17 @@ class SettingsDialog(tk.Toplevel):
         self._range_vars  = {k: tk.StringVar() for k in self._RANGE_KEYS}
         self._total_var   = tk.StringVar()
         self._desc_var    = tk.StringVar()
+        self._speech_enabled_var = tk.BooleanVar(
+            value=parent._cfg.get("speech_transcription_enabled", False))
+        self._speech_model_var   = tk.StringVar(
+            value=parent._cfg.get("speech_whisper_model", "small"))
 
         self._build()
         self._fill_from_cfg(parent._cfg)
         self._refresh_preset_desc()
         self._update_total()
 
-        self.geometry("480x560")
+        self.geometry("480x660")
         self.update_idletasks()
         px, py = parent.winfo_rootx(), parent.winfo_rooty()
         pw, ph = parent.winfo_width(), parent.winfo_height()
@@ -2653,6 +3287,61 @@ class SettingsDialog(tk.Toplevel):
                  fg="#7a5c00", bg="#fffbe6",
                  font=("TkDefaultFont", 8), relief=tk.FLAT,
                  padx=6, pady=4).pack(fill=tk.X, padx=10, pady=(0, 4))
+
+        # Speech Analysis section
+        sf = tk.LabelFrame(self, text="Speech Analysis", padx=8, pady=6)
+        sf.pack(fill=tk.X, padx=10, pady=(0, 4))
+
+        try:
+            import faster_whisper as _fw  # noqa: F401
+            _fw_installed = True
+        except ImportError:
+            _fw_installed = False
+
+        chk_row = tk.Frame(sf)
+        chk_row.pack(fill=tk.X)
+        tk.Checkbutton(
+            chk_row,
+            text="Enable auto-transcription with Whisper AI  (slow — ~2–5 min/episode on CPU)",
+            variable=self._speech_enabled_var,
+            font=("TkDefaultFont", 9),
+        ).pack(side=tk.LEFT)
+
+        if not _fw_installed:
+            tk.Label(
+                sf,
+                text="⚠  faster-whisper is not installed. Open a terminal and run:\n"
+                     "    pip install faster-whisper",
+                fg="#cc0000", font=("TkDefaultFont", 9),
+                anchor="w", justify="left",
+            ).pack(fill=tk.X, pady=(2, 0))
+
+        model_row = tk.Frame(sf)
+        model_row.pack(fill=tk.X, pady=(4, 0))
+        tk.Label(model_row, text="Model size:", width=11, anchor="w").pack(side=tk.LEFT)
+        ttk.Combobox(
+            model_row, textvariable=self._speech_model_var,
+            values=["tiny", "base", "small", "medium", "large"],
+            state="readonly", width=8,
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        tk.Label(
+            model_row,
+            text="tiny = fastest · small = balanced · large = most accurate",
+            fg="#555555", font=("TkDefaultFont", 8),
+        ).pack(side=tk.LEFT)
+
+        tk.Label(
+            sf,
+            text="CC files (.srt / .vtt) alongside the video are always used first and are instant — "
+                 "Whisper only runs when no CC file is found. "
+                 "For words-per-minute and speech density, tiny or base is usually sufficient: "
+                 "occasional word errors (e.g. hearing 'ship' as 'shift') have almost no effect on the word count. "
+                 "Larger models only help if you need readable transcription text.\n\n"
+                 "Note: episodes already in the cache must be re-analyzed after enabling this setting — "
+                 "select the episode and click Analyze Episode again.",
+            fg="#555555", font=("TkDefaultFont", 8),
+            wraplength=440, anchor="w", justify="left",
+        ).pack(fill=tk.X, pady=(4, 0))
 
         ttk.Separator(self, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=6, pady=2)
 
@@ -2774,6 +3463,8 @@ class SettingsDialog(tk.Toplevel):
         new_cfg = copy.deepcopy(self._app._cfg)
         new_cfg["sensory_load_weights"] = weights
         new_cfg["normalization_reference_ranges"] = ranges
+        new_cfg["speech_transcription_enabled"] = self._speech_enabled_var.get()
+        new_cfg["speech_whisper_model"] = self._speech_model_var.get()
         return new_cfg
 
     def _apply(self) -> None:
@@ -2861,6 +3552,8 @@ class SettingsDialog(tk.Toplevel):
             existing = json.loads(config_path.read_text(encoding="utf-8"))
             existing["sensory_load_weights"] = new_cfg["sensory_load_weights"]
             existing["normalization_reference_ranges"] = new_cfg["normalization_reference_ranges"]
+            existing["speech_transcription_enabled"] = new_cfg["speech_transcription_enabled"]
+            existing["speech_whisper_model"] = new_cfg["speech_whisper_model"]
             config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
             messagebox.showinfo("Saved", f"Default settings saved to:\n{config_path}",
                                 parent=self)
