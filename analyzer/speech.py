@@ -128,6 +128,12 @@ _whisper_cache: dict[str, Any] = {}
 
 def _get_whisper_model(model_size: str) -> Any:
     if model_size not in _whisper_cache:
+        import os, warnings
+        os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+        os.environ.setdefault("HF_HUB_VERBOSITY", "error")
+        warnings.filterwarnings(
+            "ignore", message=".*symlinks.*", category=UserWarning
+        )
         from faster_whisper import WhisperModel
         _whisper_cache[model_size] = WhisperModel(
             model_size, device="cpu", compute_type="int8"
