@@ -21,6 +21,7 @@ from analyzer.aggregate import compute_show_aggregate, save_show_results
 from analyzer.cache import load_cached, save_cache
 from analyzer.config_loader import load_config, _base_dir
 from analyzer.engine import analyze_episode
+from analyzer.speech import transcribe_only, _find_cc_file
 from analyzer.metrics_sensory import rescore_episode
 from analyzer.schema import EpisodeResult, ShowAggregate
 from analyzer.db import (
@@ -236,6 +237,8 @@ class App(tk.Tk):
         self._queue: queue.Queue = queue.Queue()
         self._ep_queue: list[Path] = []       # episodes waiting to be analyzed
         self._analyzing: Path | None = None   # episode currently running
+        self._srt_queue: list[tuple[Path, float]] = []  # (video_path, duration_sec) for transcription-only
+        self._srt_active = False               # transcription worker running
         self._watch_live_active = False        # live window open
         self._current_ep_result: EpisodeResult | None = None   # for export/chart
         self._current_ep_path: Path | None = None               # for DB look-ups
@@ -390,6 +393,21 @@ class App(tk.Tk):
             "(e.g. Little_Bear_spread_2026-06-30/). The episodes CSV is found "
             "automatically.",
             wraplength=300,
+        )
+
+        ttk.Separator(btn_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(6, 4))
+        self._btn_transcribe_show = tk.Button(
+            btn_frame, text="Transcribe Missing Subtitles",
+            command=self._transcribe_show_subtitles, state=tk.DISABLED, fg="#006633",
+        )
+        self._btn_transcribe_show.pack(fill=tk.X, pady=2)
+        _WidgetTooltip(
+            self._btn_transcribe_show,
+            "Runs Whisper AI transcription only on episodes that have already been\n"
+            "analyzed but have no .srt or .vtt subtitle file yet.\n\n"
+            "Skips episodes that already have subtitles. Does not re-run the full\n"
+            "video/audio analysis — transcription only.",
+            wraplength=280,
         )
 
         ttk.Separator(btn_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(6, 4))
@@ -609,6 +627,7 @@ class App(tk.Tk):
         self._btn_ep.config(state=tk.DISABLED)
         self._btn_show.config(state=tk.DISABLED)
         self._btn_watch.config(state=tk.DISABLED)
+        self._btn_transcribe_show.config(state=tk.DISABLED)
         self._btn_pin.config(state=tk.DISABLED)
         self._btn_compare.config(state=tk.DISABLED)
         if not sel:
@@ -622,6 +641,8 @@ class App(tk.Tk):
             self._show_episode_cached(Path(path))
         elif kind == "show":
             self._btn_show.config(state=tk.NORMAL)
+            if not self._srt_active:
+                self._btn_transcribe_show.config(state=tk.NORMAL)
             self._show_show_cached(Path(path))
         elif kind == "category":
             return  # category selected — no actions available
@@ -824,6 +845,7 @@ class App(tk.Tk):
             )
             return
         agg = compute_show_aggregate(series_name, ok_results)
+        save_show_results(self._root_folder, series_name, ok_results, agg)
         self._render_show(agg, ok_results, total_eps=total_eps)
 
     # -----------------------------------------------------------------------
@@ -1165,6 +1187,59 @@ class App(tk.Tk):
                 f"Added {added} episode(s) from '{show_dir.name}' to the queue."
             )
 
+    def _transcribe_show_subtitles(self) -> None:
+        """Queue Whisper transcription for analyzed episodes that have no subtitle file."""
+        kind, path = self._selected_item()
+        if kind != "show":
+            return
+        show_dir = Path(path)
+        skey = show_key(self._root_folder, show_dir)
+
+        items: list[tuple[Path, float]] = []
+        for ep in list_episodes(show_dir):
+            # Only episodes that have already been analyzed
+            cached = load_cached(self._root_folder, skey, ep.stem)
+            if not cached or cached.get("status") != "ok":
+                continue
+            # Skip if subtitle file already exists
+            if _find_cc_file(ep) is not None:
+                continue
+            duration_sec = cached.get("duration_sec", 0.0)
+            items.append((ep, duration_sec))
+
+        if not items:
+            self._status_var.set(
+                f"'{show_dir.name}': all analyzed episodes already have subtitles."
+            )
+            return
+
+        self._srt_queue = items
+        self._srt_active = True
+        self._btn_transcribe_show.config(state=tk.DISABLED)
+        self._status_var.set(
+            f"Transcription queued: {len(items)} episode(s) from '{show_dir.name}'."
+        )
+        threading.Thread(target=self._worker_transcribe, daemon=True).start()
+
+    def _worker_transcribe(self) -> None:
+        """Background thread: transcribe each queued episode in order."""
+        while self._srt_queue:
+            ep_path, duration_sec = self._srt_queue.pop(0)
+            remaining = len(self._srt_queue)
+            self._queue.put({
+                "t": "srt_progress",
+                "s": f"Transcribing {ep_path.name}  ({remaining} remaining after this)…",
+            })
+            result = transcribe_only(ep_path, duration_sec, self._cfg)
+            self._queue.put({
+                "t": "srt_ep_done",
+                "ep_path": ep_path,
+                "available": result.available,
+                "source": result.source,
+                "remaining": remaining,
+            })
+        self._queue.put({"t": "srt_all_done"})
+
     def _watch_live(self) -> None:
         kind, path = self._selected_item()
         if kind != "episode":
@@ -1211,6 +1286,10 @@ class App(tk.Tk):
         self._analyzing = self._ep_queue.pop(0)
         self._update_queue_display()
         self._progress["value"] = 0
+        # Collect unreferenced Tkinter Variable objects now, on the main thread,
+        # so the worker's GC cannot trigger Variable.__del__ from the wrong thread
+        # (which causes "main thread is not in main loop" / Tcl_AsyncDelete errors).
+        import gc; gc.collect()
         threading.Thread(target=self._worker_episode,
                          args=(self._analyzing,), daemon=True).start()
 
@@ -1354,6 +1433,21 @@ class App(tk.Tk):
         elif kind == "vocab_progress":
             n, total = msg["n"], msg["total"]
             self._vocab_progress_var.set(f"Analyzing {n} / {total}…")
+
+        elif kind == "srt_progress":
+            self._status_var.set(msg["s"])
+
+        elif kind == "srt_ep_done":
+            ep_path = msg["ep_path"]
+            if msg["available"]:
+                print(f"[transcribe] done: {ep_path.name}", flush=True)
+            else:
+                print(f"[transcribe] failed ({msg['source']}): {ep_path.name}", flush=True)
+
+        elif kind == "srt_all_done":
+            self._srt_active = False
+            self._status_var.set("Transcription complete.")
+            self._on_tree_select()   # re-enable button
 
         elif kind == "vocab_done":
             self._vocab_analysis_running = False
@@ -2815,20 +2909,52 @@ class App(tk.Tk):
             return
 
         chart_type = self._vocab_chart_var.get()
-        labels = [Path(r.cc_path).stem for r in ok_results]
-        rows   = [r.to_flat_row() for r in ok_results]
-        x      = list(range(len(labels)))
+        raw_labels = [Path(r.cc_path).stem for r in ok_results]
+        rows       = [r.to_flat_row() for r in ok_results]
+        x          = list(range(len(raw_labels)))
+
+        # Strip common prefix (usually the show name) so labels are just episode IDs
+        def _strip_common_prefix(strs: list[str]) -> list[str]:
+            if len(strs) < 2:
+                return strs
+            words = [s.split() for s in strs]
+            n = min(len(w) for w in words)
+            cut = 0
+            for i in range(n):
+                if len({w[i] for w in words}) == 1:
+                    cut = i + 1
+                else:
+                    break
+            return [" ".join(w[cut:]) if cut else s for w, s in zip(words, strs)]
+
+        labels = _strip_common_prefix(raw_labels)
+        # Truncate anything still too long
+        MAX_LABEL = 38
+        labels = [l if len(l) <= MAX_LABEL else l[:MAX_LABEL - 1] + "…" for l in labels]
 
         import matplotlib
         matplotlib.use("TkAgg")
         import matplotlib.pyplot as plt
-        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+
+        n_eps    = len(labels)
+        fig_w    = max(9, min(n_eps * 0.35, 28))   # 0.35 in per bar, capped at 28 in
+        fig_h    = 5.5
 
         win = tk.Toplevel(self)
         win.title(f"Vocabulary — {chart_type}")
-        win.geometry("760x460")
+        win.geometry("900x520")
 
-        fig, ax = plt.subplots(figsize=(9, 5), tight_layout=True)
+        # Scrollable canvas so wide charts don't get clipped
+        outer = tk.Frame(win)
+        outer.pack(fill=tk.BOTH, expand=True)
+        h_scroll = tk.Scrollbar(outer, orient=tk.HORIZONTAL)
+        h_scroll.pack(side=tk.BOTTOM, fill=tk.X)
+        tk_canvas = tk.Canvas(outer, xscrollcommand=h_scroll.set)
+        tk_canvas.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        h_scroll.config(command=tk_canvas.xview)
+
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h), tight_layout=True)
 
         if chart_type == "Stacked Tiers":
             t1 = [r.get("vocab_tier1_proportion") or 0.0 for r in rows]
@@ -2898,12 +3024,22 @@ class App(tk.Tk):
             ax.set_ylabel("MTLD")
 
         ax.set_xticks(x)
-        ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=7)
+        rot = 45 if n_eps <= 20 else 60
+        ax.set_xticklabels(labels, rotation=rot, ha="right", fontsize=7)
         ax.set_title(chart_type)
 
-        canvas = FigureCanvasTkAgg(fig, master=win)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        mpl_canvas = FigureCanvasTkAgg(fig, master=tk_canvas)
+        mpl_canvas.draw()
+        widget = mpl_canvas.get_tk_widget()
+        # Embed matplotlib widget inside the scrollable tk.Canvas
+        widget_id = tk_canvas.create_window(0, 0, anchor="nw", window=widget)
+
+        def _on_configure(event):
+            # Update scroll region to match the matplotlib widget's actual size
+            tk_canvas.configure(scrollregion=tk_canvas.bbox("all"))
+        widget.bind("<Configure>", _on_configure)
+
+        NavigationToolbar2Tk(mpl_canvas, win)
         win.protocol("WM_DELETE_WINDOW", lambda: (plt.close(fig), win.destroy()))
 
     # -----------------------------------------------------------------------

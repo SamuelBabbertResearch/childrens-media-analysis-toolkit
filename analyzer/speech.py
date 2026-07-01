@@ -13,9 +13,18 @@ episodes with and without CC files.
 """
 
 from __future__ import annotations
+import os as _os
 import re
+import warnings as _warnings
 from pathlib import Path
 from typing import Any
+
+# Set before faster-whisper is imported so the HuggingFace Hub warnings
+# never appear. Done at module load time (main thread) rather than inside
+# the worker so global state is not mutated from a background thread.
+_os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+_os.environ.setdefault("HF_HUB_VERBOSITY", "error")
+_warnings.filterwarnings("ignore", message=".*symlinks.*", category=UserWarning)
 
 from .schema import SpeechMetrics
 
@@ -128,12 +137,6 @@ _whisper_cache: dict[str, Any] = {}
 
 def _get_whisper_model(model_size: str) -> Any:
     if model_size not in _whisper_cache:
-        import os, warnings
-        os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
-        os.environ.setdefault("HF_HUB_VERBOSITY", "error")
-        warnings.filterwarnings(
-            "ignore", message=".*symlinks.*", category=UserWarning
-        )
         from faster_whisper import WhisperModel
         _whisper_cache[model_size] = WhisperModel(
             model_size, device="cpu", compute_type="int8"
@@ -210,6 +213,24 @@ def _transcribe(video_path: Path, duration_sec: float, model_size: str) -> Speec
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
+def transcribe_only(
+    video_path: Path,
+    duration_sec: float,
+    cfg: dict[str, Any],
+) -> SpeechMetrics:
+    """Run Whisper transcription and save an SRT alongside the video.
+
+    Unlike compute_speech_metrics, this always runs Whisper even when
+    transcription_enabled is False — the caller is explicitly requesting it.
+    Returns SpeechMetrics(available=False) if faster-whisper is not installed.
+    """
+    try:
+        import faster_whisper  # noqa: F401
+    except ImportError as exc:
+        return SpeechMetrics(available=False, source=f"not_installed:{exc}")
+    return _transcribe(video_path, duration_sec, cfg.get("speech_whisper_model", "small"))
+
 
 def compute_speech_metrics(
     video_path: Path,

@@ -1,0 +1,228 @@
+{
+  "sampling_protocol": {
+    "sample_fps": 2,
+    "preset": "General / All Ages",
+    "flashing_luminance_threshold": 0.1,
+    "seed": 42,
+    "episode_thresholds": {
+      "analyze_all_if_under": 15,
+      "medium_show_n": 10,
+      "large_show_threshold": 60,
+      "large_show_n": 20
+    }
+  },
+  "shows": [
+    {
+      "show_key": "Little Bear (Full Series)",
+      "display_name": "Little Bear",
+      "category": "children",
+      "network": "Nickelodeon",
+      "years": "1995–2003",
+      "audience_label": "Preschool ages 2–5",
+      "audience_source": "Nickelodeon",
+      "sampling": "full_series"
+    },
+    {
+      "show_key": "Franklin",
+      "display_name": "Franklin",
+      "category": "children",
+      "network": "Nick Jr.",
+      "years": "1996–2004",
+      "audience_label": "Preschool",
+      "audience_source": "Nick Jr.",
+      "sampling": "full_series"
+    },
+    {
+      "show_key": "Arthur",
+      "display_name": "Arthur",
+      "category": "children",
+      "network": "PBS",
+      "years": "1996–2022",
+      "audience_label": "Ages 4–8",
+      "audience_source": "PBS Kids",
+      "sampling": "era",
+      "note": "Only Season 1 currently analyzed. Era split planned when multi-season data is available.",
+      "eras": [
+        {
+          "name": "Traditional animation",
+          "years": "1996–2011",
+          "seasons": "1–15",
+          "show_key_folder": "Arthur",
+          "status": "partial — Season 1 only"
+        },
+        {
+          "name": "Flash / digital animation",
+          "years": "2012–2022",
+          "seasons": "16–25",
+          "show_key_folder": null,
+          "status": "not yet analyzed"
+        }
+      ]
+    },
+    {
+      "show_key": "Bluey",
+      "display_name": "Bluey",
+      "category": "children",
+      "network": "ABC Kids (Australia) / Disney+",
+      "years": "2018–present",
+      "audience_label": "Preschool ages 2–7",
+      "audience_source": "ABC Kids",
+      "sampling": "full_series"
+    },
+    {
+      "show_key": "Spongebob Squarepants Season 1",
+      "display_name": "SpongeBob SquarePants",
+      "category": "children",
+      "network": "Nickelodeon",
+      "years": "1999–present",
+      "audience_label": "General children's audience",
+      "audience_source": "Nickelodeon",
+      "sampling": "era",
+      "eras": [
+        {
+          "name": "Hillenburg era",
+          "years": "1999–2004",
+          "seasons": "1–3",
+          "show_key_folder": "Spongebob Squarepants Season 1",
+          "status": "partial — Season 1 only"
+        },
+        {
+          "name": "Post-movie era",
+          "years": "2005–2015",
+          "seasons": "4–9",
+          "show_key_folder": "???",
+          "status": "not yet analyzed"
+        },
+        {
+          "name": "Modern era",
+          "years": "2015–present",
+          "seasons": "10+",
+          "show_key_folder": "???",
+          "status": "not yet analyzed"
+        }
+      ]
+    },
+    {
+      "show_key": "Curious George Season One",
+      "display_name": "Curious George",
+      "category": "children",
+      "network": "PBS Kids",
+      "years": "2006–2015",
+      "audience_label": "Ages 4–7",
+      "audience_source": "PBS Kids",
+      "sampling": "full_series",
+      "note": "Only Season 1 currently analyzed"
+    },
+    {
+      "show_key": "Peep and the Big Wide World",
+      "display_name": "Peep and the Big Wide World",
+      "category": "children",
+      "network": "TVO Kids / Discovery Kids",
+      "years": "2004–2008",
+      "audience_label": "Preschool",
+      "audience_source": "TVO Kids",
+      "sampling": "full_series"
+    },
+    {
+      "show_key": "The Bearstain Bears",
+      "display_name": "The Berenstain Bears",
+      "category": "children",
+      "network": "Treehouse TV / CBS",
+      "years": "2003–2006",
+      "audience_label": "Preschool",
+      "audience_source": "Treehouse TV",
+      "sampling": "full_series"
+    },
+    {
+      "show_key": "A Charlie Brown Christmas (1965)",
+      "display_name": "A Charlie Brown Christmas",
+      "category": "children",
+      "network": "CBS",
+      "years": "1965",
+      "audience_label": "All ages",
+      "audience_source": "CBS",
+      "sampling": "full_series"
+    },
+    {
+      "show_key": "Mr Beast",
+      "display_name": "MrBeast",
+      "category": "baseline",
+      "genre": "Challenge / philanthropy",
+      "platform": "YouTube",
+      "years": "2012–present",
+      "sampling": "full_series"
+    },
+    {
+      "show_key": "iShowSpeed",
+      "display_name": "IShowSpeed",
+      "category": "baseline",
+      "genre": "Gaming / reaction",
+      "platform": "YouTube / Kick",
+      "years": "2020–present",
+      "sampling": "full_series"
+    },
+    {
+      "show_key": "Bob Ross",
+      "display_name": "Bob Ross — The Joy of Painting",
+      "category": "baseline",
+      "genre": "Instructional / art",
+      "network": "PBS",
+      "years": "1983–1994",
+      "sampling": "full_series"
+    },
+    {
+      "show_key": "Game Theory",
+      "display_name": "Game Theory",
+      "category": "baseline",
+      "genre": "Educational / gaming",
+      "platform": "YouTube",
+      "years": "2011–present",
+      "sampling": "full_series"
+    },
+    {
+      "show_key": "Evangelion",
+      "display_name": "Neon Genesis Evangelion",
+      "category": "baseline",
+      "genre": "Anime / psychological drama",
+      "network": "TV Tokyo",
+      "years": "1995–1996",
+      "sampling": "full_series"
+    },
+    {
+      "show_key": "Jordan Peterson",
+      "display_name": "Jordan Peterson",
+      "category": "uncategorized",
+      "review_needed": true
+    },
+    {
+      "show_key": "Little Bear",
+      "display_name": "Little Bear",
+      "category": "uncategorized",
+      "review_needed": true
+    },
+    {
+      "show_key": "My Neighbor Totoro",
+      "display_name": "My Neighbor Totoro",
+      "category": "uncategorized",
+      "review_needed": true
+    },
+    {
+      "show_key": "Ghibili",
+      "display_name": "Ghibili",
+      "category": "uncategorized",
+      "review_needed": true
+    },
+    {
+      "show_key": "Spongebob Squarepants Season 1/Season 1",
+      "display_name": "Season 1",
+      "category": "uncategorized",
+      "review_needed": true
+    },
+    {
+      "show_key": "Spongebob Squarepants Season 1/Season 2",
+      "display_name": "Season 2",
+      "category": "uncategorized",
+      "review_needed": true
+    }
+  ]
+}
