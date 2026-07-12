@@ -185,10 +185,12 @@ class SampleManifest:
     total_available: int
     total_selected: int
     notes: list[str]
+    trial_name: str | None = None   # user-given name shown in the Trials tab
 
     def to_dict(self) -> dict:
         return {
             "entry_id": self.entry_id,
+            "trial_name": self.trial_name,
             "generated_at_utc": self.generated_at_utc,
             "software_version": self.software_version,
             "method": self.method,

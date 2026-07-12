@@ -21,6 +21,15 @@ class ScenePacingMetrics:
     shot_length_cv: float = 0.0
     # Rolling cut count sampled every 30 seconds across the episode
     timeline_cuts_per_30s: list[float] = field(default_factory=list)
+    # Dissolve detection (optional — only populated when dissolve_detection_enabled=true)
+    dissolves_per_min: float = 0.0
+    dissolve_timestamps: list[dict] = field(default_factory=list)  # {timestamp_sec, duration_sec, peak_score}
+    # Cut classification (optional — cut_classification_enabled=true).
+    # Distinguishes low-cost shot-reverse-shot cuts from scene relocations
+    # (Lang: related vs unrelated cuts). Similarity threshold is unvalidated.
+    scene_changes_per_min: float = 0.0
+    within_scene_cut_fraction: float = 0.0   # labeled cuts only, 0.0–1.0
+    cut_classifications: list[dict] = field(default_factory=list)  # {timestamp_sec, similarity, label}
 
 
 @dataclass
@@ -124,7 +133,16 @@ class EpisodeResult:
             config=d.get("config", {}),
             metrics=EpisodeMetrics(
                 shot_length=ShotLengthMetrics(**sl) if sl else ShotLengthMetrics(),
-                scene_pacing=ScenePacingMetrics(**sp) if sp else ScenePacingMetrics(),
+                scene_pacing=ScenePacingMetrics(
+                    cuts_per_min=sp.get("cuts_per_min", 0.0),
+                    shot_length_cv=sp.get("shot_length_cv", 0.0),
+                    timeline_cuts_per_30s=sp.get("timeline_cuts_per_30s", []),
+                    dissolves_per_min=sp.get("dissolves_per_min", 0.0),
+                    dissolve_timestamps=sp.get("dissolve_timestamps", []),
+                    scene_changes_per_min=sp.get("scene_changes_per_min", 0.0),
+                    within_scene_cut_fraction=sp.get("within_scene_cut_fraction", 0.0),
+                    cut_classifications=sp.get("cut_classifications", []),
+                ) if sp else ScenePacingMetrics(),
                 color_saturation=ColorSaturationMetrics(
                     mean=cs.get("mean", 0.0),
                     temporal_var=cs.get("temporal_var", 0.0),

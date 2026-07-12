@@ -95,6 +95,8 @@ a = Analysis(
         'reportlab.platypus',
         'reportlab.pdfgen',
         'reportlab.pdfgen.canvas',
+        # python-vlc (built-in coding-editor player; needs VLC installed at runtime)
+        'vlc',
         # wordfreq
         'wordfreq',
         'wordfreq.tokens',

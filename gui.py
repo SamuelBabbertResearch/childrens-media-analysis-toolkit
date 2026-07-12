@@ -37,6 +37,8 @@ from analyzer.show_index import (
 )
 from gui_live import LiveAnalysisWindow
 from gui_sampler import SamplerWindow
+from gui_validation import ValidationTab
+from gui_trials import TrialsTab
 from gui_wiki_import import WikiImportDialog
 from gui_tvmaze_import import TVMazeImportDialog
 
@@ -451,6 +453,20 @@ class App(tk.Tk):
         left_nb.add(lang_tab, text="Language")
         self._build_language_tab(lang_tab)
 
+        # ---- Validation tab ----
+        val_tab = ValidationTab(left_nb,
+                                get_root_folder=lambda: self._root_folder)
+        left_nb.add(val_tab, text="Validation")
+
+        # ---- Trials tab ----
+        trials_tab = TrialsTab(
+            left_nb,
+            get_root_folder=lambda: self._root_folder,
+            on_select=self._show_trial_results,
+            on_aggregate=lambda t: self._load_sample_results_from(
+                t["manifest_path"]))
+        left_nb.add(trials_tab, text="Trials")
+
         # --- Right: results ---
         right = tk.Frame(pane)
         pane.add(right, minsize=420)
@@ -716,11 +732,20 @@ class App(tk.Tk):
         )
         if not manifest_path:
             return
+        self._load_sample_results_from(Path(manifest_path))
+
+    def _load_sample_results_from(self, manifest_path: Path) -> None:
+        """Compute and render the aggregate for one sample manifest's episodes."""
+        if not self._root_folder:
+            messagebox.showwarning(
+                "No root folder",
+                "Choose a root folder first so CMAT knows where to find the cache.",
+                parent=self,
+            )
+            return
 
         import json as _json
         import pandas as _pd
-
-        manifest_path = Path(manifest_path)
         try:
             manifest = _json.loads(manifest_path.read_text(encoding="utf-8"))
         except Exception as exc:
@@ -870,6 +895,65 @@ class App(tk.Tk):
         self._notes_text.config(state=tk.DISABLED)
         self._btn_save_note.config(state=tk.DISABLED)
         self._clear_metadata_fields()
+
+    def _show_trial_results(self, trial: dict) -> None:
+        """Render a Trials-tab entry in the Results panel (right side)."""
+        from analyzer.trials import KIND_EXPLANATIONS, KIND_LABELS
+        self._write_txt("")  # clears episode state, notes, export buttons
+        t = self._txt
+        t.config(state=tk.NORMAL)
+        t.delete("1.0", tk.END)
+        t.insert(tk.END, f"{trial.get('name', trial['episode'])}\n", "h1")
+        t.insert(tk.END,
+                 f"{KIND_LABELS.get(trial['kind'], trial['kind'])}"
+                 f" — {trial['date']}\n\n", "dim")
+        expl = KIND_EXPLANATIONS.get(trial["kind"], "")
+        if expl:
+            t.insert(tk.END, expl + "\n\n")
+
+        def row(label: str, value) -> None:
+            t.insert(tk.END, f"{label:<20}", "h2")
+            t.insert(tk.END, f"{value}\n", "mono")
+
+        row("Key result",  trial["result"])
+        row("Detail",      trial["detail"])
+        row("Sampling",    trial["sampling"])
+        row("Episodes",    trial["n_episodes"])
+        row("Window",      trial["window"])
+        row("On website",  "yes" if trial["published"] else "no")
+        row("Tool version", trial["git_commit"])
+        row("Folder",      trial["folder"])
+
+        if trial["kind"] == "episode_sample":
+            from analyzer.trials import sample_coverage
+            cov = sample_coverage(trial)
+            if cov:
+                row("Coding coverage",
+                    f"{cov['n_transition_coded']}/{cov['n_episodes']} "
+                    f"transition-coded · {cov['n_event_coded']}/"
+                    f"{cov['n_episodes']} event-coded")
+            raw = trial.get("raw", {})
+            t.insert(tk.END, "\nSelected episodes\n", "h2")
+            shown = 0
+            for stratum in raw.get("strata", []):
+                for ep in stratum.get("episodes", []):
+                    if shown >= 40:
+                        t.insert(tk.END, "  …\n", "dim")
+                        break
+                    label = (ep.get("title") or ep.get("episode") or str(ep)
+                             ) if isinstance(ep, dict) else str(ep)
+                    t.insert(tk.END, f"  {label}\n", "mono")
+                    shown += 1
+                if shown >= 40:
+                    break
+            if raw.get("notes"):
+                t.insert(tk.END, "\nSampler notes\n", "h2")
+                for n in raw["notes"]:
+                    t.insert(tk.END, f"  {n}\n", "dim")
+
+        t.insert(tk.END, "\nDouble-click the trial row for the full manifest "
+                         "and file-open buttons.\n", "dim")
+        t.config(state=tk.DISABLED)
 
     def _clear_metadata_fields(self) -> None:
         for entry in (self._entry_air_date, self._entry_season, self._entry_ep_num):
@@ -1032,6 +1116,35 @@ class App(tk.Tk):
                 _msg = "no CC file found and auto-transcription is disabled"
             t.insert(tk.END, f"  Not available — {_msg}\n", "dim")
 
+        # Fantastical events — human-coded channel, joined from validation/
+        from analyzer.event_coding import latest_rates_for_stem
+        ep_stem = Path(result.file).stem
+        ev = latest_rates_for_stem(ep_stem)
+        t.insert(tk.END, "\nFantastical Events (human-coded)\n", "h2")
+        if ev:
+            win = ev.get("window")
+            win_txt = (f"window {win[0]:.0f}–{win[1]:.0f}s"
+                       if isinstance(win, list) and len(win) == 2
+                       else "full episode")
+            t.insert(tk.END,
+                     f"  Events per minute:  {ev.get('events_per_min', '—')}\n")
+            t.insert(tk.END,
+                     f"  Events coded:       {ev.get('n_events', '—')}  "
+                     f"({win_txt}, coded {ev.get('date','')})\n")
+            t.insert(tk.END,
+                     "  Human judgment per EVENT_CODEBOOK.md — not a pixel "
+                     "measurement.\n", "dim")
+        else:
+            t.insert(tk.END,
+                     "  Not coded — fantasy is a semantic judgment coded by "
+                     "hand.\n  Use code_events.py (template → code in VLC → "
+                     "rates) to add it.\n", "dim")
+
+        # Validation provenance — CMAT reports its own accuracy
+        from analyzer.provenance import validation_statement
+        t.insert(tk.END, "\n" + "─" * 40 + "\n", "dim")
+        t.insert(tk.END, validation_statement() + "\n", "dim")
+
         t.config(state=tk.DISABLED)
 
         # Load saved note into the notes panel
@@ -1083,6 +1196,14 @@ class App(tk.Tk):
                  f"{analyzed} of {total_eps} episode(s) analyzed"
                  + (f"  |  {agg.failed_count} failed" if agg.failed_count else "")
                  + "\n\n", "dim")
+
+        if not sample_info:
+            t.insert(tk.END,
+                     "Note: this aggregate covers ALL analyzed episodes of the "
+                     "show — if you drew multiple samples, that union is not a "
+                     "designed sample. For sample-scoped numbers use the Trials "
+                     "tab → double-click a sample → Compute trial aggregate.\n\n",
+                     "dim")
 
         if sample_info:
             t.insert(tk.END, "Sample design\n", "h2")
@@ -1151,6 +1272,41 @@ class App(tk.Tk):
                              f"{m.flashing.luminance_delta_events_per_min:>7.1f} "
                              f"{audio_str} "
                              f"{m.sensory_load.score:>7.3f}\n", "mono")
+
+        # Fantastical events — human-coded channel, joined from validation/
+        from analyzer.event_coding import events_stats_for_stems
+        stems = [Path(r.file).stem for r in results if r.status == "ok"]
+        ev = events_stats_for_stems(stems)
+        t.insert(tk.END, "\nFantastical Events (human-coded)\n", "h2")
+        if ev:
+            rng = (f"  (range {ev['min']}–{ev['max']})"
+                   if ev["n_coded"] > 1 else "")
+            t.insert(tk.END,
+                     f"  Mean events/min:  {ev['mean']}{rng}\n")
+            t.insert(tk.END,
+                     f"  Coverage:         {ev['n_coded']} of {ev['n_total']} "
+                     f"episode(s) in this set are event-coded\n")
+            for e in ev["per_episode"]:
+                t.insert(tk.END,
+                         f"    {e['stem'][:40]:<42} "
+                         f"{e['events_per_min']:>6} ev/min "
+                         f"({e['n_events']} events)\n", "mono")
+            if ev["n_coded"] < ev["n_total"]:
+                t.insert(tk.END,
+                         "  ⚠ Partial coverage — this mean describes only the "
+                         "coded episodes, not the full set.\n", "dim")
+            t.insert(tk.END,
+                     "  Human judgments per EVENT_CODEBOOK.md — not pixel "
+                     "measurements.\n", "dim")
+        else:
+            t.insert(tk.END,
+                     "  No episodes in this set have event coding yet. Fantasy "
+                     "is hand-coded\n  (code_events.py: template → code in VLC "
+                     "→ rates), then appears here.\n", "dim")
+
+        from analyzer.provenance import validation_statement
+        t.insert(tk.END, "\n" + "─" * 40 + "\n", "dim")
+        t.insert(tk.END, validation_statement() + "\n", "dim")
 
         t.config(state=tk.DISABLED)
 
@@ -1552,8 +1708,11 @@ class App(tk.Tk):
                 initialfile=default,
             )
             if path:
+                from analyzer.provenance import validation_dict
                 Path(path).write_text(
-                    json.dumps(self._current_ep_result.to_dict(), indent=2),
+                    json.dumps({"validation_provenance": validation_dict(),
+                                "episode": self._current_ep_result.to_dict()},
+                               indent=2),
                     encoding="utf-8",
                 )
                 self._status_var.set(f"Exported JSON: {Path(path).name}")
@@ -1568,7 +1727,10 @@ class App(tk.Tk):
                 initialfile=default,
             )
             if path:
-                data = [r.to_dict() for r in self._current_show_results]
+                from analyzer.provenance import validation_dict
+                data = {"validation_provenance": validation_dict(),
+                        "episodes": [r.to_dict()
+                                     for r in self._current_show_results]}
                 Path(path).write_text(json.dumps(data, indent=2), encoding="utf-8")
                 self._status_var.set(f"Exported JSON: {Path(path).name}")
 
@@ -1592,7 +1754,13 @@ class App(tk.Tk):
         if path:
             df = results_to_dataframe(results)
             df.to_csv(path, index=False)
-            self._status_var.set(f"Exported CSV: {Path(path).name}")
+            # Sidecar keeps the data CSV clean while every export still carries
+            # the accuracy statement.
+            from analyzer.provenance import validation_statement
+            sidecar = Path(path).with_name(Path(path).stem + "_PROVENANCE.txt")
+            sidecar.write_text(validation_statement(), encoding="utf-8")
+            self._status_var.set(
+                f"Exported CSV: {Path(path).name} (+ provenance note)")
 
     def _export_pdf(self) -> None:
         from analyzer.report_pdf import export_episode_pdf, export_show_pdf

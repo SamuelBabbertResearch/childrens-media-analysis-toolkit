@@ -111,6 +111,13 @@ used as both the cache subfolder and the DB primary key.
 - **Scene pacing** — Derived from the same cut series: cut rate (cuts/min), variability
   (coefficient of variation = std/mean), rolling "cuts per 30s" timeline array.
   Captures *rhythm* distinct from raw shot length.
+  Optional, config-gated extras: dissolve detection (`dissolve_detection_enabled`,
+  off by default) and cut classification (`cut_classification_enabled`, on) which
+  labels each cut within_scene vs scene_change via frame similarity ±1s across the
+  cut (Lang: related vs unrelated cuts), adding `scene_changes_per_min` and
+  `within_scene_cut_fraction`. Similarity threshold (0.55) is UNVALIDATED — do not
+  fold these into sensory_load until tuned against the hand-coded ground truth in
+  `validation/` (see VALIDATION_LOG.md).
 - **Color saturation** — Sample frames at `sample_fps` (default 2), convert to HSV, mean of
   S channel per frame. Report mean and temporal variance.
 - **Color contrast** — Same frame sample; per-frame standard deviation of V (luminance) channel.

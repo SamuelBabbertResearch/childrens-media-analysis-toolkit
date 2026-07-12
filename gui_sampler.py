@@ -453,6 +453,18 @@ class SamplerWindow(tk.Toplevel):
 
         ttk.Separator(lf, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=4)
 
+        # Trial name — carried into manifest.json and shown in the Trials tab
+        name_row = tk.Frame(lf)
+        name_row.pack(fill=tk.X, pady=(2, 0))
+        tk.Label(name_row, text="Trial name:").pack(side=tk.LEFT)
+        self._trial_name_var = tk.StringVar(value="")
+        tk.Entry(name_row, textvariable=self._trial_name_var,
+                 width=36).pack(side=tk.LEFT, padx=(4, 8))
+        tk.Label(name_row,
+                 text="Names this sampling trial in the Trials tab "
+                      "(e.g. \"Little Bear spread n=10 pilot\").",
+                 fg="#666", font=("TkDefaultFont", 8)).pack(side=tk.LEFT)
+
         # Secondary: export manifest / CSV
         export_row = tk.Frame(lf)
         export_row.pack(fill=tk.X, pady=2)
@@ -652,6 +664,9 @@ class SamplerWindow(tk.Toplevel):
                 else Path(self._csv_var.get()).stem
             )
             result = sample(self._episodes, entry_id=eid, **params)
+            name = self._trial_name_var.get().strip()
+            if name:
+                result.manifest.trial_name = name
             return result
         except Exception as exc:
             messagebox.showerror("Sampling error", str(exc), parent=self)

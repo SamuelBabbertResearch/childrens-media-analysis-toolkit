@@ -65,6 +65,12 @@ Pilot Trial Files/
 # Docs wiki (managed separately)
 docs/
 
+# Validation detection caches — regenerable machine outputs (the .npz are large
+# binaries); the coding, annotations, manifests, and .md docs ARE versioned.
+*_framescores.npz
+*_cuts_content_*.json
+*_cuts_adaptive_*.json
+
 # Editor/OS junk
 .vscode/
 .idea/
