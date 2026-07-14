@@ -636,6 +636,29 @@ block), CSV export (sidecar _PROVENANCE.txt to keep data clean), PDF report
 Strategic point: "the tool reports its own error rate" is the claim no coding
 tool (NVivo etc.) can make — now it's literally on every output CMAT produces.
 
+## 2026-07-11 — Intro templates: code a title sequence once, reuse everywhere
+
+- New `analyzer/intro_templates.py` + Intro ▾ menu in the coding editor:
+  save the coded rows of a title sequence as a named template (labeled by
+  season/era — "Little Bear S1", "SpongeBob 90s intro"), then insert it into
+  any other episode's sheet at that episode's intro start time (cold opens
+  shift intros, so the start is per-episode). Works for both transition and
+  event sheets; templates store OFFSETS from intro start; registry at
+  validation/intro_templates.json.
+- Provenance: every inserted row is tagged "[intro: name]" in notes; tags are
+  stripped if inserted rows are re-saved into a new template (no nesting).
+  Overlap warning when the target range already has coded rows.
+- CODEBOOK Rule 7 added: spot-check after inserting (syndication cuts shift
+  intros); new label per season/era change; never stretch one template across
+  visibly different intros.
+- Verified end-to-end: 3-row intro (incl. a fractional 00:08.4 stamp and a
+  custom type) saved from episode A, inserted into episode B at 0:45 →
+  00:47 / 00:53.4 / 00:56, fractional offset preserved, custom type absorbed
+  into dropdowns, tags on disk, re-save strips tags.
+- Methodological upside: full-episode coding windows can now INCLUDE intros
+  cheaply, so detector cuts during intros no longer have to be windowed out
+  or counted as false positives against partial coding.
+
 ## Planned validation sample (fill in)
 
 | Episode | Show | Era/style | Pacing regime | Set (tuning/test) | Coded | Re-coded |

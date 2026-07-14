@@ -75,20 +75,25 @@ METRIC_STATUS: dict[str, dict[str, str]] = {
 
 
 def validation_short(validation_dir: Path | None = None) -> str:
-    """One-line accuracy statement for compact placements."""
+    """One-line accuracy statement for compact placements. Deliberately hedged:
+    the evidence base is a small, single-coder pilot."""
     live = local_hard_cut_f1(validation_dir)
     if live:
         f1, n = live
-        return (f"Detection accuracy: hard-cut detection (basis of the pacing "
-                f"metric) validated at F1 {f1} against human coding "
-                f"({n} comparison run(s)). Dissolve/scene-change detection "
+        return (f"Detection accuracy (preliminary): hard-cut detection (basis "
+                f"of the pacing metric) agreed with human coding at F1 {f1} "
+                f"({n} comparison run(s), single coder — larger sample and "
+                f"inter-rater reliability in progress). Accuracy is "
+                f"content-dependent. Dissolve/scene-change detection "
                 f"experimental; color/motion/flashing/audio are deterministic "
                 f"measurements.")
-    return (f"Detection accuracy: hard-cut detection (basis of the pacing "
-            f"metric) validated at F1 {REFERENCE_HARD_CUT_F1_RANGE} against "
-            f"blind human coding across production styles. Dissolve/scene-change "
-            f"detection experimental; color/motion/flashing/audio are "
-            f"deterministic measurements.")
+    return (f"Detection accuracy (preliminary): hard-cut detection (basis of "
+            f"the pacing metric) agreed with human coding at F1 "
+            f"{REFERENCE_HARD_CUT_F1_RANGE} — content-dependent, weakest on "
+            f"dissolve-heavy/low-contrast footage. Single-coder pilot; larger "
+            f"sample and inter-rater reliability in progress. Dissolve/"
+            f"scene-change detection experimental; color/motion/flashing/audio "
+            f"are deterministic measurements.")
 
 
 def validation_statement(validation_dir: Path | None = None) -> str:
@@ -96,14 +101,17 @@ def validation_statement(validation_dir: Path | None = None) -> str:
     live = local_hard_cut_f1(validation_dir)
     if live:
         f1, n = live
-        pacing = (f"validated at F1 {f1} against human coding "
-                  f"(this install, {n} comparison run(s))")
+        pacing = (f"F1 {f1} vs human coding (this install, {n} comparison "
+                  f"run(s), single coder)")
     else:
-        pacing = (f"validated at F1 {REFERENCE_HARD_CUT_F1_RANGE} against blind "
-                  f"human coding across production styles (CMAT study)")
+        pacing = (f"F1 {REFERENCE_HARD_CUT_F1_RANGE} vs blind human coding "
+                  f"(single-coder pilot)")
     return (
-        "How far to trust this measurement (CMAT reports its own accuracy):\n"
-        f"  • Scene pacing (cuts/min): {pacing}.\n"
+        "How far to trust this measurement (CMAT reports its own accuracy — "
+        "PRELIMINARY; small single-coder pilot, inter-rater reliability and a "
+        "larger sample in progress):\n"
+        f"  • Scene pacing (cuts/min): {pacing}. Content-dependent — weakest "
+        "on dissolve-heavy / low-contrast / visually noisy footage.\n"
         "  • Dissolve detection & within-scene/scene-change classification: "
         "EXPERIMENTAL, not yet validated — exploratory only.\n"
         "  • Color, motion, flashing, audio: deterministic signal measurements "
@@ -117,8 +125,9 @@ def validation_dict(validation_dir: Path | None = None) -> dict[str, Any]:
     """Machine-readable provenance for JSON exports."""
     live = local_hard_cut_f1(validation_dir)
     return {
-        "statement": "CMAT reports its own detection accuracy against blind "
-                     "human coding. See validation/VALIDATION_LOG.md.",
+        "statement": "CMAT reports its own detection accuracy against human "
+                     "coding. PRELIMINARY — small single-coder pilot; accuracy "
+                     "is content-dependent. See validation/VALIDATION_LOG.md.",
         "hard_cut_f1": (live[0] if live else REFERENCE_HARD_CUT_F1_AGG),
         "hard_cut_f1_source": ("local validation runs" if live
                                else "CMAT reference study"),

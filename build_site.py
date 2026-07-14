@@ -614,12 +614,17 @@ def _build_show_page(entry: dict, agg: dict | None, episodes: list[dict], lang: 
             + _row("Flashing events / min", "flashing_events_per_min", 1)
             + _row("Audio RMS",             "audio_rms_mean", 4)
             + "</tbody></table>"
-            + '<p class="tbl-note">✓ <strong>Detection accuracy:</strong> the '
-              'pacing metric (hard-cut detection) is validated against blind '
-              'human coding at F1 0.84–0.96 across production styles — CMAT '
-              'reports its own error rate. Dissolve and scene-change detection '
-              'are experimental; color, motion, flashing and audio are '
-              'deterministic measurements (no detection step). See '
+            + '<p class="tbl-note"><strong>Detection accuracy (preliminary):</strong> '
+              'unlike black-box tools, CMAT measures its own error rate against '
+              'human coding — but that validation is currently a small, '
+              'single-coder pilot, so treat the figures as indicative, not '
+              'settled. Hard-cut detection (the basis of the pacing metric) '
+              'agreed with human coding at F1 ~0.84 on dissolve-heavy 1960s '
+              'animation (worst case) up to ~0.96 on clean modern animation; '
+              'accuracy is content-dependent. Inter-rater reliability and a '
+              'larger sample are in progress. Dissolve and scene-change '
+              'detection are experimental; color, motion, flashing and audio '
+              'are deterministic measurements. See '
               f'<a href="{_p("/methodology/")}">Methodology</a>.</p>'
         )
 

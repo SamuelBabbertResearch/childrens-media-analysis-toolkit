@@ -38,6 +38,17 @@ Coder: Samuel Babbert (single coder; see Limitations in VALIDATION_LOG.md)
    If the background shot *also* changes during the overlay, code the underlying
    transition (`hard_cut` / `dissolve`) and mention the overlay in the note.
    (Added 2026-07-04 while coding the *A Charlie Brown Christmas* title card at ~02:11.)
+7. **Intro / title sequences — code once, reuse as a template.** A show's intro is
+   identical across episodes within a season/era, so code it ONCE, save it via the
+   editor's Intro ▾ menu with a season/era label ("Little Bear S1 intro",
+   "SpongeBob 90s intro"), and insert the template into other episodes at the
+   correct start time. Rules: (a) inserted rows carry an "[intro: name]" tag in
+   notes — leave the tag intact; (b) after inserting, SPOT-CHECK one or two of the
+   intro's transitions against the video (syndication/DVD cuts can shift or trim
+   intros); if they don't line up, code that episode's intro by hand instead;
+   (c) when a show's intro changes (new season, remaster), save a NEW template
+   under a new label — never stretch one template across visibly different intros.
+   (Added 2026-07-11.)
 
 ## Scene-relation labeling (within-scene vs scene-change cuts)
 

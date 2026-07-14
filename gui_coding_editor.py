@@ -461,6 +461,22 @@ class CodingSheetEditor(tk.Toplevel):
         _Tip(b_cb, "Opens the coding rules for this sheet type. When a "
                    "judgment is unclear, the rule lives there — never guess "
                    "silently.")
+        mb = tk.Menubutton(hdr, text="Intro ▾", relief=tk.RAISED, padx=6)
+        menu = tk.Menu(mb, tearoff=0)
+        menu.add_command(label="Save rows as intro template…",
+                         command=self._save_intro_dialog)
+        menu.add_command(label="Insert intro template…",
+                         command=self._insert_intro_dialog)
+        mb.config(menu=menu)
+        mb.pack(side=tk.RIGHT, padx=6)
+        _Tip(mb, "Code a show's title sequence ONCE, then reuse it: save the "
+                 "coded intro rows as a named template ('Little Bear S1', "
+                 "'SpongeBob 90s intro' — label by season/era, since intros "
+                 "change over a show's run) and insert it into any other "
+                 "episode's sheet at the right start time. Inserted rows are "
+                 "tagged [intro: name] in notes.\n\nAfter inserting, "
+                 "spot-check one or two of the intro's transitions — "
+                 "syndication or DVD cuts can shift an intro by a second.")
         self._autosave_var = tk.BooleanVar(value=True)
         chk = tk.Checkbutton(hdr, text="Autosave", variable=self._autosave_var)
         chk.pack(side=tk.RIGHT, padx=8)
@@ -807,6 +823,156 @@ class CodingSheetEditor(tk.Toplevel):
             self._video.seek_to(hms_to_sec(t), pause=True)
         except ValueError:
             pass
+
+    # ── intro templates ───────────────────────────────────────────────────
+
+    def _rows_with_abs(self) -> list[dict]:
+        out = []
+        for r in self._rows:
+            try:
+                out.append({**r, "_abs_sec": hms_to_sec(r["timestamp_hms"])})
+            except ValueError:
+                continue
+        return out
+
+    def _save_intro_dialog(self) -> None:
+        from analyzer.intro_templates import save_template
+        schema_name = ("events" if self._schema is SCHEMAS["events"]
+                       else "transitions")
+        win = tk.Toplevel(self)
+        win.title("Save intro template")
+        frm = tk.Frame(win, padx=12, pady=10)
+        frm.pack(fill=tk.BOTH, expand=True)
+        tk.Label(frm, text="Saves the coded rows in a time range as a reusable "
+                           "intro template.\nName it by season/era — intros "
+                           "change over a show's run.",
+                 justify="left", font=("TkDefaultFont", 8),
+                 fg="#555555").grid(row=0, column=0, columnspan=2,
+                                    sticky="w", pady=(0, 8))
+        name_var = tk.StringVar()
+        from_var = tk.StringVar(value="0:00")
+        to_var = tk.StringVar()
+        for i, (lbl, var, hint) in enumerate([
+                ("Template name", name_var, "e.g.  Little Bear S1 intro"),
+                ("Intro starts at", from_var, "usually 0:00"),
+                ("Intro ends at", to_var, "e.g.  1:07")], start=1):
+            tk.Label(frm, text=lbl + ":").grid(row=i, column=0, sticky="e",
+                                               padx=(0, 6), pady=2)
+            e = tk.Entry(frm, textvariable=var, width=28)
+            e.grid(row=i, column=1, sticky="w", pady=2)
+            tk.Label(frm, text=hint, font=("TkDefaultFont", 8),
+                     fg="#888888").grid(row=i, column=2, sticky="w", padx=6)
+
+        def ok() -> None:
+            try:
+                start = hms_to_sec(from_var.get().strip() or "0:00")
+                end = hms_to_sec(to_var.get().strip())
+            except ValueError:
+                messagebox.showerror("Bad time", "Times must be mm:ss.",
+                                     parent=win)
+                return
+            try:
+                tpl = save_template(name_var.get(), schema_name,
+                                    self._rows_with_abs(), start, end,
+                                    source_sheet=self._path.name)
+            except ValueError as exc:
+                messagebox.showerror("Cannot save", str(exc), parent=win)
+                return
+            win.destroy()
+            self._status(f"intro template '{name_var.get().strip()}' saved "
+                         f"({tpl['n_rows']} rows, {tpl['span_sec']:.0f}s)")
+
+        tk.Button(frm, text="Save template", fg="#007700",
+                  command=ok).grid(row=4, column=1, sticky="w", pady=(10, 0))
+        win.transient(self)
+        win.grab_set()
+
+    def _insert_intro_dialog(self) -> None:
+        from analyzer.intro_templates import load_templates, apply_template
+        schema_name = ("events" if self._schema is SCHEMAS["events"]
+                       else "transitions")
+        templates = {n: t for n, t in load_templates().items()
+                     if t.get("schema") == schema_name}
+        if not templates:
+            messagebox.showinfo(
+                "No intro templates yet",
+                f"No saved {schema_name} intro templates. Code an intro once, "
+                f"then Intro ▾ → 'Save rows as intro template…'.", parent=self)
+            return
+
+        win = tk.Toplevel(self)
+        win.title("Insert intro template")
+        frm = tk.Frame(win, padx=12, pady=10)
+        frm.pack(fill=tk.BOTH, expand=True)
+        tk.Label(frm, text="Template:").grid(row=0, column=0, sticky="e",
+                                             padx=(0, 6))
+        tpl_var = tk.StringVar(value=next(iter(templates)))
+        cb = ttk.Combobox(frm, textvariable=tpl_var, state="readonly",
+                          values=list(templates), width=34)
+        cb.grid(row=0, column=1, sticky="w")
+        detail_var = tk.StringVar()
+        tk.Label(frm, textvariable=detail_var, font=("TkDefaultFont", 8),
+                 fg="#555555").grid(row=1, column=1, sticky="w", pady=(2, 6))
+
+        def _detail(_e=None) -> None:
+            t = templates[tpl_var.get()]
+            detail_var.set(f"{t['n_rows']} rows over {t['span_sec']:.0f}s · "
+                           f"saved {t['created']} from {t['source_sheet']}")
+        cb.bind("<<ComboboxSelected>>", _detail)
+        _detail()
+
+        tk.Label(frm, text="Intro starts at:").grid(row=2, column=0,
+                                                    sticky="e", padx=(0, 6))
+        at_var = tk.StringVar(value="0:00")
+        tk.Entry(frm, textvariable=at_var, width=10).grid(row=2, column=1,
+                                                          sticky="w")
+        tk.Label(frm, text="(this episode — cold opens shift intros)",
+                 font=("TkDefaultFont", 8), fg="#888888").grid(
+            row=2, column=2, sticky="w", padx=6)
+
+        def ok() -> None:
+            try:
+                at = hms_to_sec(at_var.get().strip() or "0:00")
+            except ValueError:
+                messagebox.showerror("Bad time", "Start must be mm:ss.",
+                                     parent=win)
+                return
+            name = tpl_var.get()
+            tpl = dict(templates[name])
+            tpl["_name"] = name
+            span = float(tpl.get("span_sec", 0))
+            clash = [r for r in self._rows_with_abs()
+                     if at <= r["_abs_sec"] <= at + span]
+            if clash and not messagebox.askyesno(
+                    "Rows already in that range",
+                    f"{len(clash)} coded row(s) already exist between "
+                    f"{_fmt_hms(at)} and {_fmt_hms(at + span)}. Insert the "
+                    f"template anyway (rows will coexist)?", parent=win):
+                return
+            new_rows = apply_template(tpl, at)
+            self._bulk_insert(new_rows)
+            win.destroy()
+            self._status(f"inserted intro '{name}' at {_fmt_hms(at)} "
+                         f"({len(new_rows)} rows)")
+
+        tk.Button(frm, text="Insert", fg="#005500",
+                  command=ok).grid(row=3, column=1, sticky="w", pady=(10, 0))
+        win.transient(self)
+        win.grab_set()
+
+    def _bulk_insert(self, rows_abs: list[dict]) -> None:
+        time_key = self._cols[0][0]
+        for r in rows_abs:
+            row = {key: (r.get(key) or "") for key, *_ in self._cols}
+            row[time_key] = _fmt_hms(r["_abs_sec"])
+            for key, _l, _w, kind, _c, _b in self._cols:
+                if kind == "choice":
+                    self._register_choice(key, row.get(key, ""))
+            self._rows.append(row)
+        self._sort_rows()
+        self._dirty = True
+        self._render()
+        self._autosave()
 
     def _on_close(self) -> None:
         if self._dirty and not messagebox.askyesno(
