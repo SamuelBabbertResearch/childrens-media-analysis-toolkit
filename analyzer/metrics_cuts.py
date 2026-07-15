@@ -9,6 +9,7 @@ Scene pacing = derived from the same cut series but captures *rhythm*:
 """
 
 from __future__ import annotations
+import math
 from pathlib import Path
 
 import numpy as np
@@ -46,7 +47,11 @@ def compute_cut_metrics(
                 shots_per_min=round(1.0 / duration_min, 3),
                 count=1,
             ),
-            ScenePacingMetrics(cuts_per_min=0.0, shot_length_cv=0.0, timeline_cuts_per_30s=[]),
+            ScenePacingMetrics(
+                cuts_per_min=0.0,
+                shot_length_cv=0.0,
+                timeline_cuts_per_30s=[0.0] * max(1, math.ceil(duration_sec / 30.0)),
+            ),
         )
 
     durations = np.array([
@@ -66,7 +71,7 @@ def compute_cut_metrics(
 
     # Rolling cut count in 30-second windows across the episode
     window_sec = 30.0
-    n_windows = max(1, int(duration_sec / window_sec))
+    n_windows = max(1, math.ceil(duration_sec / window_sec))
     timeline = [
         float(sum(1 for t in cut_times if i * window_sec <= t < (i + 1) * window_sec))
         for i in range(n_windows)

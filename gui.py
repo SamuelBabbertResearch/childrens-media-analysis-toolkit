@@ -33,7 +33,7 @@ from analyzer.db import (
 )
 from analyzer.show_index import (
     list_episodes, list_shows, list_top_level, list_category_shows,
-    show_key, display_show_name,
+    db_show_key, show_key, display_show_name,
 )
 from gui_live import LiveAnalysisWindow
 from gui_sampler import SamplerWindow
@@ -64,6 +64,7 @@ class EraEditorDialog(tk.Toplevel):
         parent: tk.Misc,
         show_name: str,
         initial_eras: list[dict],
+        storage_key: str | None = None,
         db_conn=None,
         on_apply=None,
     ) -> None:
@@ -71,6 +72,7 @@ class EraEditorDialog(tk.Toplevel):
         self.title(f"Define Eras — {show_name}")
         self.resizable(True, False)
         self._show_name = show_name
+        self._storage_key = storage_key or show_name
         self._db_conn   = db_conn
         self._on_apply  = on_apply
         self._eras: list[dict] = [dict(e) for e in initial_eras]
@@ -215,7 +217,7 @@ class EraEditorDialog(tk.Toplevel):
         self.destroy()
 
     def _save_to_db(self) -> None:
-        save_show_eras(self._db_conn, self._show_name, self._eras)
+        save_show_eras(self._db_conn, self._storage_key, self._eras)
         messagebox.showinfo(
             "Saved",
             f"{len(self._eras)} era(s) saved for '{self._show_name}'.",
@@ -243,6 +245,8 @@ class App(tk.Tk):
         self._current_ep_result: EpisodeResult | None = None   # for export/chart
         self._current_ep_path: Path | None = None               # for DB look-ups
         self._current_show_results: list[EpisodeResult] | None = None  # for export
+        self._current_show_name: str | None = None
+        self._current_show_key: str | None = None
         self._pinned: tuple[str, Path] | None = None            # ("episode"|"show", path)
         self._db_conn = None                                   # SQLite index (opened with root)
         self._idx_ep_sort:   dict = {"col": "analyzed_at", "asc": False}
@@ -699,7 +703,10 @@ class App(tk.Tk):
             )
         else:
             agg = compute_show_aggregate(dname, ok_results)
-            self._render_show(agg, ok_results, total_eps=len(episodes))
+            self._render_show(
+                agg, ok_results, total_eps=len(episodes),
+                show_key_value=db_show_key(self._root_folder, show_dir),
+            )
 
     def _load_sample_results(self) -> None:
         if not self._root_folder:
@@ -818,8 +825,10 @@ class App(tk.Tk):
             )
 
         agg = compute_show_aggregate(entry_id, ok_results)
-        self._render_show(agg, ok_results, total_eps=total_selected,
-                          sample_info=manifest)
+        self._render_show(
+            agg, ok_results, total_eps=total_selected,
+            sample_info=manifest, show_key_value=entry_id,
+        )
 
     def _show_full_series_aggregate(self) -> None:
         if not self._root_folder:
@@ -846,7 +855,10 @@ class App(tk.Tk):
             return
         agg = compute_show_aggregate(series_name, ok_results)
         save_show_results(self._root_folder, series_name, ok_results, agg)
-        self._render_show(agg, ok_results, total_eps=total_eps)
+        self._render_show(
+            agg, ok_results, total_eps=total_eps,
+            show_key_value=series_name,
+        )
 
     # -----------------------------------------------------------------------
     # Result rendering
@@ -861,6 +873,7 @@ class App(tk.Tk):
         self._current_ep_path = None
         self._current_show_results = None
         self._current_show_name = None
+        self._current_show_key = None
         self._btn_chart.config(state=tk.DISABLED)
         self._file_menu.entryconfig("Export Results as JSON...", state=tk.DISABLED)
         self._file_menu.entryconfig("Export Results as CSV...", state=tk.DISABLED)
@@ -882,6 +895,7 @@ class App(tk.Tk):
         self._current_ep_result = result if result.status == "ok" else None
         self._current_show_results = None
         self._current_show_name = None
+        self._current_show_key = None
         can_chart = result.status == "ok"
         self._btn_chart.config(state=tk.NORMAL if can_chart else tk.DISABLED)
         self._file_menu.entryconfig("Export Results as JSON...",
@@ -1056,11 +1070,13 @@ class App(tk.Tk):
         self._btn_save_meta.config(state=tk.NORMAL)
 
     def _render_show(self, agg: ShowAggregate, results: list[EpisodeResult],
-                     total_eps: int, sample_info: dict | None = None) -> None:
+                     total_eps: int, sample_info: dict | None = None,
+                     show_key_value: str | None = None) -> None:
         self._current_ep_result = None
         self._current_ep_path = None
         self._current_show_results = [r for r in results if r.status == "ok"]
         self._current_show_name = agg.show_name
+        self._current_show_key = show_key_value or agg.show_name
         self._clear_metadata_fields()
         self._btn_chart.config(
             state=tk.NORMAL if bool(self._current_show_results) else tk.DISABLED
@@ -1413,7 +1429,8 @@ class App(tk.Tk):
                     self._maybe_save_show_aggregate(ep_path)
                     if self._db_conn:
                         dname, auto_s = display_show_name(self._root_folder, ep_path.parent)
-                        upsert_episode(self._db_conn, result, dname, str(ep_path))
+                        stable_key = db_show_key(self._root_folder, ep_path.parent)
+                        upsert_episode(self._db_conn, result, dname, str(ep_path), show_key=stable_key)
                         if auto_s is not None:
                             auto_set_season(self._db_conn, str(ep_path), auto_s)
                         self._refresh_index()
@@ -1490,6 +1507,7 @@ class App(tk.Tk):
         """If all episodes of the show are now cached, compute and save the aggregate."""
         show_dir = ep_path.parent
         skey = show_key(self._root_folder, show_dir)
+        stable_key = db_show_key(self._root_folder, show_dir)
         dname, _ = display_show_name(self._root_folder, show_dir)
         episodes = list_episodes(show_dir)
         if not episodes:
@@ -1503,7 +1521,7 @@ class App(tk.Tk):
             agg = compute_show_aggregate(dname, all_results)
             save_show_results(self._root_folder, skey, all_results, agg)
             if self._db_conn:
-                upsert_show(self._db_conn, agg, dname)
+                upsert_show(self._db_conn, agg, dname, show_key=stable_key)
 
     # -----------------------------------------------------------------------
     # Export
@@ -1717,10 +1735,10 @@ class App(tk.Tk):
         has_dates = False
 
         db_joined: list[dict] = []
-        if self._db_conn and self._current_show_name:
+        if self._db_conn and self._current_show_key:
             rows = query_episodes(
                 self._db_conn,
-                filter_show=self._current_show_name,
+                filter_show=self._current_show_key,
                 sort_by="season_num",
                 ascending=True,
             )
@@ -1761,8 +1779,8 @@ class App(tk.Tk):
 
         # -- load saved eras from DB ------------------------------------------
         _state: dict = {"eras": []}
-        if self._db_conn and self._current_show_name:
-            _state["eras"] = get_show_eras(self._db_conn, self._current_show_name)
+        if self._db_conn and self._current_show_key:
+            _state["eras"] = get_show_eras(self._db_conn, self._current_show_key)
 
         # -- era colour helper ------------------------------------------------
         def _era_color(air_date: str, eras: list[dict]) -> str:
@@ -1918,6 +1936,7 @@ class App(tk.Tk):
             EraEditorDialog(
                 win,
                 show_name=self._current_show_name or "",
+                storage_key=self._current_show_key or self._current_show_name or "",
                 initial_eras=_state["eras"],
                 db_conn=self._db_conn,
                 on_apply=_on_apply,
@@ -1969,7 +1988,10 @@ class App(tk.Tk):
                     ok_results.append(rescore_episode(EpisodeResult.from_dict(c), self._cfg))
             if ok_results:
                 agg = compute_show_aggregate(dname, ok_results)
-                self._render_show(agg, ok_results, total_eps=len(episodes))
+                self._render_show(
+                    agg, ok_results, total_eps=len(episodes),
+                    show_key_value=db_show_key(self._root_folder, show_dir),
+                )
 
     # -----------------------------------------------------------------------
     # Toolbar preset helpers
@@ -2374,7 +2396,7 @@ class App(tk.Tk):
                     _sv(r, "avg_flashing",     "%.1f"),
                     _sv(r, "avg_audio_rms",    "%.4f"),
                 ),
-                tags=(r["show_name"],),
+                tags=(r.get("show_key") or r["show_name"],),
             )
 
     def _on_idx_ep_col_click(self, col: str) -> None:
@@ -2421,6 +2443,7 @@ class App(tk.Tk):
             return
         for show_dir in list_shows(self._root_folder):
             skey = show_key(self._root_folder, show_dir)
+            stable_key = db_show_key(self._root_folder, show_dir)
             dname, auto_s = display_show_name(self._root_folder, show_dir)
             show_results = []
             for ep in list_episodes(show_dir):
@@ -2430,7 +2453,7 @@ class App(tk.Tk):
                         result = EpisodeResult.from_dict(c)
                         if result.status == "ok":
                             result = rescore_episode(result, self._cfg)
-                            upsert_episode(self._db_conn, result, dname, str(ep))
+                            upsert_episode(self._db_conn, result, dname, str(ep), show_key=stable_key)
                             if auto_s is not None:
                                 auto_set_season(self._db_conn, str(ep), auto_s)
                             show_results.append(result)
@@ -2439,7 +2462,7 @@ class App(tk.Tk):
             if show_results:
                 try:
                     agg = compute_show_aggregate(dname, show_results)
-                    upsert_show(self._db_conn, agg, dname)
+                    upsert_show(self._db_conn, agg, dname, show_key=stable_key)
                 except Exception:
                     pass
 

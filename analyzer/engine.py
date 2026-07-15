@@ -27,9 +27,14 @@ from .speech import compute_speech_metrics
 
 def _get_duration(video_path: Path) -> float:
     cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        cap.release()
+        raise RuntimeError(f"Could not open video file: {video_path}")
     fps = cap.get(cv2.CAP_PROP_FPS) or 1.0
     frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
     cap.release()
+    if fps <= 0 or frame_count <= 0:
+        raise RuntimeError(f"Could not read video duration: {video_path}")
     return frame_count / fps
 
 
@@ -92,6 +97,7 @@ def analyze_episode(
         color_metrics, motion_metrics, flashing_metrics = compute_frame_metrics(
             video_path,
             sample_fps=cfg["sample_fps"],
+            flashing_sample_fps=cfg.get("flashing_sample_fps"),
             flashing_threshold=cfg["flashing_luminance_threshold"],
             duration_sec=duration_sec,
             progress_cb=_frame_progress,
