@@ -659,6 +659,158 @@ tool (NVivo etc.) can make — now it's literally on every output CMAT produces.
   cheaply, so detector cuts during intros no longer have to be windowed out
   or counted as false positives against partial coding.
 
+## 2026-07-27 — Hand-coding as a first-class path + tab restructure
+
+Problem identified by user: hand-coding lived only under the Validation tab,
+whose entire framing is "grade the automated tool" — wrong home for researchers
+who want human coding as their PRIMARY measurement (e.g. characterizing
+stimuli for a study with children). Worse, an analysis path was missing
+entirely: `compute_event_metrics()` turned coded EVENTS into rates, but
+nothing turned coded TRANSITIONS into pacing metrics. A hand-coder got no
+numbers back at all.
+
+- NEW `validation.manual_pacing_metrics()` — descriptive pacing metrics computed
+  FROM hand coding, mirroring the automated ScenePacingMetrics definitions so
+  hand-coded and automated rates are directly comparable: hard cuts/min, all
+  transitions/min, counts by type, mean/median shot length, shot-length CV,
+  per-30s timeline, and scene-changes/min + within-scene fraction when
+  scene_relation is labeled. Window-aware (segment coding is the norm here).
+  Shot lengths use gaps BETWEEN coded transitions — window-edge shots are
+  truncated and excluded to avoid biasing the mean downward.
+- NEW `gui_handcoding.py` (Hand-coding tab): pick episode → code transitions
+  and/or events (opens the coding editor with the embedded player) → compute
+  metrics into the Results panel → export CSV. No detection, no compare, and
+  the blind-coding rule explicitly does NOT apply (nothing to be biased by).
+- Tab restructure (user-directed):
+    Library | Index | Automated coding | Hand-coding | Trials
+  Library is now a pure browser; the analyze controls + queue moved into
+  Automated coding > Analyze, with Language and Validation as its other
+  sub-tabs. Selection still happens in Library, so the Analyze sub-tab shows
+  a live "Selected in Library:" line so the user can see what the buttons act
+  on. Trials stays top-level — it's the audit trail across BOTH paths.
+
+FIRST RESULT (the count-bias table the paper needs, now computable in-tool):
+
+| Episode | Manual cuts/min | Auto cuts/min | Rate error | Mean shot |
+|---|---|---|---|---|
+| Charlie Brown (0–5:00) | 6.60 | 6.80 | +3.0% | 7.0s |
+| Little Bear (0–5:20) | 13.31 | 13.13 | −1.4% | 3.9s |
+
+i.e. the automated CUT RATE — the metric actually published — is within ~3% of
+human coding on both episodes, despite per-event F1 of 0.84 on Charlie Brown.
+Per-event F1 and rate accuracy are different claims; report both.
+
+## 2026-07-27 — Sampler feeds both measurement paths
+
+Gap found once hand-coding became a first-class path: the Episode Sampler could
+only "Send to Analysis Queue" (automated), so a researcher who drew a sample
+intending to HAND-CODE it had no route from sampler to coding. Neither coding
+tab could ingest a sample draw either.
+
+- `trials.read_sample_episodes(manifest)` — shared helper reading episode paths
+  from a draw (manifest.json + sibling selected.csv). One source of truth for
+  every destination a sample can flow to.
+- Sampler: "Send to:" destination selector — Automated analysis queue /
+  Hand-coding worklist / Both. Button relabeled "Send Sample to CMAT"; status
+  line reports per-destination counts. `App.send_to_handcoding()` bridges to the
+  tab and switches to it so the result is visible.
+- Hand-coding tab: NEW coding worklist — "Load sample…" (or pushed from the
+  sampler), listbox of episodes with per-episode coding-progress flags
+  (· none / T transitions / E events / TE both), click to make one current,
+  "n of N have coding" summary that refreshes as you code. Missing files are
+  reported but still listed.
+- Validation tab: "Choose from a sample draw…" — pick an episode out of a
+  manifest instead of browsing the filesystem, so you validate exactly the
+  sampled episodes.
+
+Verified end-to-end on a fixture draw: 2 episodes read → routed to hand-coding
+→ worklist populated with correct progress flags (both already showed T) →
+first episode auto-selected.
+
+## 2026-07-27 — Provenance separation in Library and Index
+
+Integrity problem spotted by user: neither the Library nor the Index
+distinguished automated from hand-coded data. Two halves — automated numbers
+weren't LABELED as automated, and hand-coded numbers didn't appear at all
+(they existed only transiently in the Results panel). With both measurement
+paths now first-class, that ambiguity is a real risk: nothing stopped a
+machine-measured cuts/min being read as human-coded or vice versa.
+
+- `validation.coded_episode_map()` / `coding_for_stem()` — one filesystem pass
+  builds a {sheet_base: transitions/events/metrics} map reused across many
+  rows, so provenance markers cost no per-episode glob. Handles the shortened-
+  filename convention via longest-prefix match.
+- `validation.write_manual_metrics()` — hand-coded metrics now PERSIST
+  (`<stem>__handcoded_<date>.json`, in the coding folder, never in .analysis:
+  the cache is machine-generated and re-analysis would overwrite human work).
+- Library tree: `[auto]` / `[hand-coded]` / `[auto + hand-coded]` per episode
+  (was an undifferentiated `[analyzed]`).
+- Index > Episodes: new **Source** column (always "automated" — that table
+  holds machine measurements only) and **Hand** column (T / E / TE / —)
+  showing which episodes additionally have coding. Both are derived columns,
+  excluded from DB sorting.
+- Index > NEW **Hand-coded** sub-tab: human-coded metrics (cuts/min,
+  transitions/min, mean shot, CV, scene-changes/min, within-scene %,
+  events/min, coded window and date) in a SEPARATE table. Deliberately never
+  merged into the automated table or into automated aggregates.
+
+Verified: 4 coded episodes discovered; prefix lookup matched the shortened
+"Little Bear 1x01" sheet to the full 90-char episode stem; Charlie Brown shows
+[auto + hand-coded] in the tree and TE in the index; computing metrics
+persisted them and they appeared in the Hand-coded sub-tab (6.60 cuts/min,
+window 00:00–05:00).
+
+## 2026-07-27 — Wikipedia import by URL (metadata importers verified intact)
+
+Checked after the tab restructure: both metadata importers are launched from
+the File menu, so they were unaffected — verified both dialogs still build and
+the underlying matching path is unchanged.
+
+Added URL input to the Wikipedia importer (parity with TVMaze, which already
+fetched over the network):
+- `wiki_importer.fetch_wikipedia_html(url)` — urllib with a descriptive
+  User-Agent, restricted to wikipedia.org hosts so a pasted URL can't be used
+  to fetch arbitrary sites. Returns rendered HTML (what the table parser
+  expects; `action=raw` wikitext will not parse).
+- `parse_wikipedia_episode_list(path)` split into a thin file wrapper over new
+  `parse_wikipedia_html(html)`, so both input paths share one parser.
+- Dialog: URL entry + Fetch button (Enter also fires), fetching on a worker
+  thread with the result marshalled back via `after()` — the UI never blocks
+  on the network. Saved-HTML browsing still works and is offered as the
+  fallback in the error message.
+
+Verified live: rejected non-wikipedia hosts (including
+`evil-wikipedia.org.attacker.com`) and non-http schemes; fetched the real
+"List of Little Bear episodes" page (314 KB) and parsed 65 episodes across 5
+seasons with correct titles and air dates.
+
+## 2026-07-27 — BUG: metadata importers matched across the whole library
+
+User reported Wikipedia import matching Little Bear episodes to SpongeBob,
+Martha Speaks, etc. Root cause was NOT the new URL fetch (that worked — 63/65
+found); it was a PRE-EXISTING bug in both importers: `_collect_local_files()`
+gathered episodes from EVERY show in the library, and `match_to_files` matches
+on season/episode number, so Little Bear S1E1 grabbed whichever S01E01 it hit
+first. Affected the saved-HTML path identically, and TVMaze had the same bug.
+
+Fix — a "Match against show:" selector in both dialogs, scoping matching to one
+show. Two subtleties:
+- Lists TOP-LEVEL shows, not `list_shows()` leaves. A show stored as
+  `Little Bear (Full Series)/Season 1..5` must be selectable as ONE unit, since
+  a "List of X episodes" page covers the whole run. Collection walks all leaf
+  dirs at or beneath the chosen top-level folder.
+- Defaults to the Library tab's current selection (walking up to its top level),
+  so the common case needs no interaction. "(all shows — not recommended)" is
+  offered but never the default: the dangerous behavior now requires a
+  deliberate choice.
+- Changing the selector re-matches already-loaded data without re-fetching
+  (parsed episodes cached on the dialog).
+
+Verified against the live Little Bear page:
+  scope = Little Bear (Full Series)  ->  65 files, 62 matched, 0 wrong-show
+  scope = (all shows)                -> 202 files, 63 matched, 14 wrong-show
+S1E1 now maps to "Little Bear 1x01 What Will Little Bear Wear", not SpongeBob.
+
 ## Planned validation sample (fill in)
 
 | Episode | Show | Era/style | Pacing regime | Set (tuning/test) | Coded | Re-coded |

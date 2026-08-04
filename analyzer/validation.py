@@ -162,6 +162,173 @@ def parse_manual_csv(path: Path, warn_cb: Callable[[str], None] | None = None) -
     return sorted(rows, key=lambda r: r["timestamp_sec"])
 
 
+def coded_episode_map(validation_dir: Path | None = None) -> dict[str, dict]:
+    """One pass over the coding folder -> {sheet_base: {...}}.
+
+    Built once and reused across many rows (Library tree, Index table) so
+    provenance markers don't cost a filesystem glob per episode.
+    Values: {"transitions": Path|None, "events": Path|None, "metrics": Path|None}
+    """
+    vdir = validation_dir or get_validation_dir()
+    out: dict[str, dict] = {}
+    if not vdir.exists():
+        return out
+
+    def _slot(base: str) -> dict:
+        return out.setdefault(base, {"transitions": None, "events": None,
+                                     "metrics": None})
+
+    for p in vdir.rglob("*_manual.csv"):
+        _slot(p.name[: -len("_manual.csv")])["transitions"] = p
+    for p in vdir.rglob("*_events.csv"):
+        _slot(p.name[: -len("_events.csv")])["events"] = p
+    for p in sorted(vdir.rglob("*__handcoded_*.json"),
+                    key=lambda q: q.stat().st_mtime):
+        _slot(p.name.split("__handcoded_")[0])["metrics"] = p  # newest wins
+    return out
+
+
+def coding_for_stem(stem: str, cmap: dict[str, dict]) -> dict:
+    """Look up an episode's coding in a coded_episode_map.
+
+    Exact stem first, then prefix (coders shorten long episode filenames).
+    Returns the empty slot shape when nothing is coded.
+    """
+    if stem in cmap:
+        return cmap[stem]
+    low = stem.lower()
+    best, best_len = None, 0
+    for base, slot in cmap.items():
+        if len(base) >= 8 and low.startswith(base.lower()) and len(base) > best_len:
+            best, best_len = slot, len(base)
+    return best or {"transitions": None, "events": None, "metrics": None}
+
+
+def write_manual_metrics(
+    video: Path,
+    kind: str,
+    metrics: dict[str, Any],
+    validation_dir: Path | None = None,
+) -> Path:
+    """Persist hand-coded metrics so they can be browsed in the Index.
+
+    Kept in the coding folder (never in the .analysis cache) — the cache is
+    machine-generated and re-analysis would overwrite human work.
+    """
+    vdir = episode_dir(video, validation_dir)
+    vdir.mkdir(parents=True, exist_ok=True)
+    out = vdir / f"{video.stem}__handcoded_{date.today()}.json"
+    payload: dict[str, Any] = {}
+    if out.exists():  # keep the other kind's metrics from the same day
+        try:
+            payload = json.loads(out.read_text(encoding="utf-8"))
+        except Exception:
+            payload = {}
+    payload.update({
+        "episode": video.name,
+        "source": "hand-coded",
+        "date": str(date.today()),
+        "git_commit": _git_commit(),
+        kind: metrics,
+    })
+    out.write_text(json.dumps(payload, indent=2, default=str),
+                   encoding="utf-8")
+    return out
+
+
+def manual_pacing_metrics(
+    rows: "list[dict] | Path",
+    duration_sec: float = 0.0,
+    start: float | str | None = None,
+    end: float | str | None = None,
+    warn_cb: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
+    """Descriptive pacing metrics computed FROM hand coding, not detection.
+
+    This is the hand-coding path's analysis step — the manual counterpart to
+    the engine's ScenePacingMetrics, using the SAME metric definitions so a
+    hand-coded rate is directly comparable to an automated one.
+
+    ``rows`` may be a parsed coding list or a path to a coding CSV. When a
+    window is given, rates use the window length as the denominator (these
+    users typically code a segment, not a whole episode).
+
+    Shot lengths use gaps BETWEEN coded transitions only — the first and last
+    shots in a window are truncated by the window edges, so including them
+    would bias the mean downward.
+    """
+    if isinstance(rows, (str, Path)):
+        rows = parse_manual_csv(Path(rows), warn_cb=warn_cb)
+
+    lo = parse_time_arg(start)
+    hi = parse_time_arg(end)
+    window = None
+    if lo is not None or hi is not None:
+        lo = lo if lo is not None else 0.0
+        hi = hi if hi is not None else (duration_sec or float("inf"))
+        window = (lo, hi)
+        rows = [r for r in rows if lo <= r["timestamp_sec"] <= hi]
+        span_sec = max(hi - lo, 1e-6)
+    else:
+        span_sec = max(duration_sec, 1e-6)
+    span_min = span_sec / 60.0
+
+    by_type: dict[str, int] = {}
+    for r in rows:
+        by_type[r["type"]] = by_type.get(r["type"], 0) + 1
+
+    n_all = len(rows)
+    n_hard = by_type.get("hard_cut", 0)
+
+    # Shot lengths = gaps between consecutive coded transitions.
+    times = [r["timestamp_sec"] for r in rows]
+    gaps = [b - a for a, b in zip(times, times[1:])] if len(times) > 1 else []
+    if gaps:
+        mean_gap = sum(gaps) / len(gaps)
+        srt = sorted(gaps)
+        mid = len(srt) // 2
+        median_gap = (srt[mid] if len(srt) % 2
+                      else (srt[mid - 1] + srt[mid]) / 2)
+        var = sum((g - mean_gap) ** 2 for g in gaps) / len(gaps)
+        cv = (var ** 0.5) / mean_gap if mean_gap > 0 else 0.0
+    else:
+        mean_gap = median_gap = cv = 0.0
+
+    base = window[0] if window else 0.0
+    n_windows = max(1, int(span_sec / 30.0))
+    timeline = [
+        sum(1 for t in times
+            if base + i * 30.0 <= t < base + (i + 1) * 30.0)
+        for i in range(n_windows)
+    ]
+
+    # Scene-relation summary (only over hard cuts that carry a label).
+    labeled = [r for r in rows
+               if r["type"] == "hard_cut"
+               and r.get("scene_relation") in ("within", "change")]
+    n_change = sum(1 for r in labeled if r["scene_relation"] == "change")
+    n_within = len(labeled) - n_change
+
+    return {
+        "n_transitions": n_all,
+        "n_hard_cuts": n_hard,
+        "by_type": by_type,
+        "hard_cuts_per_min": round(n_hard / span_min, 3),
+        "transitions_per_min": round(n_all / span_min, 3),
+        "mean_shot_sec": round(mean_gap, 3),
+        "median_shot_sec": round(median_gap, 3),
+        "shot_length_cv": round(cv, 3),
+        "timeline_per_30s": timeline,
+        "n_scene_labeled": len(labeled),
+        "scene_changes_per_min": (round(n_change / span_min, 3)
+                                  if labeled else None),
+        "within_scene_fraction": (round(n_within / len(labeled), 3)
+                                  if labeled else None),
+        "window": window,
+        "span_min": round(span_min, 3),
+    }
+
+
 def write_template(video: Path | str, validation_dir: Path | None = None) -> Path:
     """Create a blank manual-coding CSV. Raises FileExistsError if present."""
     vdir = validation_dir or get_validation_dir()

@@ -78,10 +78,48 @@ def _strip_tags(html: str) -> str:
     return re.sub(r"<[^>]+>", " ", html).strip()
 
 
+_WIKI_HEADERS = {
+    "User-Agent": "CMAT/1.0 (children's media analysis research tool)"
+}
+
+
+def fetch_wikipedia_html(url: str, timeout: int = 20) -> str:
+    """Fetch a Wikipedia episode-list page's rendered HTML.
+
+    Restricted to wikipedia.org so a pasted URL can't be used to fetch
+    arbitrary hosts. Returns rendered HTML (what the table parser expects) —
+    NOT wikitext, so ``action=raw`` URLs will not parse.
+    """
+    import urllib.parse
+    import urllib.request
+
+    parsed = urllib.parse.urlparse(url.strip())
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("URL must start with http:// or https://")
+    host = parsed.netloc.split(":")[0].lower()
+    if not (host == "wikipedia.org" or host.endswith(".wikipedia.org")):
+        raise ValueError(
+            f"Only wikipedia.org links are supported (got '{host}').")
+
+    req = urllib.request.Request(url.strip(), headers=_WIKI_HEADERS)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read()
+    charset = "utf-8"
+    try:
+        charset = resp.headers.get_content_charset() or "utf-8"
+    except Exception:
+        pass
+    return raw.decode(charset, errors="replace")
+
+
 def parse_wikipedia_episode_list(html_path: Path) -> list[WikiEpisode]:
     """Parse a Wikipedia episode-list HTML file into WikiEpisode records."""
-    html = html_path.read_text(encoding="utf-8", errors="replace")
+    return parse_wikipedia_html(
+        html_path.read_text(encoding="utf-8", errors="replace"))
 
+
+def parse_wikipedia_html(html: str) -> list[WikiEpisode]:
+    """Parse Wikipedia episode-list HTML (from a file or a fetched URL)."""
     # Build a list of (char_pos, season_num) from headings
     heading_seasons: list[tuple[int, int]] = []
     for m in _SEASON_HDG_RE.finditer(html):

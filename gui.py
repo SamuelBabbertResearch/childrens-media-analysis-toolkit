@@ -39,6 +39,7 @@ from gui_live import LiveAnalysisWindow
 from gui_sampler import SamplerWindow
 from gui_validation import ValidationTab
 from gui_trials import TrialsTab
+from gui_handcoding import HandCodingTab
 from gui_wiki_import import WikiImportDialog
 from gui_tvmaze_import import TVMazeImportDialog
 
@@ -363,7 +364,36 @@ class App(tk.Tk):
         self._tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self._tree.bind("<<TreeviewSelect>>", self._on_tree_select)
 
-        btn_frame = tk.Frame(lib_tab)
+        # ---- Index tab ----
+        idx_tab = tk.Frame(left_nb)
+        left_nb.add(idx_tab, text="Index")
+        self._build_index_tab(idx_tab)
+
+        # ---- Automated coding tab (Analyze | Language | Validation) ----
+        auto_tab = tk.Frame(left_nb)
+        left_nb.add(auto_tab, text="Automated coding")
+        auto_nb = ttk.Notebook(auto_tab)
+        auto_nb.pack(fill=tk.BOTH, expand=True)
+
+        analyze_tab = tk.Frame(auto_nb)
+        auto_nb.add(analyze_tab, text="Analyze")
+
+        # Selection lives in the Library tab but the actions live here, so
+        # surface what's selected — otherwise the user can't see what these
+        # buttons will act on without switching tabs.
+        sel_frame = tk.Frame(analyze_tab)
+        sel_frame.pack(fill=tk.X, padx=4, pady=(6, 0))
+        tk.Label(sel_frame, text="Selected in Library:",
+                 font=("TkDefaultFont", 8), fg="#555555").pack(anchor="w")
+        self._auto_sel_var = tk.StringVar(
+            value="(nothing selected — pick a show or episode in the Library tab)")
+        tk.Label(sel_frame, textvariable=self._auto_sel_var,
+                 font=("TkDefaultFont", 8, "bold"), fg="#003080",
+                 wraplength=400, anchor="w", justify="left").pack(fill=tk.X)
+        ttk.Separator(analyze_tab, orient=tk.HORIZONTAL).pack(fill=tk.X,
+                                                              padx=4, pady=6)
+
+        btn_frame = tk.Frame(analyze_tab)
         btn_frame.pack(fill=tk.X, padx=4, pady=6)
         self._btn_ep = tk.Button(btn_frame, text="Analyze Episode",
                                   command=self._analyze_episode, state=tk.DISABLED)
@@ -425,7 +455,8 @@ class App(tk.Tk):
         self._btn_compare.pack(fill=tk.X, pady=2)
 
         # Queue panel
-        queue_outer = tk.LabelFrame(lib_tab, text="Analysis Queue", padx=4, pady=4)
+        queue_outer = tk.LabelFrame(analyze_tab, text="Analysis Queue",
+                                    padx=4, pady=4)
         queue_outer.pack(fill=tk.BOTH, expand=True, padx=4, pady=(6, 0))
 
         list_frame = tk.Frame(queue_outer)
@@ -443,20 +474,26 @@ class App(tk.Tk):
                                      command=self._clear_queue, state=tk.DISABLED)
         self._btn_clear.pack(fill=tk.X, pady=(4, 0))
 
-        # ---- Index tab ----
-        idx_tab = tk.Frame(left_nb)
-        left_nb.add(idx_tab, text="Index")
-        self._build_index_tab(idx_tab)
-
-        # ---- Language tab ----
-        lang_tab = tk.Frame(left_nb)
-        left_nb.add(lang_tab, text="Language")
+        # ---- Language sub-tab (automated: Whisper transcription + NLP) ----
+        lang_tab = tk.Frame(auto_nb)
+        auto_nb.add(lang_tab, text="Language")
         self._build_language_tab(lang_tab)
 
-        # ---- Validation tab ----
-        val_tab = ValidationTab(left_nb,
+        # ---- Validation sub-tab (grades the automated detector) ----
+        val_tab = ValidationTab(auto_nb,
                                 get_root_folder=lambda: self._root_folder)
-        left_nb.add(val_tab, text="Validation")
+        auto_nb.add(val_tab, text="Validation")
+
+        # ---- Hand-coding tab (human coding as the measurement) ----
+        hand_tab = HandCodingTab(
+            left_nb,
+            get_root_folder=lambda: self._root_folder,
+            on_results=self._show_handcoded_results)
+        left_nb.add(hand_tab, text="Hand-coding")
+        # Kept so the Episode Sampler can route a drawn sample here as well as
+        # to the automated queue (see send_to_handcoding).
+        self._hand_tab = hand_tab
+        self._left_nb = left_nb
 
         # ---- Trials tab ----
         trials_tab = TrialsTab(
@@ -594,6 +631,13 @@ class App(tk.Tk):
 
     def _populate_tree(self) -> None:
         self._tree.delete(*self._tree.get_children())
+        # Built once per refresh so per-episode provenance markers don't cost
+        # a filesystem glob each.
+        from analyzer.validation import coded_episode_map
+        try:
+            self._coded_map = coded_episode_map()
+        except Exception:
+            self._coded_map = {}
         if not self._root_folder:
             return
         items = list_top_level(self._root_folder)
@@ -628,9 +672,21 @@ class App(tk.Tk):
             parent_iid, tk.END, text=f"  {show_dir.name}",
             values=("show", str(show_dir)), open=True,
         )
+        from analyzer.validation import coding_for_stem
+        cmap = getattr(self, "_coded_map", None)
+        if cmap is None:
+            cmap = {}
         for ep in list_episodes(show_dir):
             cached = load_cached(self._root_folder, skey, ep.stem)
-            label = f"    {ep.name}" + ("  [analyzed]" if cached else "")
+            coded = coding_for_stem(ep.stem, cmap)
+            # Mark WHICH measurement exists — automated and hand-coded are
+            # different data and must never be confused for one another.
+            marks = []
+            if cached:
+                marks.append("auto")
+            if coded.get("transitions") or coded.get("events"):
+                marks.append("hand-coded")
+            label = f"    {ep.name}" + (f"  [{' + '.join(marks)}]" if marks else "")
             self._tree.insert(show_node, tk.END, text=label,
                                values=("episode", str(ep)))
 
@@ -647,9 +703,18 @@ class App(tk.Tk):
         self._btn_pin.config(state=tk.DISABLED)
         self._btn_compare.config(state=tk.DISABLED)
         if not sel:
+            if hasattr(self, "_auto_sel_var"):
+                self._auto_sel_var.set("(nothing selected — pick a show or "
+                                       "episode in the Library tab)")
             return
         queue_busy = self._analyzing is not None or self._watch_live_active
         kind, path = self._selected_item()
+        # Mirror the selection into the Automated coding tab, where the
+        # analyze actions now live.
+        if hasattr(self, "_auto_sel_var"):
+            self._auto_sel_var.set(
+                f"{kind}:  {Path(path).name}" if path
+                else "(nothing selected)")
         if kind == "episode":
             self._btn_ep.config(state=tk.NORMAL)
             if not queue_busy:
@@ -895,6 +960,92 @@ class App(tk.Tk):
         self._notes_text.config(state=tk.DISABLED)
         self._btn_save_note.config(state=tk.DISABLED)
         self._clear_metadata_fields()
+
+    def send_to_handcoding(self, paths: "list[Path]", source: str = "") -> int:
+        """Route a drawn sample into the Hand-coding worklist.
+
+        Public because the Episode Sampler calls it — a sample can feed either
+        measurement path (automated queue, hand-coding, or both).
+        """
+        tab = getattr(self, "_hand_tab", None)
+        if tab is None:
+            return 0
+        n = tab.add_episodes(paths, source=source)
+        try:  # bring the destination into view so the result is visible
+            self._left_nb.select(tab)
+        except Exception:
+            pass
+        return n
+
+    def _show_handcoded_results(self, video: Path, kind: str,
+                                m: dict) -> None:
+        """Render hand-coded metrics in the Results panel (Hand-coding tab)."""
+        from analyzer.validation import sec_to_hms
+        self._write_txt("")
+        t = self._txt
+        t.config(state=tk.NORMAL)
+        t.delete("1.0", tk.END)
+        t.insert(tk.END, f"{video.stem}\n", "h1")
+        label = ("Hand-coded transitions" if kind == "transitions"
+                 else "Hand-coded fantastical events")
+        win = m.get("window")
+        span = (f"{sec_to_hms(win[0])}–{sec_to_hms(win[1])}" if win
+                else "full episode")
+        t.insert(tk.END, f"{label}  ·  {span}  ·  {m['span_min']} min\n\n",
+                 "dim")
+        t.insert(tk.END,
+                 "Source: human coding. No automated detection was used.\n\n",
+                 "dim")
+
+        def row(k: str, v) -> None:
+            t.insert(tk.END, f"  {k:<28}", "h2")
+            t.insert(tk.END, f"{v}\n", "mono")
+
+        if kind == "transitions":
+            t.insert(tk.END, "Pacing\n", "h2")
+            row("Hard cuts / min", m["hard_cuts_per_min"])
+            row("All transitions / min", m["transitions_per_min"])
+            row("Mean shot length (s)", m["mean_shot_sec"])
+            row("Median shot length (s)", m["median_shot_sec"])
+            row("Shot-length CV", m["shot_length_cv"])
+            t.insert(tk.END, "\nTransitions by type\n", "h2")
+            for k, v in sorted(m["by_type"].items(), key=lambda kv: -kv[1]):
+                row(k, v)
+            if m.get("n_scene_labeled"):
+                t.insert(tk.END, "\nScene relation "
+                                 f"({m['n_scene_labeled']} labeled)\n", "h2")
+                row("Scene changes / min", m["scene_changes_per_min"])
+                row("Within-scene fraction", m["within_scene_fraction"])
+            else:
+                t.insert(tk.END,
+                         "\n  (No scene_relation labels — add within/change on "
+                         "hard-cut rows\n   to get scene-change rates.)\n",
+                         "dim")
+        else:
+            t.insert(tk.END, "Fantastical events\n", "h2")
+            row("Events / min", m["events_per_min"])
+            row("Events coded", m["n_events"])
+            if m.get("per_type"):
+                t.insert(tk.END, "\nBy type (count · per min)\n", "h2")
+                for k, d in sorted(m["per_type"].items(),
+                                   key=lambda kv: -kv[1]["count"]):
+                    row(k, f"{d['count']}  ·  {d['per_min']}")
+            if m.get("pct_integral") is not None:
+                row("Integral fraction", m["pct_integral"])
+            if m.get("pct_repeat") is not None:
+                row("Repeat fraction", m["pct_repeat"])
+
+        tl = m.get("timeline_per_30s") or m.get("timeline_events_per_30s")
+        if tl:
+            t.insert(tk.END, "\nPer 30s\n", "h2")
+            t.insert(tk.END, "  " + " ".join(str(x) for x in tl) + "\n", "mono")
+
+        t.insert(tk.END,
+                 "\nMetric definitions match the automated engine, so these "
+                 "hand-coded rates are\ndirectly comparable to automated ones. "
+                 "Shot lengths use gaps between coded\ntransitions (window-edge "
+                 "shots are truncated and excluded).\n", "dim")
+        t.config(state=tk.DISABLED)
 
     def _show_trial_results(self, trial: dict) -> None:
         """Render a Trials-tab entry in the Results panel (right side)."""
@@ -2374,10 +2525,15 @@ class App(tk.Tk):
         ep_tab = tk.Frame(sub_nb)
         sub_nb.add(ep_tab, text="Episodes")
 
-        _ep_cols   = ("show", "file", "airdate", "seas", "epn", "dur", "load", "cpm", "sat", "con", "mot", "flash", "rms", "date", "notes")
-        _ep_hdrs   = ("Show", "File", "Air Date", "S", "Ep", "Dur(s)", "Load", "C/min", "Sat", "Contrast", "Motion", "Flash/m", "RMS", "Date", "Notes")
-        _ep_widths = (80, 110, 72, 26, 30, 48, 48, 48, 42, 55, 50, 55, 48, 82, 130)
+        # "Source" makes the provenance of every row explicit: this table holds
+        # AUTOMATED measurements only. "Hand" flags which episodes additionally
+        # have human coding (browse it in the Hand-coded sub-tab) — the two are
+        # different data and are never mixed in one row.
+        _ep_cols   = ("source", "hand", "show", "file", "airdate", "seas", "epn", "dur", "load", "cpm", "sat", "con", "mot", "flash", "rms", "date", "notes")
+        _ep_hdrs   = ("Source", "Hand", "Show", "File", "Air Date", "S", "Ep", "Dur(s)", "Load", "C/min", "Sat", "Contrast", "Motion", "Flash/m", "RMS", "Date", "Notes")
+        _ep_widths = (68, 40, 80, 110, 72, 26, 30, 48, 48, 48, 42, 55, 50, 55, 48, 82, 130)
         self._idx_ep_db_cols = (
+            None, None,  # source / hand — derived, not DB columns
             "show_name", "file_name", "air_date", "season_num", "episode_num",
             "duration_sec", "sensory_load_score",
             "cuts_per_min", "color_saturation_mean", "color_contrast_mean",
@@ -2448,8 +2604,55 @@ class App(tk.Tk):
         sh_hsb.pack(side=tk.BOTTOM, fill=tk.X)
         self._idx_sh_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
+        # ---- Hand-coded sub-tab ----
+        # Kept as a SEPARATE table, never merged into the automated one:
+        # human-coded and machine-measured numbers are different data and
+        # mixing them in one row (or one aggregate) would destroy provenance.
+        hc_tab = tk.Frame(sub_nb)
+        sub_nb.add(hc_tab, text="Hand-coded")
+        tk.Label(hc_tab,
+                 text="Metrics computed from HUMAN coding — no automated "
+                      "detection. Shown separately from the automated Episodes "
+                      "table on purpose; never mixed into automated aggregates. "
+                      "Compute these in the Hand-coding tab.",
+                 font=("TkDefaultFont", 8), fg="#884400",
+                 wraplength=520, justify="left",
+                 anchor="w").pack(fill=tk.X, padx=4, pady=(4, 2))
+
+        _hc_cols = ("episode", "window", "cpm", "tpm", "shot", "cv",
+                    "scpm", "within", "evpm", "date")
+        _hc_hdrs = ("Episode", "Window", "Cuts/min", "Trans/min", "Mean shot",
+                    "CV", "SceneChg/min", "Within%", "Events/min", "Coded")
+        _hc_w    = (190, 90, 60, 62, 66, 44, 82, 56, 66, 78)
+        hc_frame = tk.Frame(hc_tab)
+        hc_frame.pack(fill=tk.BOTH, expand=True)
+        self._idx_hc_tree = ttk.Treeview(hc_frame, columns=_hc_cols,
+                                          show="headings", selectmode="browse")
+        for c, h, w in zip(_hc_cols, _hc_hdrs, _hc_w):
+            self._idx_hc_tree.heading(c, text=h)
+            self._idx_hc_tree.column(c, width=w, minwidth=28, stretch=False)
+        hc_vsb = ttk.Scrollbar(hc_frame, orient=tk.VERTICAL,
+                               command=self._idx_hc_tree.yview)
+        hc_hsb = ttk.Scrollbar(hc_frame, orient=tk.HORIZONTAL,
+                               command=self._idx_hc_tree.xview)
+        self._idx_hc_tree.configure(yscrollcommand=hc_vsb.set,
+                                    xscrollcommand=hc_hsb.set)
+        hc_vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        hc_hsb.pack(side=tk.BOTTOM, fill=tk.X)
+        self._idx_hc_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
         # Column-header tooltips
         _IndexTooltip(self._idx_ep_tree, {
+            "source": "Where this row's numbers came from. This table holds\n"
+                      "AUTOMATED measurements only — see the Hand-coded tab\n"
+                      "for human-coded metrics.",
+            "hand":   "Whether this episode also has human coding:\n"
+                      "  T  = transitions coded\n"
+                      "  E  = fantastical events coded\n"
+                      "  TE = both\n"
+                      "  —  = none\n\n"
+                      "The hand-coded NUMBERS live in the Hand-coded sub-tab;\n"
+                      "they are never mixed into this automated table.",
             "show":  "Show name",
             "file":  "Episode filename",
             "dur":   "Duration in seconds",
@@ -2525,13 +2728,24 @@ class App(tk.Tk):
             filter_show=filter_str,
         )
         self._idx_ep_tree.delete(*self._idx_ep_tree.get_children())
+        from analyzer.validation import coded_episode_map, coding_for_stem
+        try:
+            cmap = coded_episode_map()
+        except Exception:
+            cmap = {}
+        self._refresh_handcoded_index(cmap)
         for r in ep_rows:
             def _fmt(v, fmt):
                 return fmt % v if v is not None else ""
             note_full = r.get("notes") or ""
             note_disp = (note_full[:28] + "…") if len(note_full) > 28 else note_full
+            coded = coding_for_stem(Path(r["file_name"]).stem, cmap)
+            hand = "".join(("T" if coded.get("transitions") else "",
+                            "E" if coded.get("events") else ""))
             self._idx_ep_tree.insert("", tk.END,
                 values=(
+                    "automated",
+                    hand or "—",
                     r["show_name"],
                     r["file_name"],
                     r.get("air_date") or "",
@@ -2578,7 +2792,49 @@ class App(tk.Tk):
                 tags=(r["show_name"],),
             )
 
+    def _refresh_handcoded_index(self, cmap: dict) -> None:
+        """Populate the Hand-coded sub-tab from persisted hand-coded metrics."""
+        tree = getattr(self, "_idx_hc_tree", None)
+        if tree is None:
+            return
+        tree.delete(*tree.get_children())
+        from analyzer.validation import sec_to_hms
+        rows = []
+        for base, slot in cmap.items():
+            mpath = slot.get("metrics")
+            if not mpath:
+                continue
+            try:
+                d = json.loads(Path(mpath).read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            tr = d.get("transitions") or {}
+            ev = d.get("events") or {}
+            win = tr.get("window") or ev.get("window")
+            win_txt = (f"{sec_to_hms(win[0])}–{sec_to_hms(win[1])}" if win
+                       else "full")
+
+            def g(src, k, fmt="%s"):
+                v = src.get(k)
+                return "" if v is None else (fmt % v)
+
+            rows.append((
+                d.get("episode", base)[:60], win_txt,
+                g(tr, "hard_cuts_per_min", "%.2f"),
+                g(tr, "transitions_per_min", "%.2f"),
+                g(tr, "mean_shot_sec", "%.1f"),
+                g(tr, "shot_length_cv", "%.2f"),
+                g(tr, "scene_changes_per_min", "%.2f"),
+                g(tr, "within_scene_fraction", "%.2f"),
+                g(ev, "events_per_min", "%.2f"),
+                d.get("date", ""),
+            ))
+        for r in sorted(rows, key=lambda x: x[0]):
+            tree.insert("", tk.END, values=r)
+
     def _on_idx_ep_col_click(self, col: str) -> None:
+        if col is None:
+            return  # derived column (Source / Hand) — nothing to sort in the DB
         if self._idx_ep_sort["col"] == col:
             self._idx_ep_sort["asc"] = not self._idx_ep_sort["asc"]
         else:

@@ -1,0 +1,42 @@
+{
+  "episode": "A Charlie Brown Christmas 1965.mp4",
+  "source": "hand-coded",
+  "date": "2026-08-03",
+  "git_commit": "90653bb",
+  "transitions": {
+    "n_transitions": 43,
+    "n_hard_cuts": 33,
+    "by_type": {
+      "fade_in": 2,
+      "dissolve": 6,
+      "hard_cut": 33,
+      "other": 1,
+      "fade_out": 1
+    },
+    "hard_cuts_per_min": 6.6,
+    "transitions_per_min": 8.6,
+    "mean_shot_sec": 7.048,
+    "median_shot_sec": 5.0,
+    "shot_length_cv": 0.791,
+    "timeline_per_30s": [
+      2,
+      3,
+      4,
+      3,
+      6,
+      3,
+      5,
+      4,
+      8,
+      5
+    ],
+    "n_scene_labeled": 0,
+    "scene_changes_per_min": null,
+    "within_scene_fraction": null,
+    "window": [
+      0.0,
+      300.0
+    ],
+    "span_min": 5.0
+  }
+}

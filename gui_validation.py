@@ -271,6 +271,12 @@ class ValidationTab(tk.Frame):
         s1.pack(fill=tk.X, pady=(8, 0))
         pick = tk.Button(s1, text="Choose video…", command=self._choose_video)
         pick.pack(fill=tk.X)
+        b_samp = tk.Button(s1, text="Choose from a sample draw…",
+                           command=self._choose_from_sample)
+        b_samp.pack(fill=tk.X, pady=(2, 0))
+        _Tip(b_samp, "Pick an episode from an Episode Sampler draw "
+                     "(manifest.json) instead of browsing the filesystem — so "
+                     "you validate exactly the episodes that sample selected.")
         _Tip(pick, "Pick the episode video file (.mp4/.mkv) you want to "
                    "validate. Nothing is analyzed yet — this just selects "
                    "which episode the buttons below act on.")
@@ -498,6 +504,52 @@ class ValidationTab(tk.Frame):
         self._video = Path(path)
         self._video_var.set(self._video.name)
         self._refresh_status()
+
+    def _choose_from_sample(self) -> None:
+        """Pick an episode out of an Episode Sampler draw."""
+        from analyzer.trials import read_sample_episodes
+        root = self._get_root_folder()
+        path = filedialog.askopenfilename(
+            parent=self, title="Open Episode Sampler manifest",
+            initialdir=str(root) if root else str(Path.home()),
+            filetypes=[("Sample manifest", "manifest.json"),
+                       ("JSON", "*.json"), ("All files", "*.*")])
+        if not path:
+            return
+        eps = read_sample_episodes(Path(path))
+        if not eps:
+            messagebox.showwarning(
+                "No episodes found",
+                "Couldn't read episode paths from that sample. Expected a "
+                "selected.csv with a 'filepath' column beside manifest.json.",
+                parent=self)
+            return
+
+        win = tk.Toplevel(self)
+        win.title(f"Sample: {Path(path).parent.name}")
+        win.geometry("620x340")
+        tk.Label(win, text=f"{len(eps)} episode(s) in this sample — "
+                           f"pick one to validate:",
+                 padx=10, pady=6, anchor="w").pack(fill=tk.X)
+        lb = tk.Listbox(win, font=("Consolas", 8), activestyle="none")
+        for p in eps:
+            mark = "" if p.exists() else "  [file missing]"
+            lb.insert(tk.END, f"{p.name}{mark}")
+        lb.pack(fill=tk.BOTH, expand=True, padx=10)
+        lb.selection_set(0)
+
+        def ok() -> None:
+            sel = lb.curselection()
+            if sel:
+                self._video = eps[sel[0]]
+                self._video_var.set(self._video.name)
+                self._refresh_status()
+            win.destroy()
+
+        tk.Button(win, text="Use this episode", command=ok,
+                  width=18).pack(pady=8)
+        win.transient(self.winfo_toplevel())
+        win.grab_set()
 
     def _create_template(self) -> None:
         video = self._need_video()

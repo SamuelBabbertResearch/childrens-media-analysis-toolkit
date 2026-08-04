@@ -263,6 +263,34 @@ def sampling_text_from_manifest(data: dict) -> str:
     return text
 
 
+def read_sample_episodes(manifest_path: Path) -> list[Path]:
+    """Episode file paths from an Episode Sampler draw.
+
+    Accepts the manifest.json or the folder containing it, and reads the
+    sibling selected.csv. Shared by every destination a sample can be sent to
+    (automated queue, hand-coding worklist, validation worklist) so a drawn
+    sample flows into whichever measurement path the researcher is using.
+    """
+    p = Path(manifest_path)
+    folder = p if p.is_dir() else p.parent
+    csv_path = folder / "selected.csv"
+    if not csv_path.exists():
+        cands = [c for c in folder.glob("*.csv")]
+        if len(cands) != 1:
+            return []
+        csv_path = cands[0]
+    out: list[Path] = []
+    try:
+        with csv_path.open(newline="", encoding="utf-8-sig") as fh:
+            for row in csv.DictReader(fh):
+                fp = (row.get("filepath") or "").strip()
+                if fp and fp.lower() != "nan":
+                    out.append(Path(fp))
+    except Exception:
+        return []
+    return out
+
+
 def sample_coverage(trial: dict, validation_dir: Path | None = None) -> dict | None:
     """For an episode_sample trial: how many sampled episodes have manual coding.
 

@@ -429,11 +429,29 @@ class SamplerWindow(tk.Toplevel):
         lf = tk.LabelFrame(parent, text="9. Load into CMAT", padx=6, pady=6)
         lf.pack(fill=tk.X, pady=(0, 2))
 
+        # Destination — a drawn sample can feed either measurement path
+        dest_row = tk.Frame(lf)
+        dest_row.pack(fill=tk.X, pady=(2, 2))
+        tk.Label(dest_row, text="Send to:",
+                 font=("TkDefaultFont", 9)).pack(side=tk.LEFT)
+        self._dest_var = tk.StringVar(value="Automated analysis queue")
+        ttk.Combobox(
+            dest_row, textvariable=self._dest_var, state="readonly", width=26,
+            values=["Automated analysis queue", "Hand-coding worklist",
+                    "Both"],
+        ).pack(side=tk.LEFT, padx=(6, 8))
+        tk.Label(
+            dest_row,
+            text="automated = run the detector on them;\n"
+                 "hand-coding = work through them by hand.",
+            fg="#444", font=("TkDefaultFont", 8), justify="left",
+        ).pack(side=tk.LEFT)
+
         # Primary action
         primary_row = tk.Frame(lf)
         primary_row.pack(fill=tk.X, pady=(2, 4))
         self._btn_queue = tk.Button(
-            primary_row, text="Send to Analysis Queue",
+            primary_row, text="Send Sample to CMAT",
             command=self._send_to_queue,
             padx=14, pady=4, bg="#c8e6c9",
             font=("TkDefaultFont", 10, "bold"),
@@ -442,7 +460,7 @@ class SamplerWindow(tk.Toplevel):
         self._btn_queue.pack(side=tk.LEFT)
         tk.Label(
             primary_row,
-            text="Queues the selected episodes for analysis in the main window.",
+            text="Loads the selected episodes into the chosen destination.",
             fg="#444", font=("TkDefaultFont", 8),
         ).pack(side=tk.LEFT, padx=10)
 
@@ -702,17 +720,27 @@ class SamplerWindow(tk.Toplevel):
         self._last_result = result
         self._populate_preview(result)
 
-        # Enqueue every episode that has a filepath
+        dest = self._dest_var.get()
+        to_auto = dest in ("Automated analysis queue", "Both")
+        to_hand = dest in ("Hand-coding worklist", "Both")
+
         queued, skipped, no_path = 0, 0, 0
+        hand_paths = []
         for ep in result.selected:
             if ep.filepath is None:
                 no_path += 1
                 continue
-            added = self._app._enqueue(ep.filepath, silent=True)
-            if added:
-                queued += 1
-            else:
-                skipped += 1
+            hand_paths.append(ep.filepath)
+            if to_auto:
+                if self._app._enqueue(ep.filepath, silent=True):
+                    queued += 1
+                else:
+                    skipped += 1
+
+        n_hand = 0
+        if to_hand:
+            name = result.manifest.trial_name or result.manifest.entry_id
+            n_hand = self._app.send_to_handcoding(hand_paths, source=name)
 
         # Auto-save manifest beside the entry folder for reproducibility
         folder = self._folder_var.get()
@@ -730,12 +758,16 @@ class SamplerWindow(tk.Toplevel):
             except Exception:
                 pass  # manifest save failure is non-fatal
 
-        parts = [f"{queued} episode(s) added to the queue"]
-        if skipped:
-            parts.append(f"{skipped} already queued")
+        parts = []
+        if to_auto:
+            parts.append(f"{queued} episode(s) queued for automated analysis")
+            if skipped:
+                parts.append(f"{skipped} already queued")
+        if to_hand:
+            parts.append(f"{n_hand} added to the hand-coding worklist")
         if no_path:
             parts.append(f"{no_path} had no file path")
-        self._queue_status_var.set("  ".join(parts))
+        self._queue_status_var.set("  ·  ".join(parts))
 
         self._show_notes(result)
 
