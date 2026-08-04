@@ -32,6 +32,7 @@ def _init_db(conn: sqlite3.Connection) -> None:
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS episodes (
             file_path               TEXT PRIMARY KEY,
+            show_key                TEXT NOT NULL,
             show_name               TEXT NOT NULL,
             file_name               TEXT NOT NULL,
             duration_sec            REAL,
@@ -51,7 +52,8 @@ def _init_db(conn: sqlite3.Connection) -> None:
         );
 
         CREATE TABLE IF NOT EXISTS shows (
-            show_name        TEXT PRIMARY KEY,
+            show_key         TEXT PRIMARY KEY,
+            show_name        TEXT NOT NULL,
             episode_count    INTEGER,
             avg_load         REAL,
             median_load      REAL,
@@ -66,7 +68,8 @@ def _init_db(conn: sqlite3.Connection) -> None:
 
         CREATE TABLE IF NOT EXISTS show_eras (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            show_name  TEXT NOT NULL,
+            show_key   TEXT NOT NULL,
+            show_name  TEXT,
             era_name   TEXT NOT NULL,
             start_date TEXT,
             end_date   TEXT,
@@ -76,9 +79,11 @@ def _init_db(conn: sqlite3.Connection) -> None:
     conn.commit()
     # Migrate existing DBs
     for sql in [
+        "ALTER TABLE episodes ADD COLUMN show_key TEXT",
         "ALTER TABLE episodes ADD COLUMN color_contrast_mean REAL",
         "ALTER TABLE shows ADD COLUMN avg_contrast REAL",
         "ALTER TABLE shows ADD COLUMN avg_flashing REAL",
+        "ALTER TABLE shows ADD COLUMN show_key TEXT",
         "ALTER TABLE episodes ADD COLUMN notes TEXT",
         # Phase 1: longitudinal metadata
         "ALTER TABLE episodes ADD COLUMN air_date TEXT",
@@ -88,12 +93,71 @@ def _init_db(conn: sqlite3.Connection) -> None:
         "ALTER TABLE shows ADD COLUMN target_age_min INTEGER",
         "ALTER TABLE shows ADD COLUMN target_age_max INTEGER",
         "ALTER TABLE shows ADD COLUMN show_notes TEXT",
+        "ALTER TABLE show_eras ADD COLUMN show_key TEXT",
+        "ALTER TABLE show_eras ADD COLUMN show_name TEXT",
     ]:
         try:
             conn.execute(sql)
             conn.commit()
         except sqlite3.OperationalError:
             pass  # column already exists
+    conn.execute("UPDATE episodes SET show_key = show_name WHERE show_key IS NULL OR show_key = ''")
+    conn.execute("UPDATE shows SET show_key = show_name WHERE show_key IS NULL OR show_key = ''")
+    conn.execute("UPDATE show_eras SET show_key = show_name WHERE show_key IS NULL OR show_key = ''")
+    conn.commit()
+    _migrate_shows_primary_key(conn)
+
+
+def _migrate_shows_primary_key(conn: sqlite3.Connection) -> None:
+    """Rebuild old DBs whose shows table was keyed by display name."""
+    info = conn.execute("PRAGMA table_info(shows)").fetchall()
+    pk_cols = [row["name"] for row in info if row["pk"]]
+    if pk_cols == ["show_key"]:
+        return
+
+    old_cols = {row["name"] for row in info}
+    conn.execute("ALTER TABLE shows RENAME TO shows_old")
+    conn.executescript("""
+        CREATE TABLE shows (
+            show_key         TEXT PRIMARY KEY,
+            show_name        TEXT NOT NULL,
+            episode_count    INTEGER,
+            avg_load         REAL,
+            median_load      REAL,
+            avg_cuts_per_min REAL,
+            avg_motion       REAL,
+            avg_saturation   REAL,
+            avg_contrast     REAL,
+            avg_flashing     REAL,
+            avg_audio_rms    REAL,
+            updated_at       TEXT,
+            format           TEXT,
+            target_age_min   INTEGER,
+            target_age_max   INTEGER,
+            show_notes       TEXT
+        );
+    """)
+
+    cols = [
+        "show_key", "show_name", "episode_count", "avg_load", "median_load",
+        "avg_cuts_per_min", "avg_motion", "avg_saturation", "avg_contrast",
+        "avg_flashing", "avg_audio_rms", "updated_at", "format",
+        "target_age_min", "target_age_max", "show_notes",
+    ]
+
+    def expr(col: str) -> str:
+        if col == "show_key":
+            return "COALESCE(NULLIF(show_key, ''), show_name)" if "show_key" in old_cols else "show_name"
+        if col == "show_name":
+            return "show_name"
+        return col if col in old_cols else "NULL"
+
+    conn.execute(
+        f"INSERT OR REPLACE INTO shows ({', '.join(cols)}) "
+        f"SELECT {', '.join(expr(c) for c in cols)} FROM shows_old"
+    )
+    conn.execute("DROP TABLE shows_old")
+    conn.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -105,24 +169,27 @@ def upsert_episode(
     result: EpisodeResult,
     show_name: str,
     file_path: str,
+    show_key: str | None = None,
 ) -> None:
     """Insert or replace a single episode row."""
     m = result.metrics
+    stable_show_key = show_key or show_name
     conn.execute("""
         INSERT INTO episodes (
-            file_path, show_name, file_name, duration_sec,
+            file_path, show_key, show_name, file_name, duration_sec,
             shots_per_min, cuts_per_min, shot_length_cv,
             color_saturation_mean, color_contrast_mean, motion_mean, motion_peak,
             flashing_events_per_min, audio_rms_mean, audio_dynamic_range_db,
             audio_available, sensory_load_score, analyzed_at
         ) VALUES (
-            :file_path, :show_name, :file_name, :duration_sec,
+            :file_path, :show_key, :show_name, :file_name, :duration_sec,
             :shots_per_min, :cuts_per_min, :shot_length_cv,
             :color_saturation_mean, :color_contrast_mean, :motion_mean, :motion_peak,
             :flashing_events_per_min, :audio_rms_mean, :audio_dynamic_range_db,
             :audio_available, :sensory_load_score, :analyzed_at
         )
         ON CONFLICT(file_path) DO UPDATE SET
+            show_key                = excluded.show_key,
             show_name               = excluded.show_name,
             file_name               = excluded.file_name,
             duration_sec            = excluded.duration_sec,
@@ -141,6 +208,7 @@ def upsert_episode(
             analyzed_at             = excluded.analyzed_at
     """, {
         "file_path":               file_path,
+        "show_key":                stable_show_key,
         "show_name":               show_name,
         "file_name":               result.file,
         "duration_sec":            result.duration_sec,
@@ -165,20 +233,23 @@ def upsert_show(
     conn: sqlite3.Connection,
     aggregate: ShowAggregate,
     show_name: str,
+    show_key: str | None = None,
 ) -> None:
     """Insert or replace a show aggregate row."""
     audio_mean = aggregate.audio_rms_mean.mean if aggregate.audio_rms_mean.mean else None
+    stable_show_key = show_key or show_name
     conn.execute("""
         INSERT INTO shows (
-            show_name, episode_count, avg_load, median_load,
+            show_key, show_name, episode_count, avg_load, median_load,
             avg_cuts_per_min, avg_motion, avg_saturation, avg_contrast,
             avg_flashing, avg_audio_rms, updated_at
         ) VALUES (
-            :show_name, :episode_count, :avg_load, :median_load,
+            :show_key, :show_name, :episode_count, :avg_load, :median_load,
             :avg_cuts_per_min, :avg_motion, :avg_saturation, :avg_contrast,
             :avg_flashing, :avg_audio_rms, :updated_at
         )
-        ON CONFLICT(show_name) DO UPDATE SET
+        ON CONFLICT(show_key) DO UPDATE SET
+            show_name        = excluded.show_name,
             episode_count    = excluded.episode_count,
             avg_load         = excluded.avg_load,
             median_load      = excluded.median_load,
@@ -190,6 +261,7 @@ def upsert_show(
             avg_audio_rms    = excluded.avg_audio_rms,
             updated_at       = excluded.updated_at
     """, {
+        "show_key":         stable_show_key,
         "show_name":        show_name,
         "episode_count":    aggregate.episode_count,
         "avg_load":         aggregate.sensory_load_score.mean,
@@ -210,14 +282,14 @@ def upsert_show(
 # ---------------------------------------------------------------------------
 
 _EP_SORT_COLS = {
-    "show_name", "file_name", "duration_sec", "cuts_per_min",
+    "show_key", "show_name", "file_name", "duration_sec", "cuts_per_min",
     "color_saturation_mean", "color_contrast_mean", "motion_mean",
     "flashing_events_per_min", "audio_rms_mean",
     "sensory_load_score", "analyzed_at", "notes",
     "air_date", "season_num", "episode_num",
 }
 _SHOW_SORT_COLS = {
-    "show_name", "episode_count", "avg_load",
+    "show_key", "show_name", "episode_count", "avg_load",
     "avg_cuts_per_min", "avg_motion", "avg_saturation",
     "avg_contrast", "avg_flashing", "avg_audio_rms",
 }
@@ -233,8 +305,10 @@ def query_episodes(
     direction = "ASC" if ascending else "DESC"
     if filter_show:
         rows = conn.execute(
-            f"SELECT * FROM episodes WHERE show_name LIKE ? ORDER BY {col} {direction}",
-            (f"%{filter_show}%",),
+            f"""SELECT * FROM episodes
+                WHERE show_name LIKE ? OR show_key LIKE ?
+                ORDER BY {col} {direction}""",
+            (f"%{filter_show}%", f"%{filter_show}%"),
         ).fetchall()
     else:
         rows = conn.execute(
@@ -273,7 +347,7 @@ def remove_stale_episodes(conn: sqlite3.Connection) -> int:
     conn.executemany("DELETE FROM episodes WHERE file_path = ?", [(p,) for p in stale])
     conn.execute("""
         DELETE FROM shows
-        WHERE show_name NOT IN (SELECT DISTINCT show_name FROM episodes)
+        WHERE show_key NOT IN (SELECT DISTINCT show_key FROM episodes)
     """)
     conn.commit()
     return len(stale)
@@ -337,7 +411,7 @@ def upsert_episode_metadata(
 def get_show_metadata(conn: sqlite3.Connection, show_name: str) -> dict:
     """Return format, target_age_min/max, show_notes for a show."""
     row = conn.execute(
-        "SELECT format, target_age_min, target_age_max, show_notes FROM shows WHERE show_name = ?",
+        "SELECT format, target_age_min, target_age_max, show_notes FROM shows WHERE show_key = ?",
         (show_name,),
     ).fetchone()
     if row is None:
@@ -371,7 +445,7 @@ def upsert_show_metadata(
     conn.execute(
         """UPDATE shows
            SET format = ?, target_age_min = ?, target_age_max = ?, show_notes = ?
-           WHERE show_name = ?""",
+           WHERE show_key = ?""",
         (format or None, target_age_min, target_age_max, show_notes or None, show_name),
     )
     conn.commit()
@@ -393,7 +467,7 @@ def get_episode_percentile(conn: sqlite3.Connection, file_path: str) -> dict:
       show_name    — show the episode belongs to
     """
     row = conn.execute(
-        "SELECT show_name, sensory_load_score FROM episodes WHERE file_path = ?",
+        "SELECT show_key, show_name, sensory_load_score FROM episodes WHERE file_path = ?",
         (file_path,),
     ).fetchone()
     if row is None or row["sensory_load_score"] is None:
@@ -401,6 +475,7 @@ def get_episode_percentile(conn: sqlite3.Connection, file_path: str) -> dict:
 
     score: float = row["sensory_load_score"]
     show_name: str = row["show_name"]
+    show_key: str = row["show_key"]
 
     below = conn.execute(
         "SELECT COUNT(*) FROM episodes WHERE sensory_load_score < ?",
@@ -412,13 +487,13 @@ def get_episode_percentile(conn: sqlite3.Connection, file_path: str) -> dict:
 
     # Within-show rank: 1 = most stimulating (highest score)
     show_above = conn.execute(
-        "SELECT COUNT(*) FROM episodes WHERE show_name = ? AND sensory_load_score > ?",
-        (show_name, score),
+        "SELECT COUNT(*) FROM episodes WHERE show_key = ? AND sensory_load_score > ?",
+        (show_key, score),
     ).fetchone()[0]
     show_total = conn.execute(
         "SELECT COUNT(*) FROM episodes "
-        "WHERE show_name = ? AND sensory_load_score IS NOT NULL",
-        (show_name,),
+        "WHERE show_key = ? AND sensory_load_score IS NOT NULL",
+        (show_key,),
     ).fetchone()[0]
 
     percentile = int(round(below / total * 100)) if total > 1 else 0
@@ -440,7 +515,7 @@ def get_show_eras(conn: sqlite3.Connection, show_name: str) -> list[dict]:
     """Return era definitions for a show, ordered by start date."""
     rows = conn.execute(
         "SELECT era_name, start_date, end_date, color FROM show_eras "
-        "WHERE show_name = ? ORDER BY COALESCE(start_date, '0') ASC",
+        "WHERE show_key = ? ORDER BY COALESCE(start_date, '0') ASC",
         (show_name,),
     ).fetchall()
     return [dict(r) for r in rows]
@@ -452,12 +527,13 @@ def save_show_eras(
     eras: list[dict],
 ) -> None:
     """Replace all era definitions for a show."""
-    conn.execute("DELETE FROM show_eras WHERE show_name = ?", (show_name,))
+    conn.execute("DELETE FROM show_eras WHERE show_key = ?", (show_name,))
     for era in eras:
         conn.execute(
-            "INSERT INTO show_eras (show_name, era_name, start_date, end_date, color) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO show_eras (show_key, show_name, era_name, start_date, end_date, color) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             (
+                show_name,
                 show_name,
                 era.get("era_name", ""),
                 era.get("start_date") or None,

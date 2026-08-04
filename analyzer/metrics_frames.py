@@ -21,6 +21,7 @@ def compute_frame_metrics(
     sample_fps: float,
     flashing_threshold: float,
     duration_sec: float,
+    flashing_sample_fps: float | None = None,
     motion_method: str = "absdiff",
     progress_cb: Callable[[float], None] | None = None,
     frame_cb: Callable[[np.ndarray, float, float, float, bool], None] | None = None,
@@ -33,6 +34,7 @@ def compute_frame_metrics(
         sample_fps: How many frames to decode per second of video (default 2).
         flashing_threshold: Luminance delta (0–1) that counts as a flash event.
         duration_sec: Pre-computed video duration in seconds.
+        flashing_sample_fps: Optional higher-rate pass for flashing detection.
         motion_method: "absdiff" (fast, default) or "farneback" (optical flow).
         progress_cb: Optional callback(fraction: float) for UI progress reporting.
         frame_cb: Optional callback(frame, saturation, motion, luminance, is_flash)
@@ -42,6 +44,9 @@ def compute_frame_metrics(
         (ColorSaturationMetrics, MotionMetrics, FlashingMetrics)
     """
     cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        cap.release()
+        raise RuntimeError(f"Could not open video file: {video_path}")
     video_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
     total_frames = max(1, int(cap.get(cv2.CAP_PROP_FRAME_COUNT)))
 
@@ -119,6 +124,11 @@ def compute_frame_metrics(
     con_arr = np.array(contrast_values)   if contrast_values   else np.array([0.0])
     mot_arr = np.array(motion_values)     if motion_values     else np.array([0.0])
 
+    if flashing_sample_fps and flashing_sample_fps > sample_fps:
+        flashing_events = _count_flashing_events(
+            video_path, video_fps, flashing_sample_fps, flashing_threshold
+        )
+
     return (
         ColorSaturationMetrics(
             mean=round(float(np.mean(sat_arr)), 4),
@@ -133,3 +143,40 @@ def compute_frame_metrics(
             luminance_delta_events_per_min=round(flashing_events / duration_min, 3),
         ),
     )
+
+
+def _count_flashing_events(
+    video_path: Path,
+    video_fps: float,
+    sample_fps: float,
+    flashing_threshold: float,
+) -> int:
+    """Count luminance jumps in a dedicated higher-rate pass."""
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        cap.release()
+        raise RuntimeError(f"Could not open video file: {video_path}")
+
+    frame_interval = max(1, int(round(video_fps / sample_fps)))
+    events = 0
+    prev_luminance: float | None = None
+    frame_idx = 0
+
+    while True:
+        if frame_idx % frame_interval == 0:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            luminance = float(np.mean(gray)) / 255.0
+            if prev_luminance is not None and abs(luminance - prev_luminance) > flashing_threshold:
+                events += 1
+            prev_luminance = luminance
+        else:
+            ret = cap.grab()
+            if not ret:
+                break
+        frame_idx += 1
+
+    cap.release()
+    return events

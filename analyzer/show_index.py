@@ -38,6 +38,21 @@ def display_show_name(root: Path, show_dir: Path) -> tuple[str, int | None]:
     return show_dir.name, None
 
 
+def db_show_key(root: Path, show_dir: Path) -> str:
+    """Return the stable DB key for a show directory.
+
+    Flat and categorized shows use the same relative key as the cache. Season
+    folders are grouped under their parent show so all seasons share metadata,
+    era definitions, and show-level index rows.
+    """
+    if parse_season_folder(show_dir.name) is not None:
+        parent = show_dir.parent
+        if parent == root:
+            return parent.name
+        return parent.relative_to(root).as_posix()
+    return show_key(root, show_dir)
+
+
 def _is_show(d: Path) -> bool:
     """True if d is a non-hidden directory that directly contains MP4 files."""
     return d.is_dir() and not d.name.startswith(".") and any(d.glob("*.mp4"))

@@ -11,6 +11,7 @@ Scene pacing = cut rate, shot CV, rolling 30s timeline, plus optional dissolve r
 """
 
 from __future__ import annotations
+import math
 from pathlib import Path
 
 import cv2
@@ -274,7 +275,11 @@ def compute_cut_metrics(
                 shots_per_min=round(1.0 / duration_min, 3),
                 count=1,
             ),
-            ScenePacingMetrics(cuts_per_min=0.0, shot_length_cv=0.0, timeline_cuts_per_30s=[]),
+            ScenePacingMetrics(
+                cuts_per_min=0.0,
+                shot_length_cv=0.0,
+                timeline_cuts_per_30s=[0.0] * max(1, math.ceil(duration_sec / 30.0)),
+            ),
         )
 
     durations = np.array([end.seconds - start.seconds for start, end in scene_list])
@@ -286,8 +291,8 @@ def compute_cut_metrics(
     shot_length_cv = float(np.std(durations) / mean_sec) if mean_sec > 0 else 0.0
 
     window_sec = 30.0
-    n_windows  = max(1, int(duration_sec / window_sec))
-    timeline   = [
+    n_windows = max(1, math.ceil(duration_sec / window_sec))
+    timeline = [
         float(sum(1 for t in cut_times if i * window_sec <= t < (i + 1) * window_sec))
         for i in range(n_windows)
     ]

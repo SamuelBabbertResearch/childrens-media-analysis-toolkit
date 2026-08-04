@@ -16,6 +16,9 @@ from analyzer.engine import analyze_episode
 ROOT = Path(__file__).parent.parent
 LITTLE_BEAR = ROOT / "Little Bear"
 LITTLE_BEAR_EP = LITTLE_BEAR / "LittleBear.mp4"
+SKIP_IF_NO_SHOW = pytest.mark.skipif(
+    not LITTLE_BEAR.exists(), reason="Little Bear folder not present"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -49,12 +52,14 @@ def test_show_aggregate_to_dict_has_required_keys():
 # Show / episode discovery
 # ---------------------------------------------------------------------------
 
+@SKIP_IF_NO_SHOW
 def test_list_shows_finds_little_bear():
     shows = list_shows(ROOT)
     names = [s.name for s in shows]
     assert "Little Bear" in names
 
 
+@SKIP_IF_NO_SHOW
 def test_list_episodes_finds_mp4():
     eps = list_episodes(LITTLE_BEAR)
     assert len(eps) >= 1

@@ -36,7 +36,6 @@ htmlcov/
 test_report.pdf
 
 # Scratch / dev files
-gui_live.py
 Test.pyt
 *.parts
 

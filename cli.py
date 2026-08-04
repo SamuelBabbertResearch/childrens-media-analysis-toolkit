@@ -23,18 +23,19 @@ from analyzer.config_loader import load_config
 from analyzer.db import get_db, query_episodes, query_shows
 from analyzer.engine import analyze_episode
 from analyzer.sampler import scan_entry_root, load_registry_csv, sample, write_outputs
-from analyzer.show_index import list_episodes, list_shows
+from analyzer.show_index import db_show_key, display_show_name, list_episodes, list_shows, show_key
 from analyzer.speech import _find_cc_file
 
 
 def cmd_analyze(args: argparse.Namespace) -> None:
-    target = Path(args.path)
+    target = Path(args.path).resolve()
     cfg = load_config()
+    root = Path(args.root).resolve() if getattr(args, "root", "") else None
 
     if target.is_file() and target.suffix.lower() == ".mp4":
-        _analyze_single(target, cfg, force=args.force)
+        _analyze_single(target, cfg, force=args.force, root=root)
     elif target.is_dir():
-        _analyze_batch(target, cfg, force=args.force)
+        _analyze_batch(target, cfg, force=args.force, root=root)
     else:
         print(f"Error: {target} is not an MP4 file or a directory.", file=sys.stderr)
         sys.exit(1)
@@ -44,17 +45,31 @@ def cmd_analyze(args: argparse.Namespace) -> None:
 # Single episode
 # ---------------------------------------------------------------------------
 
-def _analyze_single(episode: Path, cfg: dict, force: bool = False) -> None:
+def _analyze_single(
+    episode: Path,
+    cfg: dict,
+    force: bool = False,
+    root: Path | None = None,
+) -> None:
     show_dir = episode.parent
-    root = show_dir.parent
+    root = root or show_dir.parent
+    try:
+        skey = show_key(root, show_dir)
+    except ValueError:
+        print(f"Error: --root must contain the show folder: {show_dir}", file=sys.stderr)
+        sys.exit(1)
 
-    cached = None if force else load_cached(root, show_dir.name, episode.stem)
+    cached = None if force else load_cached(root, skey, episode.stem)
     if cached:
         print(f"[cache] {episode.name}")
         print(json.dumps(cached, indent=2))
         return
 
     def _progress(frac: float) -> None:
+        if frac < 0:
+            print("\r  [detecting cuts...]        ", end="", flush=True)
+            return
+        frac = max(0.0, min(1.0, frac))
         filled = int(frac * 30)
         bar = "#" * filled + "-" * (30 - filled)
         print(f"\r  [{bar}] {int(frac * 100):3d}%", end="", flush=True)
@@ -63,7 +78,7 @@ def _analyze_single(episode: Path, cfg: dict, force: bool = False) -> None:
     result = analyze_episode(episode, config=cfg, progress_cb=_progress)
     print()
 
-    save_cache(root, show_dir.name, episode.stem, result.to_dict())
+    save_cache(root, skey, episode.stem, result.to_dict())
 
     if result.status == "failed":
         print(f"Error: {result.error}", file=sys.stderr)
@@ -76,8 +91,19 @@ def _analyze_single(episode: Path, cfg: dict, force: bool = False) -> None:
 # Batch (show folder)
 # ---------------------------------------------------------------------------
 
-def _analyze_batch(show_dir: Path, cfg: dict, force: bool = False) -> None:
-    root = show_dir.parent
+def _analyze_batch(
+    show_dir: Path,
+    cfg: dict,
+    force: bool = False,
+    root: Path | None = None,
+) -> None:
+    root = root or show_dir.parent
+    try:
+        skey = show_key(root, show_dir)
+    except ValueError:
+        print(f"Error: --root must contain the show folder: {show_dir}", file=sys.stderr)
+        sys.exit(1)
+    dname, _ = display_show_name(root, show_dir)
     episodes = list_episodes(show_dir)
 
     if not episodes:
@@ -94,6 +120,12 @@ def _analyze_batch(show_dir: Path, cfg: dict, force: bool = False) -> None:
                 print()  # newline after previous episode's bar
             current_ep[0] = ep_name
             print(f"  {ep_name}")
+        if ep_frac < 0:
+            print(f"\r    [detecting cuts...]        (overall {int(max(0.0, overall_frac) * 100):3d}%)",
+                  end="", flush=True)
+            return
+        ep_frac = max(0.0, min(1.0, ep_frac))
+        overall_frac = max(0.0, min(1.0, overall_frac))
         filled = int(ep_frac * 30)
         bar = "#" * filled + "-" * (30 - filled)
         print(f"\r    [{bar}] {int(ep_frac * 100):3d}%  (overall {int(overall_frac * 100):3d}%)",
@@ -134,8 +166,8 @@ def _analyze_batch(show_dir: Path, cfg: dict, force: bool = False) -> None:
     if failed:
         print(f"Warning: {len(failed)} episode(s) failed and were excluded from aggregate.\n")
 
-    aggregate = compute_show_aggregate(show_dir.name, results)
-    json_path, csv_path = save_show_results(root, show_dir.name, results, aggregate)
+    aggregate = compute_show_aggregate(dname, results)
+    json_path, csv_path = save_show_results(root, skey, results, aggregate)
 
     print("Show aggregate:")
     print(aggregate.to_json())
@@ -179,21 +211,24 @@ def _db_backfill(root: Path) -> None:
 
     conn = get_db(root)
     for show_dir in list_shows(root):
+        skey = show_key(root, show_dir)
+        stable_show_key = db_show_key(root, show_dir)
+        dname, _auto_s = display_show_name(root, show_dir)
         show_results = []
         for ep in list_episodes(show_dir):
-            c = load_cached(root, show_dir.name, ep.stem)
+            c = load_cached(root, skey, ep.stem)
             if c:
                 try:
                     result = EpisodeResult.from_dict(c)
                     if result.status == "ok":
-                        upsert_episode(conn, result, show_dir.name, str(ep))
+                        upsert_episode(conn, result, dname, str(ep), show_key=stable_show_key)
                         show_results.append(result)
                 except Exception:
                     pass
         if show_results:
             try:
-                agg = compute_show_aggregate(show_dir.name, show_results)
-                upsert_show(conn, agg, show_dir.name)
+                agg = compute_show_aggregate(dname, show_results)
+                upsert_show(conn, agg, dname, show_key=stable_show_key)
             except Exception:
                 pass
     conn.close()
@@ -405,6 +440,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_analyze.add_argument("path", help="Path to an MP4 file or a show folder")
     p_analyze.add_argument("--force", action="store_true", help="Re-analyze even if cached")
+    p_analyze.add_argument(
+        "--root",
+        default="",
+        help="Library root for cache paths; use this for categorized libraries to match the GUI",
+    )
     p_analyze.set_defaults(func=cmd_analyze)
 
     p_shows = sub.add_parser("shows", help="List all shows under a root folder")
