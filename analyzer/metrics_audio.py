@@ -70,7 +70,7 @@ def _extract_audio(video_path: Path) -> np.ndarray | None:
 
     result = subprocess.run(
         [
-            "ffmpeg", "-i", str(video_path),
+            ffmpeg_exe(), "-i", str(video_path),
             "-vn",                        # drop video
             "-acodec", "pcm_s16le",       # 16-bit signed PCM
             "-ar", str(_SAMPLE_RATE),     # resample to 8 kHz

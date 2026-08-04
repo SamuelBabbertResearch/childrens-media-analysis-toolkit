@@ -14,7 +14,7 @@ from .cache import load_cached, save_cache
 from .config_loader import load_config
 from .engine import analyze_episode
 from .schema import EpisodeResult
-from .show_index import list_episodes
+from .show_index import list_episodes, show_key
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,7 @@ def analyze_show_batch(
         List of EpisodeResult (one per episode, including failed ones).
     """
     root = root or show_dir.parent
+    skey = show_key(root, show_dir)
     cfg = config or load_config()
     episodes = list_episodes(show_dir)
 
@@ -59,7 +60,7 @@ def analyze_show_batch(
         if progress_cb:
             progress_cb(ep.name, 0.0, base_overall)
 
-        cached = None if force else load_cached(root, show_dir.name, ep.stem)
+        cached = None if force else load_cached(root, skey, ep.stem)
 
         if cached:
             logger.info("[cache] %s", ep.name)
@@ -82,7 +83,7 @@ def analyze_show_batch(
         if result.status == "failed":
             logger.warning("Skipping failed episode %s: %s", ep.name, result.error)
         else:
-            save_cache(root, show_dir.name, ep.stem, result.to_dict())
+            save_cache(root, skey, ep.stem, result.to_dict())
 
         if progress_cb:
             progress_cb(ep.name, 1.0, base_overall + episode_span)

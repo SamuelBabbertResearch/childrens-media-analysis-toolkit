@@ -1,8 +1,9 @@
 {
   "sample_fps": 2,
+  "flashing_sample_fps": 10,
   "cut_detection_threshold": 27.0,
   "flashing_luminance_threshold": 0.1,
-  "speech_transcription_enabled": true,
+  "speech_transcription_enabled": false,
   "speech_whisper_model": "base",
   "sensory_load_weights": {
     "pacing": 0.25,
