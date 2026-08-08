@@ -4482,9 +4482,45 @@ def _ensure_shows_folder() -> None:
     shows.mkdir(exist_ok=True)
 
 
+def _enable_dpi_awareness() -> None:
+    """Render at the display's real pixel density instead of being upscaled.
+
+    Without this a Tk process is DPI-unaware, so Windows draws the window at
+    96 DPI and bitmap-stretches the result — which is exactly why text looked
+    soft at 125%/150%/200%. Declaring per-monitor awareness makes Windows hand
+    us the true pixel grid; Tk then needs `tk scaling` set to match so point
+    sizes still resolve to the right number of pixels.
+
+    Best-effort by design: on an OS without shcore, or when the host has
+    already fixed awareness for the process, we simply keep the old behaviour.
+    """
+    import ctypes
+    try:                                    # Per-Monitor v2, Windows 10+
+        # The context is a HANDLE: passing a bare -4 marshals as a 32-bit int
+        # and silently fails on 64-bit, leaving the process DPI-unaware.
+        ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+    except Exception:
+        try:                                # Per-Monitor v1, Windows 8.1+
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:
+            try:                            # System DPI, Vista+
+                ctypes.windll.user32.SetProcessDPIAware()
+            except Exception:
+                return
+
+
 def main() -> None:
+    _enable_dpi_awareness()
     _ensure_shows_folder()
     app = App()
+    try:
+        # Tk measures point sizes against this; leaving it at the 96 DPI
+        # default would make every point-sized font too small once the process
+        # is DPI-aware. Pixel-sized fonts (negative sizes) are unaffected.
+        dpi = app.winfo_fpixels("1i")
+        app.tk.call("tk", "scaling", dpi / 72.0)
+    except Exception:
+        pass
     app.mainloop()
 
 
