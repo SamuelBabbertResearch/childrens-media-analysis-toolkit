@@ -20,6 +20,7 @@ from tkinter import filedialog, messagebox, ttk
 from analyzer.aggregate import compute_show_aggregate, save_show_results
 from analyzer.cache import load_cached, save_cache
 from analyzer.config_loader import load_config, _base_dir
+from analyzer.measurements import normalize_config
 from analyzer.engine import analyze_episode
 from analyzer.speech import transcribe_only, _find_cc_file
 from analyzer.metrics_sensory import rescore_episode
@@ -3846,7 +3847,9 @@ class SettingsDialog(tk.Toplevel):
         super().__init__(parent)
         self._app = parent
         self.title("Settings — Presets & Weights")
-        self.resizable(False, False)
+        # Vertically resizable: the content is taller than some laptop screens,
+        # and a fixed height would clip the buttons off the bottom.
+        self.resizable(False, True)
         self.grab_set()
         self.transient(parent)
 
@@ -3868,7 +3871,9 @@ class SettingsDialog(tk.Toplevel):
         self._refresh_preset_desc()
         self._update_total()
 
-        self.geometry("480x660")
+        # Clamp to the usable screen height so the buttons stay reachable.
+        height = min(810, max(560, parent.winfo_screenheight() - 120))
+        self.geometry(f"480x{height}")
         self.update_idletasks()
         px, py = parent.winfo_rootx(), parent.winfo_rooty()
         pw, ph = parent.winfo_width(), parent.winfo_height()
@@ -3879,6 +3884,22 @@ class SettingsDialog(tk.Toplevel):
 
     def _build(self) -> None:
         pad = {"padx": 10, "pady": 4}
+
+        # Buttons are built and packed FIRST so they anchor to the bottom. A
+        # side=BOTTOM widget packed after an expand=True widget (the columns
+        # frame below) gets zero height — see CLAUDE.md.
+        bf = tk.Frame(self)
+        bf.pack(side=tk.BOTTOM, pady=(4, 10))
+        tk.Button(bf, text="Apply & Re-score", command=self._apply,
+                  padx=8).pack(side=tk.LEFT, padx=4)
+        tk.Button(bf, text="Save as Preset...", command=self._save_as_preset,
+                  padx=8).pack(side=tk.LEFT, padx=4)
+        tk.Button(bf, text="Save as Default", command=self._save_default,
+                  padx=8).pack(side=tk.LEFT, padx=4)
+        tk.Button(bf, text="Close", command=self.destroy,
+                  padx=8).pack(side=tk.LEFT, padx=4)
+        ttk.Separator(self, orient=tk.HORIZONTAL).pack(
+            side=tk.BOTTOM, fill=tk.X, padx=6, pady=2)
 
         # Preset row
         top = tk.Frame(self)
@@ -3993,17 +4014,29 @@ class SettingsDialog(tk.Toplevel):
 
         ttk.Separator(self, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=6, pady=2)
 
-        # Buttons
-        bf = tk.Frame(self)
-        bf.pack(pady=(4, 10))
-        tk.Button(bf, text="Apply & Re-score", command=self._apply,
-                  padx=8).pack(side=tk.LEFT, padx=4)
-        tk.Button(bf, text="Save as Preset...", command=self._save_as_preset,
-                  padx=8).pack(side=tk.LEFT, padx=4)
-        tk.Button(bf, text="Save as Default", command=self._save_default,
-                  padx=8).pack(side=tk.LEFT, padx=4)
-        tk.Button(bf, text="Close", command=self.destroy,
-                  padx=8).pack(side=tk.LEFT, padx=4)
+        # Measurement settings live in their own dialog because they invalidate
+        # cached analysis, unlike everything above which re-scores from cache.
+        mf = tk.LabelFrame(self, text="Measurement Tools & Thresholds",
+                           padx=8, pady=6)
+        mf.pack(fill=tk.X, padx=10, pady=(0, 4))
+        tk.Label(
+            mf,
+            text="Everything above re-scores instantly from cached analysis. "
+                 "To change WHICH tool measures something — the shot-boundary "
+                 "detector, sampling rates, detection thresholds — open the "
+                 "measurement editor. Those settings change the raw numbers, so "
+                 "they require re-analyzing affected episodes.",
+            wraplength=430, justify="left", anchor="w",
+            fg="#555555", font=("TkDefaultFont", 8),
+        ).pack(fill=tk.X, pady=(0, 4))
+        tk.Button(mf, text="Open Measurement Settings...",
+                  command=self._open_measurements, padx=8).pack(anchor="w")
+
+    def _open_measurements(self) -> None:
+        """Hand off to the measurement editor, which owns the config from here."""
+        from gui_measurements import MeasurementsDialog
+        self.destroy()
+        MeasurementsDialog(self._app)
 
     # ---- preset helpers ----
 
@@ -4111,9 +4144,15 @@ class SettingsDialog(tk.Toplevel):
         new_cfg = copy.deepcopy(self._app._cfg)
         new_cfg["sensory_load_weights"] = weights
         new_cfg["normalization_reference_ranges"] = ranges
-        new_cfg["speech_transcription_enabled"] = self._speech_enabled_var.get()
-        new_cfg["speech_whisper_model"] = self._speech_model_var.get()
-        return new_cfg
+
+        # Speech must be written into the measurements block, not the flat keys:
+        # the block is authoritative, so normalize_config() would re-derive the
+        # flat keys from it and silently revert this toggle.
+        speech = new_cfg.setdefault("measurements", {}).setdefault("speech", {})
+        speech["tool"] = ("captions_then_whisper"
+                          if self._speech_enabled_var.get() else "captions_only")
+        speech.setdefault("params", {})["model"] = self._speech_model_var.get()
+        return normalize_config(new_cfg)
 
     def _apply(self) -> None:
         new_cfg = self._build_new_cfg()
@@ -4202,6 +4241,12 @@ class SettingsDialog(tk.Toplevel):
             existing["normalization_reference_ranges"] = new_cfg["normalization_reference_ranges"]
             existing["speech_transcription_enabled"] = new_cfg["speech_transcription_enabled"]
             existing["speech_whisper_model"] = new_cfg["speech_whisper_model"]
+            # If a measurements block is already saved it takes precedence over
+            # the flat keys above, so the speech selection has to go in there too.
+            if isinstance(existing.get("measurements"), dict):
+                existing["measurements"].setdefault("speech", {}).update(
+                    new_cfg["measurements"]["speech"]
+                )
             config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
             messagebox.showinfo("Saved", f"Default settings saved to:\n{config_path}",
                                 parent=self)

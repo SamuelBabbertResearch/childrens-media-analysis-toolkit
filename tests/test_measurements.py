@@ -285,6 +285,22 @@ def test_provenance_map_covers_every_measurement(cfg):
     assert set(described) == {m.key for m in M.MEASUREMENTS}
 
 
+def test_flat_speech_keys_alone_do_not_survive_normalization(cfg):
+    """Regression: the measurements block wins, so UI must write into it.
+
+    Setting only the legacy flat key against a config that already has a
+    measurements block is silently reverted — which is exactly how the Settings
+    dialog's Whisper toggle broke. Anything editing speech must set the tool.
+    """
+    flat_only = copy.deepcopy(cfg)
+    flat_only["speech_transcription_enabled"] = True
+    assert M.normalize_config(flat_only)["speech_transcription_enabled"] is False
+
+    via_block = copy.deepcopy(cfg)
+    via_block["measurements"]["speech"]["tool"] = "captions_then_whisper"
+    assert M.normalize_config(via_block)["speech_transcription_enabled"] is True
+
+
 def test_transnet_declares_its_optional_dependency():
     """Selecting a tool with a missing dependency must be detectable up front."""
     tool = M.get_measurement("transitions").tool("transnetv2")
