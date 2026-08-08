@@ -267,13 +267,28 @@ class App(tk.Tk):
         self._build_ui()
         self._poll_queue()
 
+        # Reopen the last library so returning users do not re-pick it every
+        # launch. Must run after the UI exists — it repopulates the tree.
+        self._restore_root_folder()
+        self._update_first_run_hint()
+
+        # Land on the tab that can actually be acted on. With no library the
+        # Pipeline tab has nothing to report, so open on Library, where the
+        # getting-started panel and the Choose Folder button are.
+        if not self._root_folder:
+            try:
+                self._left_nb.select(1)          # Library
+            except Exception:
+                pass
+
         # F1 is the Windows convention for "explain this program".
         self.bind_all("<F1>", lambda _e: self._open_pipeline_window())
 
-        # The pipeline window is the first thing a new user should see. Shown
-        # after the main window is mapped so it does not steal the initial
-        # focus race, and suppressible from inside the window itself.
-        if self._cfg.get("show_pipeline_on_start", True):
+        # The pipeline window is only meaningful once there is a library to
+        # report on. With no root folder it would show another project's
+        # numbers, so a first-time user gets the Library's getting-started
+        # panel instead. Suppressible from inside the window either way.
+        if self._cfg.get("show_pipeline_on_start", True) and self._root_folder:
             self.after(400, self._open_pipeline_window)
 
     # -----------------------------------------------------------------------
@@ -329,7 +344,7 @@ class App(tk.Tk):
         # otherwise Tkinter allocates all horizontal space to the label first.
         tk.Button(bar, text="Settings...", command=self._open_settings,
                   padx=6).pack(side=tk.RIGHT, padx=4, pady=2)
-        tk.Button(bar, text="Choose...", command=self._choose_folder,
+        tk.Button(bar, text="Episode Sampler...", command=self._open_sampler,
                   padx=6).pack(side=tk.RIGHT, padx=(0, 4), pady=2)
         ttk.Separator(bar, orient=tk.VERTICAL).pack(side=tk.RIGHT, fill=tk.Y, pady=3)
         self._toolbar_preset_var = tk.StringVar()
@@ -353,8 +368,12 @@ class App(tk.Tk):
             wraplength=320,
         )
         tk.Label(bar, text="Preset:").pack(side=tk.RIGHT, padx=(6, 2), pady=3)
-        # Left-side label with expand=True packs last so it fills only the remainder
+        # Left-side label with expand=True packs last so it fills only the remainder.
+        # "Choose Folder..." sits directly beside the label it acts on — next to
+        # the preset dropdown it read as though it picked a preset.
         tk.Label(bar, text="Root folder:").pack(side=tk.LEFT, padx=(6, 2), pady=3)
+        tk.Button(bar, text="Choose Folder...", command=self._choose_folder,
+                  padx=6).pack(side=tk.LEFT, padx=(0, 6), pady=2)
         self._folder_var = tk.StringVar(value="(none chosen)")
         tk.Label(bar, textvariable=self._folder_var, anchor="w",
                  fg="navy").pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -383,6 +402,41 @@ class App(tk.Tk):
         # ---- Library tab ----
         lib_tab = tk.Frame(left_nb)
         left_nb.add(lib_tab, text="Library")
+
+        # First-run guidance, shown IN the empty pane rather than only in the
+        # status bar. Removed as soon as a library is loaded.
+        self._first_run = tk.Frame(lib_tab, bg="#fbfbe6", bd=1, relief=tk.SOLID)
+        tk.Label(self._first_run, text="Getting started", bg="#fbfbe6",
+                 font=("TkDefaultFont", 10, "bold"), anchor="w").pack(
+                     fill=tk.X, padx=10, pady=(8, 2))
+        steps = [
+            ("1.", "Choose Folder… — pick the folder that CONTAINS your show "
+                   "folders, not a show folder itself."),
+            ("2.", "Episode Sampler… — optional. Draws a documented, "
+                   "reproducible sample so your episode selection can be "
+                   "defended in a write-up."),
+            ("3.", "Pick a show or episode below, then use Automated coding → "
+                   "Analyze Episode."),
+        ]
+        for num, body in steps:
+            row = tk.Frame(self._first_run, bg="#fbfbe6")
+            row.pack(fill=tk.X, padx=10, pady=1)
+            tk.Label(row, text=num, bg="#fbfbe6", width=2, anchor="nw",
+                     font=("TkDefaultFont", 9)).pack(side=tk.LEFT, anchor="n")
+            lbl = tk.Label(row, text=body, bg="#fbfbe6", anchor="w",
+                           justify="left", font=("TkDefaultFont", 9))
+            lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            # Wrap against the row's real width so the text reflows with the
+            # pane instead of breaking at a fixed column.
+            row.bind("<Configure>",
+                     lambda e, w=lbl: w.configure(wraplength=max(220, e.width - 30)))
+        btns = tk.Frame(self._first_run, bg="#fbfbe6")
+        btns.pack(fill=tk.X, padx=10, pady=(8, 10))
+        tk.Button(btns, text="Choose Folder...", command=self._choose_folder,
+                  padx=8).pack(side=tk.LEFT)
+        tk.Button(btns, text="Episode Sampler...", command=self._open_sampler,
+                  padx=8).pack(side=tk.LEFT, padx=(6, 0))
+        self._first_run.pack(fill=tk.X, padx=6, pady=6)
 
         tree_frame = tk.Frame(lib_tab)
         tree_frame.pack(fill=tk.BOTH, expand=True)
@@ -510,20 +564,34 @@ class App(tk.Tk):
         auto_nb.add(lang_tab, text="Language")
         self._build_language_tab(lang_tab)
 
-        # ---- Validation sub-tab (grades the automated detector) ----
-        val_tab = ValidationTab(auto_nb,
-                                get_root_folder=lambda: self._root_folder)
-        auto_nb.add(val_tab, text="Validation")
+        # ---- Human coding tab (Code | Validate | Agreement) ----
+        # Hand-coding and Validation were separate top-level tabs, and
+        # Validation sat under "Automated coding" even though its first two
+        # steps are a person watching an episode. Both begin "pick an episode,
+        # code it by hand", so they belong in one place.
+        human_tab = tk.Frame(left_nb)
+        left_nb.add(human_tab, text="Human coding")
+        human_nb = ttk.Notebook(human_tab)
+        human_nb.pack(fill=tk.BOTH, expand=True)
 
-        # ---- Hand-coding tab (human coding as the measurement) ----
         hand_tab = HandCodingTab(
-            left_nb,
+            human_nb,
             get_root_folder=lambda: self._root_folder,
             on_results=self._show_handcoded_results)
-        left_nb.add(hand_tab, text="Hand-coding")
+        human_nb.add(hand_tab, text="Code")
+
+        val_tab = ValidationTab(human_nb,
+                                get_root_folder=lambda: self._root_folder)
+        human_nb.add(val_tab, text="Validate tool")
+
+        agree_tab = tk.Frame(human_nb)
+        human_nb.add(agree_tab, text="Agreement")
+        self._build_agreement_tab(agree_tab)
+
         # Kept so the Episode Sampler can route a drawn sample here as well as
         # to the automated queue (see send_to_handcoding).
         self._hand_tab = hand_tab
+        self._human_nb = human_nb
         self._left_nb = left_nb
 
         # ---- Trials tab ----
@@ -645,23 +713,68 @@ class App(tk.Tk):
             title="Select the ROOT folder (the one containing show sub-folders)"
         )
         if folder:
-            self._root_folder = Path(folder)
-            self._folder_var.set(str(self._root_folder))
-            self._populate_tree()
-            self._btn_full_series.config(state=tk.NORMAL)
-            if list_top_level(self._root_folder):
-                self._write_txt("Choose a show or episode in the library to see results.\n\n"
-                                "Cached results load instantly; new episodes need to be analyzed.")
-            # If nothing found, _populate_tree already writes an explanation
-            # Open (or create) the index DB and seed it from existing cached results
-            if self._db_conn:
-                self._db_conn.close()
-            self._db_conn = get_db(self._root_folder)
-            self._backfill_index()
-            self._refresh_index()
-            # The pipeline is computed against the library root, so it is
-            # meaningless until one is chosen and must be rebuilt when it changes.
-            self._refresh_pipeline()
+            self._set_root_folder(Path(folder), remember=True)
+
+    def _set_root_folder(self, folder: Path, remember: bool = False) -> None:
+        """Point the app at a library and rebuild everything that depends on it."""
+        self._root_folder = folder
+        self._folder_var.set(str(folder))
+        self._populate_tree()
+        self._btn_full_series.config(state=tk.NORMAL)
+        if list_top_level(folder):
+            self._write_txt("Choose a show or episode in the library to see results.\n\n"
+                            "Cached results load instantly; new episodes need to be analyzed.")
+        # If nothing found, _populate_tree already writes an explanation
+        # Open (or create) the index DB and seed it from existing cached results
+        if self._db_conn:
+            self._db_conn.close()
+        self._db_conn = get_db(folder)
+        self._backfill_index()
+        self._refresh_index()
+        # The pipeline is computed against the library root, so it is
+        # meaningless until one is chosen and must be rebuilt when it changes.
+        self._refresh_pipeline()
+        self._update_first_run_hint()
+        if remember:
+            self._remember_root_folder(folder)
+
+    def _update_first_run_hint(self) -> None:
+        """Show the getting-started panel only while there is no library."""
+        panel = getattr(self, "_first_run", None)
+        if panel is None:
+            return
+        if self._root_folder and panel.winfo_ismapped():
+            panel.pack_forget()
+        elif not self._root_folder and not panel.winfo_ismapped():
+            panel.pack(fill=tk.X, padx=6, pady=6, before=panel.master.winfo_children()[-1])
+
+    def _remember_root_folder(self, folder: Path) -> None:
+        """Persist the library location so the next launch opens straight into it."""
+        self._cfg["last_root_folder"] = str(folder)
+        config_path = _base_dir() / "config.json"
+        try:
+            existing = json.loads(config_path.read_text(encoding="utf-8"))
+            existing["last_root_folder"] = str(folder)
+            config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+    def _restore_root_folder(self) -> None:
+        """Reopen the last library, if it is still there.
+
+        A folder that has been moved, renamed, or unplugged is silently ignored
+        rather than reported as an error — the user simply lands on the
+        first-run screen, which tells them what to do.
+        """
+        saved = (self._cfg or {}).get("last_root_folder")
+        if not saved:
+            return
+        try:
+            path = Path(saved)
+            if path.is_dir():
+                self._set_root_folder(path)
+        except Exception:
+            pass
 
     def _populate_tree(self) -> None:
         self._tree.delete(*self._tree.get_children())
@@ -1335,6 +1448,11 @@ class App(tk.Tk):
                      "hand.\n  Use code_events.py (template → code in VLC → "
                      "rates) to add it.\n", "dim")
 
+        # Which tool produced each number, and whether it has been graded.
+        # Without this a figure from an ungraded component reads exactly like a
+        # validated one.
+        self._render_provenance(t, result)
+
         # Validation provenance — CMAT reports its own accuracy
         from analyzer.provenance import validation_statement
         t.insert(tk.END, "\n" + "─" * 40 + "\n", "dim")
@@ -1362,6 +1480,161 @@ class App(tk.Tk):
         self._meta_season.set(str(meta["season_num"]) if meta.get("season_num") is not None else "")
         self._meta_ep_num.set(str(meta["episode_num"]) if meta.get("episode_num") is not None else "")
         self._btn_save_meta.config(state=tk.NORMAL)
+
+    def _build_agreement_tab(self, parent: tk.Frame) -> None:
+        """Inter-rater reliability. The maths already existed with no way in.
+
+        Two coders coding the same episode is the standard evidence that a
+        coding scheme is reproducible, and it was reachable only from the
+        command line.
+        """
+        tk.Label(parent, text=" Two-coder agreement (inter-rater reliability) ",
+                 font=("TkDefaultFont", 9, "bold"), anchor="w").pack(
+                     fill=tk.X, padx=6, pady=(8, 2))
+        tk.Label(
+            parent, anchor="w", justify="left", wraplength=430,
+            fg="#555555", font=("TkDefaultFont", 8),
+            text=("Have a second person code the same episode independently, "
+                  "using the same codebook and without seeing the first "
+                  "coder's sheet. Then compare the two sheets here.\n\n"
+                  "Reports how often the coders marked the same events "
+                  "(detection agreement) and how often they gave a matched "
+                  "event the same label (Cohen's kappa)."),
+        ).pack(fill=tk.X, padx=6, pady=(0, 6))
+
+        self._agree_a = tk.StringVar(value="(no file chosen)")
+        self._agree_b = tk.StringVar(value="(no file chosen)")
+
+        for label, var, setter in (
+            ("Coder A sheet:", self._agree_a, "a"),
+            ("Coder B sheet:", self._agree_b, "b"),
+        ):
+            row = tk.Frame(parent)
+            row.pack(fill=tk.X, padx=6, pady=2)
+            tk.Label(row, text=label, width=13, anchor="w").pack(side=tk.LEFT)
+            tk.Button(row, text="Choose…",
+                      command=lambda s=setter: self._pick_agreement_file(s),
+                      padx=6).pack(side=tk.LEFT)
+            tk.Label(row, textvariable=var, anchor="w", fg="navy",
+                     font=("TkDefaultFont", 8)).pack(side=tk.LEFT, padx=(6, 0),
+                                                     fill=tk.X, expand=True)
+
+        tol_row = tk.Frame(parent)
+        tol_row.pack(fill=tk.X, padx=6, pady=(4, 2))
+        tk.Label(tol_row, text="Match tolerance ±", anchor="w").pack(side=tk.LEFT)
+        self._agree_tol = tk.StringVar(value="2.0")
+        tk.Entry(tol_row, textvariable=self._agree_tol, width=5).pack(side=tk.LEFT)
+        tk.Label(tol_row, text="seconds").pack(side=tk.LEFT, padx=(3, 0))
+
+        tk.Button(parent, text="Compute agreement",
+                  command=self._run_agreement, padx=8).pack(
+                      anchor="w", padx=6, pady=(6, 4))
+
+        self._agree_out = tk.Text(parent, height=12, wrap="word",
+                                  font=("Consolas", 8), state=tk.DISABLED)
+        self._agree_out.pack(fill=tk.BOTH, expand=True, padx=6, pady=(2, 8))
+
+        self._agree_paths: dict[str, Path | None] = {"a": None, "b": None}
+
+    def _pick_agreement_file(self, which: str) -> None:
+        from analyzer.validation import get_validation_dir
+        path = filedialog.askopenfilename(
+            title=f"Choose the coding sheet for coder {which.upper()}",
+            initialdir=str(get_validation_dir()),
+            filetypes=[("Coding sheets", "*.csv"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        self._agree_paths[which] = Path(path)
+        (self._agree_a if which == "a" else self._agree_b).set(Path(path).name)
+
+    def _run_agreement(self) -> None:
+        a, b = self._agree_paths.get("a"), self._agree_paths.get("b")
+        if not a or not b:
+            messagebox.showinfo("Two sheets needed",
+                                "Choose a coding sheet for each coder first.")
+            return
+        if a == b:
+            messagebox.showwarning(
+                "Same file twice",
+                "Both sides point at the same sheet, which would report "
+                "perfect agreement for trivial reasons. Choose the second "
+                "coder's own file.")
+            return
+        try:
+            tol = float(self._agree_tol.get())
+        except ValueError:
+            tol = 2.0
+        warnings: list[str] = []
+        try:
+            from analyzer.event_coding import inter_coder_agreement
+            res = inter_coder_agreement(a, b, tolerance=tol,
+                                        warn_cb=warnings.append)
+        except Exception as exc:                        # noqa: BLE001
+            messagebox.showerror("Could not compare", str(exc))
+            return
+
+        lines = [f"Coder A: {a.name}", f"Coder B: {b.name}",
+                 f"Tolerance: ±{tol:g}s", ""]
+        for key, value in res.items():
+            if isinstance(value, (int, float, str)) or value is None:
+                shown = "not defined" if value is None else value
+                lines.append(f"  {key.replace('_', ' '):<28} {shown}")
+        if res.get("kappa") is None:
+            lines += ["", "  Kappa is undefined here — it needs at least two",
+                      "  different labels across the matched events."]
+        if warnings:
+            lines += ["", "Warnings:"] + [f"  {w}" for w in warnings[:10]]
+
+        self._agree_out.config(state=tk.NORMAL)
+        self._agree_out.delete("1.0", tk.END)
+        self._agree_out.insert(tk.END, "\n".join(lines))
+        self._agree_out.config(state=tk.DISABLED)
+
+    def _render_provenance(self, t: tk.Text, result: EpisodeResult) -> None:
+        """How this episode was measured, and whether the settings still match.
+
+        The engine records both the tool per measurement and a fingerprint of
+        the settings that produced the numbers. Surfacing them here is the
+        difference between "flashing: 3.2/min" and "flashing: 3.2/min, from a
+        component nobody has ever graded".
+        """
+        tools = getattr(result, "measurement_tools", None) or {}
+        if not tools:
+            return
+
+        t.insert(tk.END, "\n" + "─" * 40 + "\n", "dim")
+        t.insert(tk.END, "Measured with\n", "h2")
+
+        ungraded: list[str] = []
+        for key, desc in tools.items():
+            if desc == "disabled":
+                continue
+            label = key.replace("_", " ").title()
+            t.insert(tk.END, f"  {label:<16} {desc}\n",
+                     "err" if "[unvalidated]" in desc else "dim")
+            if "[unvalidated]" in desc or "[experimental]" in desc:
+                ungraded.append(label)
+
+        if ungraded:
+            t.insert(tk.END,
+                     "  Not graded against hand coding: "
+                     + ", ".join(ungraded)
+                     + ".\n  Treat these as exploratory; do not report them as "
+                       "validated measures.\n", "err")
+
+        # Stale cache: the numbers above were produced under settings that no
+        # longer match the current configuration, so they are not comparable
+        # with anything analyzed now.
+        try:
+            from analyzer.cache import is_stale
+            if is_stale(result.to_dict(), self._cfg):
+                t.insert(tk.END,
+                         "  ⚠ Measurement settings have changed since this "
+                         "episode was analyzed.\n    Re-analyze it before "
+                         "comparing these numbers with newer results.\n", "err")
+        except Exception:
+            pass
 
     def _render_show(self, agg: ShowAggregate, results: list[EpisodeResult],
                      total_eps: int, sample_info: dict | None = None,
@@ -3201,6 +3474,7 @@ class App(tk.Tk):
             self._lang_sp_note.config(text="Choose a root folder first.")
             return
         rows: list[dict] = []
+        missing: list[str] = []       # analyzed, but no captions and no transcript
         for show_dir in list_shows(self._root_folder):
             skey  = show_key(self._root_folder, show_dir)
             dname, _ = display_show_name(self._root_folder, show_dir)
@@ -3231,6 +3505,7 @@ class App(tk.Tk):
                                 save_cache(self._root_folder, skey, ep.stem, c)
 
                     if not sp.available:
+                        missing.append(ep.name)
                         continue
 
                     air_date = ""
@@ -3252,10 +3527,19 @@ class App(tk.Tk):
                     continue
         self._lang_speech_rows = rows
         self._populate_lang_speech_tree()
-        n = len(rows)
+        n, gap = len(rows), len(missing)
         note = f"{n} episode{'s' if n != 1 else ''} with speech data."
-        if n == 0:
-            note += "  Analyze episodes with CC files or enable Whisper in Settings."
+        # Episodes without captions are simply absent from the table, which
+        # reads as "nothing here" rather than "no transcript yet". Say which it
+        # is, and name the button that fixes it.
+        if gap:
+            note += (f"   {gap} analyzed episode{'s' if gap != 1 else ''} "
+                     f"had no caption file and no transcript — these are not "
+                     f"listed. Use Analyze → “Transcribe Missing Subtitles”, "
+                     f"or enable Whisper under Settings → Speech Analysis.")
+        elif n == 0:
+            note += ("  Analyze episodes first (Automated coding → Analyze), "
+                     "then return here.")
         self._lang_sp_note.config(text=note)
 
     def _populate_lang_speech_tree(self) -> None:

@@ -206,7 +206,9 @@ class PipelineView(tk.Frame):
 
         self._docs: list[PipelineDoc] = []
         self._doc: PipelineDoc | None = None
+        self._discovered: list = []                # samples found on disk
         self._derived: dict[str, object] = {}      # stage_key -> Stage
+        self._source_name: str | None = None
 
         self._sel: set[str] = set()
         self._hover: str | None = None
@@ -532,13 +534,10 @@ class PipelineView(tk.Frame):
     def refresh(self) -> None:
         """Reload documents and live status. Safe to call repeatedly."""
         root = getattr(self._app, "_root_folder", None) if self._app else None
-        self._derived = {}
         try:
-            for p in build_pipelines(root=root):
-                for st in p.stages:
-                    self._derived.setdefault(st.key, st)
+            self._discovered = build_pipelines(root=root)
         except Exception:
-            pass
+            self._discovered = []
 
         keep = self._doc.id if self._doc else None
         self._docs = list_docs(root)
@@ -550,11 +549,63 @@ class PipelineView(tk.Frame):
                 pass
             self._docs = [doc]
         self._doc = next((d for d in self._docs if d.id == keep), self._docs[0])
+        self._rebind_derived()
 
         self._sync_doc_list()
         self._update_zoom_label()
         self._draw()
         self._show_inspector()
+
+    def _rebind_derived(self) -> None:
+        """Bind the open document to the sample whose status it reports.
+
+        Without this the nodes showed whichever discovered project happened to
+        come first, so a document could display a completely unrelated study's
+        numbers — including on a machine with no library open at all. A
+        document reports status only for the sample it is explicitly linked to;
+        unlinked documents show structure with no figures, which is honest.
+        """
+        self._derived = {}
+        self._source_name = None
+        doc = self._doc
+        if not doc or not getattr(self, "_discovered", None):
+            return
+        match = next((p for p in self._discovered if p.key == doc.source_key), None)
+        if match is None:
+            return
+        self._source_name = match.name
+        for st in match.stages:
+            self._derived[st.key] = st
+
+    def available_sources(self) -> list[tuple[str, str]]:
+        """(key, label) for every discovered sample a document can bind to."""
+        return [(p.key, f"{p.name} — {p.episode_count} episodes")
+                for p in getattr(self, "_discovered", [])]
+
+    def _choose_source(self) -> None:
+        """Link the open document to a discovered sample."""
+        if not self._doc:
+            return
+        options = self.available_sources()
+        if not options:
+            messagebox.showinfo(
+                "No data sources",
+                "No episode samples were found yet.\n\n"
+                "Choose a library folder, then draw a sample with "
+                "Episode Sampler. The pipeline can then report live progress "
+                "for that sample.", parent=self)
+            return
+        SourcePicker(self, options, self._doc.source_key, self._apply_source)
+
+    def _apply_source(self, key: str | None) -> None:
+        if not self._doc:
+            return
+        self._push_undo()
+        self._doc.source_key = key
+        self._rebind_derived()
+        self._draw()
+        self._show_inspector()
+        self._touch()
 
     def _sync_doc_list(self) -> None:
         names = [d.name for d in self._docs]
@@ -576,6 +627,7 @@ class PipelineView(tk.Frame):
             self._sel.clear()
             self._undo.clear()
             self._redo.clear()
+            self._rebind_derived()
             self._sync_doc_list()
             self._update_zoom_label()
             self._draw()
@@ -586,6 +638,9 @@ class PipelineView(tk.Frame):
         m.add_command(label="New Pipeline...", command=self._new_doc)
         m.add_command(label="New from Standard Stages...",
                       command=lambda: self._new_doc(standard=True))
+        m.add_separator()
+        m.add_command(label="Link to Episode Sample...",
+                      command=self._choose_source)
         m.add_separator()
         m.add_command(label="Rename...", command=self._rename_doc)
         m.add_command(label="Duplicate", command=self._duplicate_doc)
@@ -630,9 +685,17 @@ class PipelineView(tk.Frame):
         self._sel.clear()
         self._undo.clear()
         self._redo.clear()
+        # A single obvious sample is linked automatically; with several, ask,
+        # because guessing wrong would show the wrong study's numbers.
+        sources = self.available_sources()
+        if len(sources) == 1:
+            doc.source_key = sources[0][0]
+        self._rebind_derived()
         self._sync_doc_list()
         self.fit_to_view()
         self._show_inspector()
+        if len(sources) > 1:
+            self.after(60, self._choose_source)
 
     def _rename_doc(self) -> None:
         if not self._doc:
@@ -1074,6 +1137,13 @@ class PipelineView(tk.Frame):
                     text=f"{STATUS_GLYPH.get(status, '·')} {stage.status_label}",
                     font=_f(self, 11 * z), fill=STATUS_COLOR.get(status, TEXT_DIM),
                     width=avail, tags="gfx")
+            elif t.stage_key:
+                # This node COULD report progress but the document is not bound
+                # to a sample. Say so rather than leaving a blank that reads as
+                # "nothing to do here".
+                c.create_text(x0 + pad, y1 - 8 * z, anchor="sw",
+                              text="· no data source", font=_f(self, 11 * z),
+                              fill=TEXT_FAINT, width=avail, tags="gfx")
         else:
             c.create_text((x0 + x1) / 2, (y0 + y1) / 2, text=n.title,
                           font=_f(self, max(9, 12 * z), True), fill=TEXT,
@@ -1105,17 +1175,24 @@ class PipelineView(tk.Frame):
 
         if len(self._sel) != 1:
             self._i_title.configure(text=self._doc.name)
-            self._i_status.configure(text="")
+            src = getattr(self, "_source_name", None)
+            self._i_status.configure(
+                text=("Linked: " + src) if src else "Not linked to a sample",
+                fg=STATUS_COLOR[COMPLETE] if src else TEXT_DIM)
             self._i_expl.configure(
                 text=f"{len(self._sel)} nodes selected." if self._sel else
                      "Select a node to inspect it. Drag the canvas to pan, "
                      "scroll to zoom, drag from a right-hand port to connect.")
-            self._add_props([
+            rows = [
+                ("Data source", src or "none — nodes show no figures"),
                 ("Nodes", str(len(self._doc.nodes))),
                 ("Connections", str(len(self._doc.connections))),
-                ("Zoom", f"{self.zoom * 100:.0f}%"),
-                ("File", str(self._doc.path) if self._doc.path else "unsaved"),
-            ])
+            ]
+            self._add_props(
+                rows,
+                next_action=(None if src else
+                             "Manage ▾ → Link to Episode Sample, to show live "
+                             "progress for a set of episodes."))
             return
 
         n = self._doc.node(next(iter(self._sel)))
@@ -1188,6 +1265,52 @@ class PipelineView(tk.Frame):
                 lb.configure(wraplength=wrap)
             except tk.TclError:
                 pass
+
+
+class SourcePicker(tk.Toplevel):
+    """Pick which episode sample a pipeline document reports progress for."""
+
+    def __init__(self, parent, options, current, on_pick) -> None:
+        super().__init__(parent)
+        self.title("Link to Episode Sample")
+        self.configure(bg=INSPECTOR_BG)
+        self.transient(parent.winfo_toplevel())
+        self.grab_set()
+        self.resizable(False, False)
+        self._on_pick = on_pick
+
+        tk.Label(self, text="Report live progress for:", bg=INSPECTOR_BG,
+                 fg=TEXT, font=_f(self, 12), anchor="w").pack(
+                     fill=tk.X, padx=14, pady=(12, 2))
+        tk.Label(self,
+                 text="The pipeline shows how far along this sample is. "
+                      "Unlinked pipelines show the workflow shape only.",
+                 bg=INSPECTOR_BG, fg=TEXT_DIM, font=_f(self, 11),
+                 wraplength=380, justify="left", anchor="w").pack(
+                     fill=tk.X, padx=14, pady=(0, 8))
+
+        self._var = tk.StringVar()
+        self._keys = [None] + [k for k, _ in options]
+        labels = ["(not linked)"] + [lbl for _, lbl in options]
+        self._cb = ttk.Combobox(self, textvariable=self._var, values=labels,
+                                state="readonly", width=46, font=_f(self, 12))
+        self._cb.current(self._keys.index(current) if current in self._keys else 0)
+        self._cb.pack(padx=14, pady=(0, 12))
+
+        row = tk.Frame(self, bg=INSPECTOR_BG)
+        row.pack(fill=tk.X, padx=14, pady=(0, 12))
+        AquaButton(row, "Link", self._ok, bg=INSPECTOR_BG, width=70).pack(
+            side=tk.RIGHT)
+        AquaButton(row, "Cancel", self.destroy, bg=INSPECTOR_BG,
+                   width=70).pack(side=tk.RIGHT, padx=(0, 6))
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.bind("<Return>", lambda _e: self._ok())
+
+    def _ok(self) -> None:
+        idx = self._cb.current()
+        key = self._keys[idx] if 0 <= idx < len(self._keys) else None
+        self.destroy()
+        self._on_pick(key)
 
 
 class PipelineWindow(tk.Toplevel):

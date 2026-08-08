@@ -195,6 +195,30 @@ def test_snapshot_ignores_view_state(doc):
     assert doc.snapshot() == before
 
 
+def test_source_link_persists(doc, tmp_path):
+    """Which sample a pipeline reports on is part of the document.
+
+    Without a stored link the view fell back to whichever discovered project
+    came first, so a pipeline could display an unrelated study's numbers.
+    """
+    doc.source_key = "sample:/some/where/draw1"
+    G.save_doc(doc, tmp_path)
+    assert G.list_docs(tmp_path)[0].source_key == "sample:/some/where/draw1"
+
+
+def test_unlinked_document_has_no_source(doc):
+    assert G.default_doc("X").source_key is None
+    assert G.blank_doc("Y").source_key is None
+
+
+def test_relinking_is_undoable(doc):
+    """Linking is an edit — the snapshot must carry it."""
+    snap = doc.snapshot()
+    doc.source_key = "sample:changed"
+    doc.restore(snap)
+    assert doc.source_key is None
+
+
 def test_bounds_covers_all_nodes(doc):
     doc.nodes[0].x, doc.nodes[0].y = -500.0, -300.0
     x0, y0, x1, y1 = doc.bounds()
