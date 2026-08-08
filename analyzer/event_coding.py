@@ -169,11 +169,16 @@ def compute_event_metrics(
     }
 
 
-def _kappa_multiclass(pairs: list[tuple[str, str]]) -> float:
-    """Cohen's kappa for (coder_a, coder_b) label pairs, any number of classes."""
+def _kappa_multiclass(pairs: list[tuple[str, str]]) -> float | None:
+    """Cohen's kappa for (coder_a, coder_b) label pairs, any number of classes.
+
+    Returns None where kappa is UNDEFINED: no pairs, or chance agreement of 1
+    (both coders used a single identical category). Returning 0.0 there would
+    report perfect unanimity as no agreement beyond chance.
+    """
     n = len(pairs)
     if n == 0:
-        return 0.0
+        return None
     p_o = sum(1 for a, b in pairs if a == b) / n
     cats = {a for a, _ in pairs} | {b for _, b in pairs}
     p_e = sum(
@@ -181,7 +186,9 @@ def _kappa_multiclass(pairs: list[tuple[str, str]]) -> float:
         * (sum(1 for _, b in pairs if b == c) / n)
         for c in cats
     )
-    return (p_o - p_e) / (1 - p_e) if (1 - p_e) > 1e-9 else 0.0
+    if (1 - p_e) <= 1e-9:
+        return None
+    return (p_o - p_e) / (1 - p_e)
 
 
 def inter_coder_agreement(
@@ -222,7 +229,9 @@ def inter_coder_agreement(
         "n_matched": len(matched),
         "detection_agreement": round(dice, 3),
         "type_agreement": round(n_type_agree / len(pairs), 3) if pairs else None,
-        "type_kappa": round(_kappa_multiclass(pairs), 3) if pairs else None,
+        "type_kappa": (round(_k, 3)
+                       if (_k := _kappa_multiclass(pairs)) is not None
+                       else None),
         "a_only": [{"timestamp_hms": r["manual_hms"], "type": r["manual_type"]}
                    for r in a_only],
         "b_only": [{"timestamp_hms": d["timestamp_hms"], "type": d["type"]}

@@ -24,20 +24,54 @@ REFERENCE_HARD_CUT_F1_RANGE = "0.84–0.96"
 REFERENCE_HARD_CUT_F1_AGG = "0.91"
 
 
-def local_hard_cut_f1(validation_dir: Path | None = None) -> tuple[str, int] | None:
-    """Live aggregate hard-cut F1 from this install's comparison CSVs, or None."""
+def local_hard_cut_f1(validation_dir: Path | None = None,
+                      detector_tag: str = "content") -> tuple[str, int] | None:
+    """Live boundary-detection F1 for one detector, from local comparison CSVs.
+
+    Filtered to a single detector configuration: aggregating across detectors
+    would blend, say, ContentDetector and TransNetV2 runs into one meaningless
+    average. Defaults to the shipped detector, which is what an unmodified
+    install produces.
+
+    This is BOUNDARY detection (did the tool flag a transition here), scored
+    type-agnostically — not type classification. See METRIC_STATUS.
+    """
+    import csv
+    vdir = validation_dir
     try:
-        from .validation import aggregate_summary
-        res = aggregate_summary(validation_dir)
+        from .validation import get_validation_dir
+        vdir = vdir or get_validation_dir()
     except Exception:
         return None
-    if not res.get("n_files"):
+    if not vdir or not vdir.exists():
         return None
-    for row in res["rows"]:
-        if row["type"] == "hard_cut":
-            return (f"{row['F1']:.2f}" if isinstance(row["F1"], float)
-                    else str(row["F1"])), res["n_files"]
-    return None
+
+    tp = fp = fn = 0
+    n_files = 0
+    for cf in sorted(vdir.rglob("*_comparison_*.csv")):
+        if detector_tag not in cf.name:
+            continue
+        try:
+            with cf.open(newline="", encoding="utf-8") as fh:
+                rows = list(csv.DictReader(fh))
+        except Exception:
+            continue
+        used = False
+        for row in rows:
+            if row.get("type") != "hard_cut":
+                continue
+            if (row.get("scoring") or "boundary") != "boundary":
+                continue
+            tp += int(row["TP"]); fp += int(row["FP"]); fn += int(row["FN"])
+            used = True
+        if used:
+            n_files += 1
+    if not n_files or (tp + fp + fn) == 0:
+        return None
+    p = tp / (tp + fp) if (tp + fp) else 0.0
+    r = tp / (tp + fn) if (tp + fn) else 0.0
+    f1 = 2 * p * r / (p + r) if (p + r) else 0.0
+    return f"{f1:.2f}", n_files
 
 
 # Per-metric validation status. status: validated | experimental | deterministic
@@ -45,8 +79,10 @@ METRIC_STATUS: dict[str, dict[str, str]] = {
     "scene_pacing": {
         "label": "Scene pacing (cuts/min)",
         "status": "validated",
-        "note": f"hard-cut detection agrees with blind human coding at "
-                f"F1 {REFERENCE_HARD_CUT_F1_RANGE} across production styles",
+        "note": f"transition-boundary detection (type-agnostic, ±2s match) "
+                f"agrees with human coding at F1 "
+                f"{REFERENCE_HARD_CUT_F1_RANGE} across production styles; "
+                f"type classification is scored separately and is lower",
     },
     "dissolves": {
         "label": "Dissolve detection",
@@ -80,20 +116,27 @@ def validation_short(validation_dir: Path | None = None) -> str:
     live = local_hard_cut_f1(validation_dir)
     if live:
         f1, n = live
-        return (f"Detection accuracy (preliminary): hard-cut detection (basis "
-                f"of the pacing metric) agreed with human coding at F1 {f1} "
-                f"({n} comparison run(s), single coder — larger sample and "
-                f"inter-rater reliability in progress). Accuracy is "
+        return (f"Detection accuracy (preliminary): transition-BOUNDARY "
+                f"detection on human-coded hard cuts — i.e. whether a "
+                f"transition was found there, not whether it was labelled "
+                f"correctly — agreed with human coding at F1 {f1} "
+                f"(±2s match, {n} comparison run(s), single coder; larger "
+                f"sample and inter-rater reliability in progress). This is the "
+                f"figure the pacing RATE depends on; type classification is "
+                f"scored separately and is lower. Accuracy is "
                 f"content-dependent. Dissolve/scene-change detection "
                 f"experimental; color/motion/flashing/audio are deterministic "
                 f"measurements.")
-    return (f"Detection accuracy (preliminary): hard-cut detection (basis of "
-            f"the pacing metric) agreed with human coding at F1 "
-            f"{REFERENCE_HARD_CUT_F1_RANGE} — content-dependent, weakest on "
-            f"dissolve-heavy/low-contrast footage. Single-coder pilot; larger "
-            f"sample and inter-rater reliability in progress. Dissolve/"
-            f"scene-change detection experimental; color/motion/flashing/audio "
-            f"are deterministic measurements.")
+    return (f"Detection accuracy (preliminary): transition-BOUNDARY detection "
+            f"on human-coded hard cuts — whether a transition was found there, "
+            f"not whether it was labelled correctly — agreed with human coding "
+            f"at F1 {REFERENCE_HARD_CUT_F1_RANGE} (±2s match). "
+            f"Content-dependent, weakest on dissolve-heavy/low-contrast "
+            f"footage. Single-coder pilot; larger sample and inter-rater "
+            f"reliability in progress. Type classification is scored "
+            f"separately and is lower. Dissolve/scene-change detection "
+            f"experimental; color/motion/flashing/audio are deterministic "
+            f"measurements.")
 
 
 def validation_statement(validation_dir: Path | None = None) -> str:

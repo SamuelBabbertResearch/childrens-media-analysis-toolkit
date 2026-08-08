@@ -933,6 +933,70 @@ content — passing 27 to transnet silently detects nothing. Use
 `--no-dissolves` with transnet: it detects gradual transitions natively, so
 CMAT's dissolve pass would double-count.
 
+## 2026-08-08 — Code-review fixes applied (all six Part A findings)
+
+1. TYPE-CORRECTNESS. `score_by_type()` now scores two ways and both are
+   written to the comparison CSV under a `scoring` column:
+     boundary — a TP means the tool flagged a transition there, whatever it
+                called it. Stratified by the HUMAN label. This is the correct
+                measure for transition RATES and the only fair one for
+                detectors that emit untyped boundaries (TransNetV2).
+     typed    — a TP additionally requires the label to match; temporal
+                matches with the wrong label become FN for the human type and
+                FP for the tool's type. This is classification performance.
+   Added `type_confusion()` (human type → tool type over matched events).
+   `aggregate_summary()` reads only the boundary rows, so the two scorings are
+   never summed together; files without the column are treated as boundary.
+2. MATCHING. Greedy nearest-unclaimed replaced with maximum-cardinality
+   matching (Kuhn's augmenting path, no new dependency — scipy is not a CMAT
+   requirement). Candidate edges are visited nearest-first so offsets stay
+   small among maximum matchings. Codex's counterexample now scores F1 1.0
+   where greedy gave 0.5.
+3. KAPPA. `_cohen_kappa()` and `_kappa_multiclass()` return None where kappa is
+   UNDEFINED (no pairs, or chance agreement = 1) instead of 0.0, which read as
+   "no agreement beyond chance" for what is actually perfect unanimity. Sweep
+   selection sorts None below any real value so it cannot win.
+4. COMPARABILITY. `manual_pacing_metrics()` no longer claims parity it did not
+   have. Engine-comparable fields (hard_cuts_per_min, mean/median_shot_sec,
+   shot_length_cv, timeline_per_30s) are now computed from HARD CUTS ONLY with
+   ceil binning, matching compute_cut_metrics(). All-transition figures are
+   renamed to inter_transition_* / timeline_all_types_per_30s and documented as
+   having no automated counterpart. The remaining edge difference (manual
+   excludes window-edge shots, the engine includes its first/last scene) is
+   now stated in the docstring rather than glossed.
+5. STANDOFF BUG. The 0.15s minimum in `classify_cut_transitions()` could exceed
+   half the distance to a neighbouring cut on shots under ~0.3s, sampling
+   ACROSS that cut. Clamp reordered so staying inside the shot always wins.
+6. DISSOLVE SCALE. Verified against PySceneDetect 0.7 source: its
+   ContentDetector uses EQUAL component weights (1.0/1.0/1.0), raw 0–255 mean
+   absolute channel differences, averaged. CMAT's dissolve score uses
+   0.28/0.45/0.27 with per-channel normalisation and a ×100 rescale — the
+   scales are NOT comparable and the shared `threshold=27` ceiling was
+   meaningless. Documented; moot in practice since the dissolve pass is now
+   superseded by TransNetV2 and the ceiling was never binding (dissolve peaks
+   sit at 4–9, far below 27).
+
+REGENERATED NUMBERS (tolerance ±2s, same windows):
+
+| run | boundary F1 | previously | typed F1 |
+|---|---|---|---|
+| CB ContentDetector | 0.753 | 0.753 | 0.612 |
+| CB TransNetV2 | 0.902 | 0.902 | 0.707 |
+| LB ContentDetector | 0.910 | 0.910 | 0.846 |
+| LB TransNetV2 | 0.942 | 0.942 | 0.890 |
+
+Boundary F1 is UNCHANGED on all four: greedy happened to find the optimal
+matching on this data, so no previously reported figure was wrong — it was
+correct by luck rather than by guarantee. It is now guaranteed.
+
+The typed column is the newly visible truth. TransNetV2's large gap
+(0.902 → 0.707) is expected and not a defect: it emits untyped boundaries, so
+every dissolve it correctly LOCATED is counted as mislabelled. That is exactly
+why both numbers must be reported, and why "hard-cut F1" was the wrong name
+for the boundary figure.
+
+Tests: 39 passed, 13 skipped.
+
 ## Planned validation sample (fill in)
 
 | Episode | Show | Era/style | Pacing regime | Set (tuning/test) | Coded | Re-coded |

@@ -1,13 +1,13 @@
 {
   "date": "2026-08-08",
   "git_commit": "418751e",
-  "detections_file": "A Charlie Brown Christmas 1965__transnet-t0.5-solo_detections.csv",
+  "detections_file": "A Charlie Brown Christmas 1965__content-t27-diss_detections.csv",
   "manual_file": "A Charlie Brown Christmas 1965_manual.csv",
   "tolerance_sec": 2.0,
   "window": [
     0.0,
     300.0
   ],
-  "n_detections": 39,
+  "n_detections": 42,
   "n_manual": 43
 }

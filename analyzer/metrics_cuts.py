@@ -206,8 +206,15 @@ def classify_cut_transitions(
     results: list[dict] = []
 
     for t, pb, nb in zip(cut_times, prev_bounds, next_bounds):
-        off_b = max(min(offset_sec, (t - pb) / 2.0), 0.15)
-        off_a = max(min(offset_sec, (nb - t) / 2.0), 0.15)
+        # Stay strictly inside the adjacent shots. The 0.15s standoff avoids
+        # sampling transition frames, but must never exceed half the distance
+        # to the neighbouring cut — otherwise on shots under ~0.3s it would
+        # sample ACROSS that cut and compare the wrong pair of shots.
+        # Clamp order matters: staying inside the shot wins over the standoff.
+        half_b = max((t - pb) / 2.0, 0.0)
+        half_a = max((nb - t) / 2.0, 0.0)
+        off_b = min(max(min(offset_sec, half_b), 0.15), half_b)
+        off_a = min(max(min(offset_sec, half_a), 0.15), half_a)
         try:
             fa = _grab_frame(cap, t - off_b)
             fb = _grab_frame(cap, t + off_a)

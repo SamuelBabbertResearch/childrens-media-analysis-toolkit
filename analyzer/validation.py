@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import subprocess
 from datetime import date
 from pathlib import Path
@@ -245,17 +246,30 @@ def manual_pacing_metrics(
 ) -> dict[str, Any]:
     """Descriptive pacing metrics computed FROM hand coding, not detection.
 
-    This is the hand-coding path's analysis step — the manual counterpart to
-    the engine's ScenePacingMetrics, using the SAME metric definitions so a
-    hand-coded rate is directly comparable to an automated one.
+    The hand-coding path's analysis step. Two families of number are returned
+    and they are NOT interchangeable:
+
+    COMPARABLE TO THE AUTOMATED ENGINE (hard cuts only, ceil-binned timeline):
+        hard_cuts_per_min, mean_shot_sec, median_shot_sec, shot_length_cv,
+        timeline_per_30s
+      These mirror compute_cut_metrics(): intervals are measured between HARD
+      CUTS, matching PySceneDetect's scene list, and the timeline uses ceil so
+      a final partial 30s window is retained.
+
+    HAND-CODING ONLY (no automated counterpart):
+        transitions_per_min, inter_transition_* , by_type, scene_* fields
+      These count ALL coded transition types, which the automated detector
+      does not produce. Do not compare them to automated figures.
 
     ``rows`` may be a parsed coding list or a path to a coding CSV. When a
     window is given, rates use the window length as the denominator (these
     users typically code a segment, not a whole episode).
 
-    Shot lengths use gaps BETWEEN coded transitions only — the first and last
+    Interval stats use gaps BETWEEN coded events only — the first and last
     shots in a window are truncated by the window edges, so including them
-    would bias the mean downward.
+    would bias the mean downward. NOTE this differs from the engine, which
+    includes its first and last scene; on a fully coded episode the two will
+    therefore differ slightly at the edges.
     """
     if isinstance(rows, (str, Path)):
         rows = parse_manual_csv(Path(rows), warn_cb=warn_cb)
@@ -280,23 +294,37 @@ def manual_pacing_metrics(
     n_all = len(rows)
     n_hard = by_type.get("hard_cut", 0)
 
-    # Shot lengths = gaps between consecutive coded transitions.
-    times = [r["timestamp_sec"] for r in rows]
-    gaps = [b - a for a, b in zip(times, times[1:])] if len(times) > 1 else []
-    if gaps:
-        mean_gap = sum(gaps) / len(gaps)
+    def _interval_stats(ts: list[float]) -> tuple[float, float, float]:
+        gaps = [b - a for a, b in zip(ts, ts[1:])] if len(ts) > 1 else []
+        if not gaps:
+            return 0.0, 0.0, 0.0
+        mean_g = sum(gaps) / len(gaps)
         srt = sorted(gaps)
         mid = len(srt) // 2
-        median_gap = (srt[mid] if len(srt) % 2
-                      else (srt[mid - 1] + srt[mid]) / 2)
-        var = sum((g - mean_gap) ** 2 for g in gaps) / len(gaps)
-        cv = (var ** 0.5) / mean_gap if mean_gap > 0 else 0.0
-    else:
-        mean_gap = median_gap = cv = 0.0
+        median_g = (srt[mid] if len(srt) % 2 else (srt[mid - 1] + srt[mid]) / 2)
+        var = sum((g - mean_g) ** 2 for g in gaps) / len(gaps)   # population SD,
+        cv_ = (var ** 0.5) / mean_g if mean_g > 0 else 0.0       # as the engine uses
+        return mean_g, median_g, cv_
+
+    times = [r["timestamp_sec"] for r in rows]                  # all transitions
+    cut_times = [r["timestamp_sec"] for r in rows
+                 if r["type"] == "hard_cut"]                    # engine-comparable
+
+    # Engine-comparable: intervals between HARD CUTS only.
+    mean_gap, median_gap, cv = _interval_stats(cut_times)
+    # Hand-coding only: intervals between transitions of ANY type.
+    it_mean, it_median, it_cv = _interval_stats(times)
 
     base = window[0] if window else 0.0
-    n_windows = max(1, int(span_sec / 30.0))
+    # ceil, matching compute_cut_metrics — floor would silently drop the cuts
+    # in a final partial 30s window.
+    n_windows = max(1, math.ceil(span_sec / 30.0))
     timeline = [
+        sum(1 for t in cut_times
+            if base + i * 30.0 <= t < base + (i + 1) * 30.0)
+        for i in range(n_windows)
+    ]
+    timeline_all = [
         sum(1 for t in times
             if base + i * 30.0 <= t < base + (i + 1) * 30.0)
         for i in range(n_windows)
@@ -313,12 +341,18 @@ def manual_pacing_metrics(
         "n_transitions": n_all,
         "n_hard_cuts": n_hard,
         "by_type": by_type,
+        # --- comparable to the automated engine (hard cuts only) ---
         "hard_cuts_per_min": round(n_hard / span_min, 3),
-        "transitions_per_min": round(n_all / span_min, 3),
         "mean_shot_sec": round(mean_gap, 3),
         "median_shot_sec": round(median_gap, 3),
         "shot_length_cv": round(cv, 3),
         "timeline_per_30s": timeline,
+        # --- hand-coding only (all transition types; no automated counterpart) ---
+        "transitions_per_min": round(n_all / span_min, 3),
+        "inter_transition_mean_sec": round(it_mean, 3),
+        "inter_transition_median_sec": round(it_median, 3),
+        "inter_transition_cv": round(it_cv, 3),
+        "timeline_all_types_per_30s": timeline_all,
         "n_scene_labeled": len(labeled),
         "scene_changes_per_min": (round(n_change / span_min, 3)
                                   if labeled else None),
@@ -486,26 +520,70 @@ def export_detections(
 
 # ── Matching + scoring ────────────────────────────────────────────────────────
 
+def _max_cardinality_match(
+    manual: list[dict],
+    detections: list[dict],
+    tolerance: float,
+) -> dict[int, int]:
+    """Maximum-cardinality matching between coded and detected events.
+
+    Replaces the earlier greedy nearest-unclaimed pass, which was order
+    dependent and could strand a valid pair: with manual events at 10.0/11.7
+    and detections at 10.75/9.0 (tolerance 1s), greedy scores TP=1 where the
+    optimal assignment scores TP=2. That understated recall on closely spaced
+    transitions — exactly the fast-cut case.
+
+    Kuhn's augmenting-path algorithm; no new dependency (scipy is not a CMAT
+    requirement and would bloat the packaged build). Candidate edges are
+    visited nearest-first, so among maximum-cardinality matchings the pairing
+    tends to the smallest offsets.
+
+    Returns {manual_index: detection_index}.
+    """
+    adj: list[list[int]] = []
+    for m in manual:
+        cands = [(abs(d["timestamp_sec"] - m["timestamp_sec"]), di)
+                 for di, d in enumerate(detections)
+                 if abs(d["timestamp_sec"] - m["timestamp_sec"]) <= tolerance]
+        cands.sort()
+        adj.append([di for _dist, di in cands])
+
+    det_to_man: dict[int, int] = {}
+
+    def _augment(mi: int, seen: set[int]) -> bool:
+        for di in adj[mi]:
+            if di in seen:
+                continue
+            seen.add(di)
+            if di not in det_to_man or _augment(det_to_man[di], seen):
+                det_to_man[di] = mi
+                return True
+        return False
+
+    for mi in range(len(manual)):
+        _augment(mi, set())
+
+    return {mi: di for di, mi in det_to_man.items()}
+
+
 def match_transitions(
     detections: list[dict],
     manual: list[dict],
     tolerance: float,
 ) -> tuple[list[dict], list[dict]]:
-    """Greedy nearest-unclaimed matching. Returns (results, false_positives)."""
-    matched_det: set[int] = set()
+    """Match coded events to detections. Returns (results, false_positives).
+
+    A match is TEMPORAL only — it records whether the tool flagged a transition
+    at that moment, not whether it labeled the type correctly. `type_match`
+    carries that separately, and score_by_type() reports both views.
+    """
+    pairs = _max_cardinality_match(manual, detections, tolerance)
     results: list[dict] = []
 
-    for m in manual:
-        best_di, best_dist = None, float("inf")
-        for di, d in enumerate(detections):
-            if di in matched_det:
-                continue
-            dist = abs(d["timestamp_sec"] - m["timestamp_sec"])
-            if dist <= tolerance and dist < best_dist:
-                best_dist, best_di = dist, di
-        if best_di is not None:
-            matched_det.add(best_di)
-            d = detections[best_di]
+    for mi, m in enumerate(manual):
+        di = pairs.get(mi)
+        if di is not None:
+            d = detections[di]
             results.append({
                 "manual_ts": m["timestamp_sec"], "manual_hms": m["timestamp_hms"],
                 "manual_type": m["type"],
@@ -522,7 +600,8 @@ def match_transitions(
                 "match": "FN", "type_match": "—",
             })
 
-    false_positives = [d for di, d in enumerate(detections) if di not in matched_det]
+    claimed = set(pairs.values())
+    false_positives = [d for di, d in enumerate(detections) if di not in claimed]
     return results, false_positives
 
 
@@ -533,16 +612,56 @@ def prf(tp: int, fp: int, fn: int) -> tuple[float, float, float]:
     return p, r, f
 
 
-def score_by_type(results: list[dict], false_positives: list[dict]) -> list[dict]:
+def score_by_type(results: list[dict], false_positives: list[dict],
+                  require_type_match: bool = False) -> list[dict]:
+    """Score detection performance, stratified by the HUMAN-coded type.
+
+    Two distinct questions, and they must not be conflated:
+
+    require_type_match=False (default) — BOUNDARY DETECTION. A TP means the
+        tool flagged a transition at that moment, whatever it called it. Rows
+        are stratified by the human label, so "hard_cut" here reads as "human-
+        coded hard cuts the tool located", NOT "hard cuts the tool correctly
+        identified as hard cuts". This is the right measure for transition
+        RATES (cuts/min), and the only fair measure for detectors that emit
+        untyped boundaries (e.g. TransNetV2).
+
+    require_type_match=True — TYPE-CONDITIONAL. A TP additionally requires the
+        tool's label to equal the human label; temporal matches with the wrong
+        label become FN for the human type and FP for the tool's type. This is
+        classification performance.
+
+    Report both. See type_confusion() for where the labels actually go.
+    """
     all_types = sorted(
         {r["manual_type"] for r in results} | {d["type"] for d in false_positives}
     )
+    if require_type_match:
+        all_types = sorted(set(all_types)
+                           | {r["tool_type"] for r in results
+                              if r["match"] == "TP" and r["tool_type"]})
+
     rows = []
     total_tp = total_fp = total_fn = 0
     for t in all_types:
-        tp = sum(1 for r in results if r["match"] == "TP" and r["manual_type"] == t)
-        fn = sum(1 for r in results if r["match"] == "FN" and r["manual_type"] == t)
-        fp = sum(1 for d in false_positives if d["type"] == t)
+        if require_type_match:
+            tp = sum(1 for r in results if r["match"] == "TP"
+                     and r["manual_type"] == t and r["type_match"] == "yes")
+            # missed outright, plus found-but-mislabelled
+            fn = sum(1 for r in results
+                     if r["manual_type"] == t
+                     and (r["match"] == "FN"
+                          or (r["match"] == "TP" and r["type_match"] == "no")))
+            # invented, plus this type wrongly asserted on another type's event
+            fp = (sum(1 for d in false_positives if d["type"] == t)
+                  + sum(1 for r in results if r["match"] == "TP"
+                        and r["type_match"] == "no" and r["tool_type"] == t))
+        else:
+            tp = sum(1 for r in results
+                     if r["match"] == "TP" and r["manual_type"] == t)
+            fn = sum(1 for r in results
+                     if r["match"] == "FN" and r["manual_type"] == t)
+            fp = sum(1 for d in false_positives if d["type"] == t)
         total_tp += tp; total_fp += fp; total_fn += fn
         p, r, f = prf(tp, fp, fn)
         rows.append({"type": t, "TP": tp, "FP": fp, "FN": fn,
@@ -551,6 +670,23 @@ def score_by_type(results: list[dict], false_positives: list[dict]) -> list[dict
     rows.append({"type": "ALL", "TP": total_tp, "FP": total_fp, "FN": total_fn,
                  "precision": round(p, 3), "recall": round(r, 3), "F1": round(f, 3)})
     return rows
+
+
+def type_confusion(results: list[dict]) -> dict[str, dict[str, int]]:
+    """Confusion matrix over temporally matched events: human type → tool type.
+
+    Answers "when the tool found the transition, did it label it correctly?" —
+    the question boundary-detection F1 cannot answer.
+    """
+    matrix: dict[str, dict[str, int]] = {}
+    for r in results:
+        if r["match"] != "TP":
+            continue
+        h = r["manual_type"] or "unknown"
+        t = r["tool_type"] or "unknown"
+        matrix.setdefault(h, {})
+        matrix[h][t] = matrix[h].get(t, 0) + 1
+    return matrix
 
 
 # ── Compare ───────────────────────────────────────────────────────────────────
@@ -592,16 +728,24 @@ def compare_detections(
     ep_stem = det_stem.split("__", 1)[0]
 
     results, false_positives = match_transitions(detections, manual, tolerance)
-    summary_rows = score_by_type(results, false_positives)
+    summary_rows = score_by_type(results, false_positives)             # boundary
+    typed_rows = score_by_type(results, false_positives,
+                               require_type_match=True)                # classification
+    confusion = type_confusion(results)
     mismatches = [r for r in results if r["match"] == "TP" and r["type_match"] == "no"]
 
     out_dir = manual_path.parent
     out_path = out_dir / f"{ep_stem}__{tag}_comparison_{date.today()}.csv"
     with out_path.open("w", newline="", encoding="utf-8") as fh:
-        w = csv.DictWriter(fh, fieldnames=["type", "TP", "FP", "FN",
+        w = csv.DictWriter(fh, fieldnames=["scoring", "type", "TP", "FP", "FN",
                                            "precision", "recall", "F1"])
         w.writeheader()
-        w.writerows(summary_rows)
+        # "boundary" = found a transition here (rate-relevant; the figure to
+        # quote for cuts/min). "typed" = also labelled it correctly.
+        for row in summary_rows:
+            w.writerow({"scoring": "boundary", **row})
+        for row in typed_rows:
+            w.writerow({"scoring": "typed", **row})
 
     detail_path = out_dir / f"{ep_stem}__{tag}_match_detail_{date.today()}.csv"
     detail_rows = list(results)
@@ -645,7 +789,8 @@ def compare_detections(
     man_path.write_text(json.dumps(cmp_manifest, indent=2), encoding="utf-8")
 
     return {
-        "summary_rows": summary_rows, "results": results,
+        "summary_rows": summary_rows, "typed_rows": typed_rows,
+        "confusion": confusion, "results": results,
         "false_positives": false_positives, "mismatches": mismatches,
         "n_detections": len(detections), "n_manual": len(manual),
         "window": window, "tolerance": tolerance,
@@ -807,16 +952,24 @@ def classify_cuts_for_video(
 
 # ── Cut-classifier grading (against hand-labeled scene_relation) ─────────────
 
-def _cohen_kappa(pairs: list[tuple[str, str]]) -> float:
-    """Cohen's kappa for binary (human, predicted) label pairs."""
+def _cohen_kappa(pairs: list[tuple[str, str]]) -> float | None:
+    """Cohen's kappa for binary (human, predicted) label pairs.
+
+    Returns None where kappa is UNDEFINED rather than 0.0: with no pairs, or
+    when chance agreement is 1 (both raters used a single identical class).
+    Reporting 0.0 there would read as "no agreement beyond chance" for what is
+    actually perfect unanimity — the opposite of the truth.
+    """
     n = len(pairs)
     if n == 0:
-        return 0.0
+        return None
     agree = sum(1 for h, p in pairs if h == p) / n
     hw = sum(1 for h, _ in pairs if h == "within") / n
     pw = sum(1 for _, p in pairs if p == "within") / n
     p_e = hw * pw + (1 - hw) * (1 - pw)
-    return (agree - p_e) / (1 - p_e) if (1 - p_e) > 1e-9 else 0.0
+    if (1 - p_e) <= 1e-9:
+        return None
+    return (agree - p_e) / (1 - p_e)
 
 
 def grade_cut_classifier(
@@ -899,10 +1052,16 @@ def grade_cut_classifier(
               for p in pairs]
         acc = (sum(1 for h, pr in lp if h == pr) / len(lp)) if lp else 0.0
         sweep_rows.append({"threshold": T, "accuracy": round(acc, 3),
-                           "kappa": round(_cohen_kappa(lp), 3), "n": len(lp)})
+                           "kappa": (round(k, 3)
+                                     if (k := _cohen_kappa(lp)) is not None
+                                     else None),
+                           "n": len(lp)})
 
-    best = max(sweep_rows, key=lambda r: (r["kappa"], r["accuracy"])) \
-        if sweep_rows else {"threshold": 0.55, "accuracy": 0.0, "kappa": 0.0}
+    # Undefined kappa (None) must not win the sweep — sort it below any real value.
+    best = max(sweep_rows,
+               key=lambda r: (r["kappa"] if r["kappa"] is not None else -2.0,
+                              r["accuracy"])) \
+        if sweep_rows else {"threshold": 0.55, "accuracy": 0.0, "kappa": None}
 
     # Confusion at best threshold.
     T = best["threshold"]
@@ -954,6 +1113,11 @@ def aggregate_summary(directory: Path | None = None) -> dict[str, Any]:
             for row in csv.DictReader(fh):
                 t = row["type"]
                 if t == "ALL":
+                    continue
+                # Newer files carry both scorings; aggregate the boundary view
+                # only, or the two would be summed together. Older files have
+                # no 'scoring' column and are boundary-scored by definition.
+                if (row.get("scoring") or "boundary") != "boundary":
                     continue
                 totals.setdefault(t, {"TP": 0, "FP": 0, "FN": 0})
                 totals[t]["TP"] += int(row["TP"])
