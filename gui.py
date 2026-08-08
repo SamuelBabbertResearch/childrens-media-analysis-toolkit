@@ -261,8 +261,20 @@ class App(tk.Tk):
         self._vocab_results: list = []
         self._vocab_analysis_running = False
 
+        self._pipeline_window = None
+        self._pipeline_view = None
+
         self._build_ui()
         self._poll_queue()
+
+        # F1 is the Windows convention for "explain this program".
+        self.bind_all("<F1>", lambda _e: self._open_pipeline_window())
+
+        # The pipeline window is the first thing a new user should see. Shown
+        # after the main window is mapped so it does not steal the initial
+        # focus race, and suppressible from inside the window itself.
+        if self._cfg.get("show_pipeline_on_start", True):
+            self.after(400, self._open_pipeline_window)
 
     # -----------------------------------------------------------------------
     # UI construction
@@ -281,6 +293,8 @@ class App(tk.Tk):
 
         file_menu = tk.Menu(menubar, tearoff=0)
         file_menu.add_command(label="Choose Root Folder...", command=self._choose_folder)
+        file_menu.add_command(label="Analysis Pipeline...", accelerator="F1",
+                              command=self._open_pipeline_window)
         file_menu.add_command(label="Episode Sampler...", command=self._open_sampler)
         file_menu.add_command(label="Import Episode Metadata from Wikipedia...",
                               command=self._open_wiki_import)
@@ -357,6 +371,14 @@ class App(tk.Tk):
 
         left_nb = ttk.Notebook(left)
         left_nb.pack(fill=tk.BOTH, expand=True)
+        self._left_nb = left_nb
+
+        # ---- Pipeline tab (first: it explains what every other tab is for) ----
+        from gui_pipeline import PipelineView
+        pipe_tab = tk.Frame(left_nb)
+        left_nb.add(pipe_tab, text="Pipeline")
+        self._pipeline_view = PipelineView(pipe_tab, app=self)
+        self._pipeline_view.pack(fill=tk.BOTH, expand=True)
 
         # ---- Library tab ----
         lib_tab = tk.Frame(left_nb)
@@ -637,6 +659,9 @@ class App(tk.Tk):
             self._db_conn = get_db(self._root_folder)
             self._backfill_index()
             self._refresh_index()
+            # The pipeline is computed against the library root, so it is
+            # meaningless until one is chosen and must be rebuilt when it changes.
+            self._refresh_pipeline()
 
     def _populate_tree(self) -> None:
         self._tree.delete(*self._tree.get_children())
@@ -1779,6 +1804,9 @@ class App(tk.Tk):
                         if auto_s is not None:
                             auto_set_season(self._db_conn, str(ep_path), auto_s)
                         self._refresh_index()
+                    # An episode just moved from "selected" to "measured" —
+                    # keep the pipeline view honest without a manual refresh.
+                    self._refresh_pipeline()
                 else:
                     messagebox.showerror(
                         "Analysis failed",
@@ -2318,6 +2346,36 @@ class App(tk.Tk):
     def _open_measurement_settings(self) -> None:
         from gui_measurements import MeasurementsDialog
         MeasurementsDialog(self)
+
+    def _open_pipeline_window(self) -> None:
+        """Open (or re-focus) the standalone pipeline window."""
+        from gui_pipeline import PipelineWindow
+        existing = getattr(self, "_pipeline_window", None)
+        if existing is not None and existing.winfo_exists():
+            existing.deiconify()
+            existing.lift()
+            existing.focus_force()
+            return
+
+        def _clear() -> None:
+            self._pipeline_window = None
+
+        self._pipeline_window = PipelineWindow(self, on_close=_clear)
+
+    def _refresh_pipeline(self) -> None:
+        """Re-read the pipeline from disk. Cheap; safe to call after any change."""
+        view = getattr(self, "_pipeline_view", None)
+        if view is not None:
+            try:
+                view.refresh()
+            except Exception:
+                pass
+        win = getattr(self, "_pipeline_window", None)
+        if win is not None and win.winfo_exists():
+            try:
+                win.view.refresh()
+            except Exception:
+                pass
 
     def _open_wiki_import(self) -> None:
         WikiImportDialog(self, app_ref=self)
