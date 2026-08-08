@@ -1,6 +1,16 @@
 # Children's Media Analysis Toolkit (CMAT)
 
-A desktop Windows application that analyzes MP4 episodes of children's TV shows and produces a **sensory-load profile** — a transparent, labeled breakdown of how visually and aurally stimulating a show is, based on measurable structural features of the video. CMAT also measures the **linguistic complexity** of dialogue through speech rate, readability formulas, vocabulary frequency tiers, age of acquisition, and lexical diversity.
+A desktop toolkit for analyzing children's media, built to equip researchers with a **complete research pipeline** — draw a reproducible episode sample, measure the episodes, code them by hand, and export charts and data:
+
+> **sample → analyze → hand-code → validate → chart & export**
+
+It has two co-equal halves:
+
+**Custom automated audio-visual sensory composites.** Measure pacing, motion, colour, contrast, flashing, and audio — then choose the tools and thresholds behind each measurement and combine them into a composite *you* configure, rather than one the tool imposes. CMAT also measures the **linguistic complexity** of dialogue through speech rate, readability formulas, vocabulary frequency tiers, age of acquisition, and lexical diversity.
+
+**Structured hand-coding of pacing and fantastical events** — the two features current research focuses on. Code transitions, scene changes, and impossible events against a built-in frame-accurate video player, using your own category systems, and get metrics computed with the same definitions as the automated path.
+
+Then **validate one against the other**: grade the automated detection against your own coding (precision/recall/F1, Cohen's κ, inter-rater reliability) so you know how far to trust it. See [Manual coding & validation](#manual-coding--validation).
 
 CMAT does **not** issue a verdict on appropriateness. Every composite score shows its component parts, and every design decision in the scoring model is adjustable.
 
@@ -186,6 +196,40 @@ python -m spacy download en_core_web_sm
 ### 9. Export
 
 From the results panel: **Export JSON**, **Export CSV**, or **Export PDF Report** for a printable one-page summary.
+
+---
+
+## Manual coding & validation
+
+Automated detection is only trustworthy if you know how accurate it is. CMAT includes a full **human-coding and validation workbench** so researchers can measure the tool against their own hand-coded ground truth — and code the things a pixel measure cannot see.
+
+### Built-in coding editor with an embedded player
+
+Open a coding sheet from the **Validation** tab and you get a form-style editor with a built-in video player (audio included):
+
+- **Watch and stamp.** Play the episode inside the editor and press **✚ Stamp** (or `S`) to log a row at the *exact current frame* — millisecond-accurate timestamps, no clock-reading, no typing, no transcription errors. A run of identical cuts is just watch → `S` → watch → `S`.
+- **Frame-exact refinement.** Frame-step (`E`), nudge, and speed controls; clicking any coded row seeks the player to that moment for pass-2 review.
+- **Dropdowns that can't be mistyped** — every category field is a dropdown, and the entry values feed directly into the analysis, so coded vocabulary can't drift.
+- **Autosave** after every change — no lost work.
+
+### Code two things
+
+- **Scene cuts / transitions** — `hard_cut`, `dissolve`, `fade_in`, `fade_out`, `other`, plus an optional **within-scene vs scene-change** label (the distinction the literature keeps conflating: a shot-reverse-shot cut is not a scene relocation).
+- **Fantastical events** — a structured codebook for the content variable current research points to (impossible physical events, transformations, continuity violations, impossible body events, object animacy, impossible causation), with per-event **narrative relevance** and **repetition** fields for testing the live mechanism accounts.
+
+### Use *your* coding system — fully customizable
+
+**Every dropdown is editable.** Type your lab's own category and it's added to the list for reuse — CMAT ships with a literature-grounded default vocabulary, but you are never locked into it. Bring your own transition taxonomy, your own event categories, your own scene-relation scheme; the tool adapts to your system rather than imposing one. The same flexibility runs through the analysis side: **every metric weight, normalization range, and scoring preset is adjustable**, so CMAT can be tuned to whatever constructs and thresholds your study uses.
+
+### Grade the tool against your coding
+
+- **Precision / recall / F1** per transition type, with a match tolerance you set, and a windowed mode for coding only part of an episode.
+- An **error-annotation grid** with a controlled failure-reason vocabulary, so "F1 = 0.17" becomes "the detector misses gentle dissolves under snowfall" — a documented error taxonomy.
+- A **parameter sweep** to tune detection settings against your ground truth (with train/test discipline built into the workflow).
+- **Cohen's κ** for the within-scene classifier and **two-coder inter-rater reliability** for event coding.
+- Every run writes a **provenance manifest** (parameters, date, tool version) and appears in a **Trials registry** — a browsable audit trail of every sampling + coding study.
+
+> This makes CMAT, to our knowledge, the only open, integrated tool that both extracts formal media features automatically *and* validates that extraction against human coding — reporting its own accuracy rather than asking you to trust it.
 
 ---
 

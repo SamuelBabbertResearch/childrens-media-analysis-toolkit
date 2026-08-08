@@ -258,6 +258,10 @@ def export_episode_pdf(result: "EpisodeResult", cfg: dict, dest: Path) -> None:
     # Limitations
     story.append(HRFlowable(width="100%", thickness=0.5, color=_GREY, spaceAfter=4))
     story.append(Paragraph("<b>Honest Limitations</b>", S["dim"]))
+    from analyzer.provenance import validation_short
+    story.append(Paragraph("<b>Detection accuracy.</b> " + validation_short(),
+                           S["limits"]))
+    story.append(Spacer(1, 4))
     story.append(Paragraph(LIMITATIONS, S["limits"]))
 
     doc.build(story)
@@ -361,6 +365,10 @@ def export_show_pdf(
     # Limitations
     story.append(HRFlowable(width="100%", thickness=0.5, color=_GREY, spaceAfter=4))
     story.append(Paragraph("<b>Honest Limitations</b>", S["dim"]))
+    from analyzer.provenance import validation_short
+    story.append(Paragraph("<b>Detection accuracy.</b> " + validation_short(),
+                           S["limits"]))
+    story.append(Spacer(1, 4))
     story.append(Paragraph(LIMITATIONS, S["limits"]))
 
     doc.build(story)

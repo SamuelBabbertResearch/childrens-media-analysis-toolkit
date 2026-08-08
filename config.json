@@ -3,6 +3,12 @@
   "flashing_sample_fps": 10,
   "cut_detection_threshold": 27.0,
   "flashing_luminance_threshold": 0.1,
+  "dissolve_detection_enabled": false,
+  "dissolve_noise_floor": 3.0,
+  "dissolve_min_frames": 15,
+  "cut_classification_enabled": true,
+  "cut_classification_offset_sec": 1.0,
+  "scene_change_similarity_threshold": 0.55,
   "speech_transcription_enabled": false,
   "speech_whisper_model": "base",
   "sensory_load_weights": {

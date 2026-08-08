@@ -1,0 +1,12 @@
+{
+  "video": "Shows\\Spongebob Squarepants Season 1\\Season 1\\SpongeBob SquarePants S01E01A Help Wanted.mp4",
+  "date": "2026-07-06",
+  "git_commit": "ab38968",
+  "detector": "content",
+  "threshold": 27.0,
+  "dissolve_pass": true,
+  "noise_floor": 3.0,
+  "min_frames": 15,
+  "n_hard_cuts": 150,
+  "n_dissolves": 4
+}

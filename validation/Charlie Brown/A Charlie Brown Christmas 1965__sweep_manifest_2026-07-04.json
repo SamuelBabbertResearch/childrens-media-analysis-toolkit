@@ -1,0 +1,22 @@
+{
+  "date": "2026-07-04",
+  "git_commit": "ab38968",
+  "video": "Shows\\A Charlie Brown Christmas (1965)\\A Charlie Brown Christmas 1965.mp4",
+  "manual_file": "(First 5 Minutes) A Charlie Brown Christmas 1965_coding_template - A Charlie Brown Christmas 1965_coding_template.csv.csv",
+  "detector": "content",
+  "threshold": 27.0,
+  "tolerance_sec": 2.0,
+  "floors": [
+    2.0,
+    3.0,
+    4.0,
+    5.0,
+    6.0
+  ],
+  "frames": [
+    6,
+    10,
+    15,
+    20
+  ]
+}

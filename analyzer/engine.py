@@ -84,6 +84,13 @@ def analyze_episode(
             video_path,
             threshold=cfg["cut_detection_threshold"],
             duration_sec=duration_sec,
+            detect_dissolves=cfg.get("dissolve_detection_enabled", False),
+            dissolve_noise_floor=cfg.get("dissolve_noise_floor", 3.0),
+            dissolve_min_frames=cfg.get("dissolve_min_frames", 15),
+            classify_cuts_enabled=cfg.get("cut_classification_enabled", False),
+            classify_offset_sec=cfg.get("cut_classification_offset_sec", 1.0),
+            scene_change_similarity_threshold=cfg.get(
+                "scene_change_similarity_threshold", 0.55),
         )
 
         # Stage 3: frame sampling (color / motion / flashing)

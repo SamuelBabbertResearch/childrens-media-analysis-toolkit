@@ -187,42 +187,6 @@
       "network": "TV Tokyo",
       "years": "1995–1996",
       "sampling": "full_series"
-    },
-    {
-      "show_key": "Jordan Peterson",
-      "display_name": "Jordan Peterson",
-      "category": "uncategorized",
-      "review_needed": true
-    },
-    {
-      "show_key": "Little Bear",
-      "display_name": "Little Bear",
-      "category": "uncategorized",
-      "review_needed": true
-    },
-    {
-      "show_key": "My Neighbor Totoro",
-      "display_name": "My Neighbor Totoro",
-      "category": "uncategorized",
-      "review_needed": true
-    },
-    {
-      "show_key": "Ghibili",
-      "display_name": "Ghibili",
-      "category": "uncategorized",
-      "review_needed": true
-    },
-    {
-      "show_key": "Spongebob Squarepants Season 1/Season 1",
-      "display_name": "Season 1",
-      "category": "uncategorized",
-      "review_needed": true
-    },
-    {
-      "show_key": "Spongebob Squarepants Season 1/Season 2",
-      "display_name": "Season 2",
-      "category": "uncategorized",
-      "review_needed": true
     }
   ]
 }

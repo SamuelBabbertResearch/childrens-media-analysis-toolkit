@@ -14,7 +14,7 @@ from tkinter import messagebox, ttk
 from pathlib import Path
 
 from analyzer.db import upsert_episode_metadata
-from analyzer.show_index import list_shows, list_episodes
+from analyzer.show_index import list_shows, list_episodes, list_top_level
 from analyzer.tvmaze_importer import (
     extract_show_id, fetch_show_info, fetch_episodes,
 )
@@ -76,6 +76,23 @@ class TVMazeImportDialog(tk.Toplevel):
         tk.Label(self, textvariable=self._show_info_var, anchor="w",
                  fg="#225522", font=("TkDefaultFont", 9, "bold"),
                  ).pack(fill=tk.X, padx=10, pady=(0, 1))
+
+        # --- Show scope ---
+        # Without this the matcher sees EVERY episode in the library and
+        # matches by season/episode number, so one show's S1E1 can grab
+        # another show's S01E01. Matching must be scoped to one show.
+        show_row = tk.Frame(self)
+        show_row.pack(fill=tk.X, padx=10, pady=(0, 2))
+        tk.Label(show_row, text="Match against show:").pack(side=tk.LEFT)
+        self._show_var = tk.StringVar(value="")
+        self._show_cb = ttk.Combobox(show_row, textvariable=self._show_var,
+                                     state="readonly", width=42)
+        self._show_cb.pack(side=tk.LEFT, padx=(6, 6))
+        self._show_cb.bind("<<ComboboxSelected>>",
+                           lambda e: self._on_show_changed())
+        tk.Label(show_row, text="episodes are matched only within this show",
+                 fg="#666666", font=("TkDefaultFont", 8)).pack(side=tk.LEFT)
+        self._populate_show_list()
 
         self._status_var = tk.StringVar(value="Paste a TVMaze show URL above and click Fetch.")
         tk.Label(self, textvariable=self._status_var, anchor="w",
@@ -186,10 +203,16 @@ class TVMazeImportDialog(tk.Toplevel):
             parts.append(f"premiered {premiered}")
         self._show_info_var.set("  ·  ".join(parts))
 
+        # Kept so changing the show selector re-matches without re-fetching.
+        self._tvm_eps = episodes
+        self._match_and_show(episodes)
+
+    def _match_and_show(self, episodes) -> None:
         seasons = len({e.season for e in episodes})
+        scope = self._show_var.get() or "local files"
         self._status_var.set(
             f"Found {len(episodes)} episodes across {seasons} season(s). "
-            "Matching against local files…"
+            f"Matching against {scope}…"
         )
         self.update_idletasks()
 
@@ -211,12 +234,57 @@ class TVMazeImportDialog(tk.Toplevel):
     # Helpers
     # -----------------------------------------------------------------------
 
+    _ALL_SHOWS = "(all shows — not recommended)"
+
+    def _populate_show_list(self) -> None:
+        """Fill the show selector, defaulting to the Library tab's selection.
+
+        Lists TOP-LEVEL shows so a show split into Season 1..N subfolders is
+        selectable as one unit (a TVMaze listing covers the whole run).
+        """
+        root = getattr(self._app, "_root_folder", None)
+        self._show_dirs: dict[str, Path] = {}
+        if root:
+            try:
+                for _kind, d in list_top_level(root):
+                    self._show_dirs[d.name] = d
+            except Exception:
+                for d in list_shows(root):
+                    self._show_dirs[d.name] = d
+        names = sorted(self._show_dirs) + [self._ALL_SHOWS]
+        self._show_cb.config(values=names)
+
+        default = ""
+        try:
+            kind, path = self._app._selected_item()
+            if kind in ("show", "episode", "category") and path and root:
+                p = Path(path).resolve()
+                for k, d in self._show_dirs.items():
+                    dr = d.resolve()
+                    if p == dr or dr in p.parents:
+                        default = k
+                        break
+        except Exception:
+            pass
+        self._show_var.set(default or (names[0] if len(names) > 1
+                                       else self._ALL_SHOWS))
+
+    def _on_show_changed(self) -> None:
+        """Re-match already-fetched TVMaze data against the new show."""
+        if getattr(self, "_tvm_eps", None):
+            self._match_and_show(self._tvm_eps)
+
     def _collect_local_files(self) -> list[Path]:
         root = getattr(self._app, "_root_folder", None)
         if not root:
             return []
+        chosen = self._show_var.get()
+        target = getattr(self, "_show_dirs", {}).get(chosen)
         files: list[Path] = []
         for show_dir in list_shows(root):
+            if target is not None and chosen != self._ALL_SHOWS:
+                if not (show_dir == target or target in show_dir.parents):
+                    continue
             files.extend(list_episodes(show_dir))
         return files
 

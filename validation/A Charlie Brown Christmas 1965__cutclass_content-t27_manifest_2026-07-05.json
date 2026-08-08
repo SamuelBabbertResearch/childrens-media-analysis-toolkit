@@ -1,0 +1,14 @@
+{
+  "video": "Shows\\A Charlie Brown Christmas (1965)\\A Charlie Brown Christmas 1965.mp4",
+  "date": "2026-07-05",
+  "git_commit": "ab38968",
+  "detector": "content",
+  "threshold": 27.0,
+  "offset_sec": 1.0,
+  "similarity_threshold": 0.55,
+  "n_cuts": 163,
+  "n_within_scene": 80,
+  "n_scene_change": 83,
+  "n_unknown": 0,
+  "note": "similarity_threshold is UNVALIDATED \u2014 tune against hand-coded within/change labels before trusting."
+}

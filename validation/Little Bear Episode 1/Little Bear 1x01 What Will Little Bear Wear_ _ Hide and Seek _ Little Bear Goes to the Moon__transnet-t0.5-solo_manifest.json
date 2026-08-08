@@ -1,0 +1,12 @@
+{
+  "video": "Shows\\Little Bear (Full Series)\\Season 1\\Little Bear 1x01 What Will Little Bear Wear_ _ Hide and Seek _ Little Bear Goes to the Moon.mp4",
+  "date": "2026-08-08",
+  "git_commit": "702cadd",
+  "detector": "transnet",
+  "threshold": 0.5,
+  "dissolve_pass": false,
+  "noise_floor": null,
+  "min_frames": null,
+  "n_hard_cuts": 337,
+  "n_dissolves": 0
+}
