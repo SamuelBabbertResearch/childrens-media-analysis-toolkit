@@ -1,10 +1,18 @@
 # Children's Media Analysis Toolkit (CMAT)
 
-A desktop Windows application that analyzes MP4 episodes of children's TV shows and produces a **sensory-load profile** — a transparent, labeled breakdown of how visually and aurally stimulating a show is, based on measurable structural features of the video. CMAT also measures the **linguistic complexity** of dialogue through speech rate, readability formulas, vocabulary frequency tiers, age of acquisition, and lexical diversity.
+A desktop toolkit for analyzing children's media, built to equip researchers with a **complete research pipeline** — draw a reproducible episode sample, measure the episodes, code them by hand, and export charts and data:
+
+> **sample → analyze → hand-code → validate → chart & export**
+
+It has two co-equal halves:
+
+**Custom automated audio-visual sensory composites.** Measure pacing, motion, colour, contrast, flashing, and audio — then choose the tools and thresholds behind each measurement and combine them into a composite *you* configure, rather than one the tool imposes. CMAT also measures the **linguistic complexity** of dialogue through speech rate, readability formulas, vocabulary frequency tiers, age of acquisition, and lexical diversity.
+
+**Structured hand-coding of pacing and fantastical events** — the two features current research focuses on. Code transitions, scene changes, and impossible events against a built-in frame-accurate video player, using your own category systems, and get metrics computed with the same definitions as the automated path.
+
+Then **validate one against the other**: grade the automated detection against your own coding (precision/recall/F1, Cohen's κ, inter-rater reliability) so you know how far to trust it. See [Manual coding & validation](#manual-coding--validation).
 
 CMAT does **not** issue a verdict on appropriateness. Every composite score shows its component parts, and every design decision in the scoring model is adjustable.
-
-It also includes a **manual-coding and validation workbench**: hand-code scene cuts and fantastical events against a built-in frame-accurate video player, grade the automated detector against your own coding (precision/recall/F1, Cohen's κ, inter-rater reliability), and **use your own category systems** — every coding dropdown and every scoring metric is customizable to the constructs and thresholds your research uses. See [Manual coding & validation](#manual-coding--validation).
 
 > **Part of the Open Children's Media Index** — an ongoing effort to build a publicly accessible, empirically grounded database of sensory-load profiles for children's television.
 
