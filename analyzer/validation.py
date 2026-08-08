@@ -294,8 +294,7 @@ def manual_pacing_metrics(
     n_all = len(rows)
     n_hard = by_type.get("hard_cut", 0)
 
-    def _interval_stats(ts: list[float]) -> tuple[float, float, float]:
-        gaps = [b - a for a, b in zip(ts, ts[1:])] if len(ts) > 1 else []
+    def _stats_of(gaps: list[float]) -> tuple[float, float, float]:
         if not gaps:
             return 0.0, 0.0, 0.0
         mean_g = sum(gaps) / len(gaps)
@@ -306,13 +305,33 @@ def manual_pacing_metrics(
         cv_ = (var ** 0.5) / mean_g if mean_g > 0 else 0.0       # as the engine uses
         return mean_g, median_g, cv_
 
+    def _interval_stats(ts: list[float]) -> tuple[float, float, float]:
+        return _stats_of([b - a for a, b in zip(ts, ts[1:])] if len(ts) > 1 else [])
+
     times = [r["timestamp_sec"] for r in rows]                  # all transitions
     cut_times = [r["timestamp_sec"] for r in rows
                  if r["type"] == "hard_cut"]                    # engine-comparable
 
-    # Engine-comparable: intervals between HARD CUTS only.
-    mean_gap, median_gap, cv = _interval_stats(cut_times)
-    # Hand-coding only: intervals between transitions of ANY type.
+    # Engine-comparable SHOT durations. compute_cut_metrics() measures the
+    # C+1 scenes PySceneDetect produces for C cuts, INCLUDING the first and
+    # last. Measuring only the C-1 interior gaps is not a small difference:
+    # one cut at 10s in a 100s episode gives interior mean 0.0 where the
+    # engine gives 50.0. So bound the shots by the span edges.
+    lo_b = window[0] if window else 0.0
+    hi_b = window[1] if window else (duration_sec if duration_sec > 0 else None)
+    if hi_b is not None and hi_b != float("inf"):
+        bounds = [lo_b] + cut_times + [hi_b]
+        shot_durs = [b - a for a, b in zip(bounds, bounds[1:]) if b > a]
+        edges_included = True
+    else:
+        # Span end unknown — cannot bound the final shot. Fall back to interior
+        # gaps and say so, rather than silently reporting a different quantity.
+        shot_durs = [b - a for a, b in zip(cut_times, cut_times[1:])]
+        edges_included = False
+    mean_gap, median_gap, cv = _stats_of(shot_durs)
+
+    # Hand-coding only: intervals between transitions of ANY type (interior
+    # only; no automated counterpart exists, so edge handling is moot).
     it_mean, it_median, it_cv = _interval_stats(times)
 
     base = window[0] if window else 0.0
@@ -346,6 +365,7 @@ def manual_pacing_metrics(
         "mean_shot_sec": round(mean_gap, 3),
         "median_shot_sec": round(median_gap, 3),
         "shot_length_cv": round(cv, 3),
+        "shot_edges_included": edges_included,
         "timeline_per_30s": timeline,
         # --- hand-coding only (all transition types; no automated counterpart) ---
         "transitions_per_min": round(n_all / span_min, 3),
@@ -535,8 +555,10 @@ def _max_cardinality_match(
 
     Kuhn's augmenting-path algorithm; no new dependency (scipy is not a CMAT
     requirement and would bloat the packaged build). Candidate edges are
-    visited nearest-first, so among maximum-cardinality matchings the pairing
-    tends to the smallest offsets.
+    visited nearest-first, but that alone does NOT minimise total offset —
+    an augmenting path can displace an earlier good pairing (manual 0,1 vs
+    detections 0,2 at tolerance 2 yields total offset 3 where 1 is possible).
+    A swap-refinement pass afterwards fixes that without changing cardinality.
 
     Returns {manual_index: detection_index}.
     """
@@ -563,7 +585,31 @@ def _max_cardinality_match(
     for mi in range(len(manual)):
         _augment(mi, set())
 
-    return {mi: di for di, mi in det_to_man.items()}
+    pairs = {mi: di for di, mi in det_to_man.items()}
+
+    # Swap refinement: cardinality is already maximal, so improve total offset
+    # by exchanging partners between matched pairs where that helps and both
+    # stay within tolerance. Converges to a local optimum; O(n^2) per pass.
+    def _d(mi: int, di: int) -> float:
+        return abs(detections[di]["timestamp_sec"] - manual[mi]["timestamp_sec"])
+
+    improved = True
+    while improved:
+        improved = False
+        items = list(pairs.items())
+        for a, (mi, di) in enumerate(items):
+            for mj, dj in items[a + 1:]:
+                if mi not in pairs or mj not in pairs:
+                    continue
+                cur = _d(mi, di) + _d(mj, dj)
+                swp = _d(mi, dj) + _d(mj, di)
+                if (swp < cur - 1e-9
+                        and _d(mi, dj) <= tolerance
+                        and _d(mj, di) <= tolerance):
+                    pairs[mi], pairs[mj] = dj, di
+                    di, dj = dj, di
+                    improved = True
+    return pairs
 
 
 def match_transitions(
@@ -672,20 +718,33 @@ def score_by_type(results: list[dict], false_positives: list[dict],
     return rows
 
 
-def type_confusion(results: list[dict]) -> dict[str, dict[str, int]]:
-    """Confusion matrix over temporally matched events: human type → tool type.
+def type_confusion(results: list[dict],
+                   false_positives: list[dict] | None = None
+                   ) -> dict[str, dict[str, int]]:
+    """Confusion matrix: human type → tool type, over matched events.
 
     Answers "when the tool found the transition, did it label it correctly?" —
     the question boundary-detection F1 cannot answer.
+
+    Includes a `<missed>` column (human events with no detection) and, when
+    false_positives are supplied, a `<spurious>` row (detections with no human
+    event). Without those the table is not self-contained: a detector could
+    look perfect here while missing most of the episode.
     """
     matrix: dict[str, dict[str, int]] = {}
     for r in results:
-        if r["match"] != "TP":
-            continue
         h = r["manual_type"] or "unknown"
-        t = r["tool_type"] or "unknown"
         matrix.setdefault(h, {})
-        matrix[h][t] = matrix[h].get(t, 0) + 1
+        if r["match"] == "TP":
+            t = r["tool_type"] or "unknown"
+            matrix[h][t] = matrix[h].get(t, 0) + 1
+        elif r["match"] == "FN":
+            matrix[h]["<missed>"] = matrix[h].get("<missed>", 0) + 1
+    if false_positives:
+        row = matrix.setdefault("<spurious>", {})
+        for d in false_positives:
+            t = d.get("type") or "unknown"
+            row[t] = row.get(t, 0) + 1
     return matrix
 
 
@@ -731,7 +790,7 @@ def compare_detections(
     summary_rows = score_by_type(results, false_positives)             # boundary
     typed_rows = score_by_type(results, false_positives,
                                require_type_match=True)                # classification
-    confusion = type_confusion(results)
+    confusion = type_confusion(results, false_positives)
     mismatches = [r for r in results if r["match"] == "TP" and r["type_match"] == "no"]
 
     out_dir = manual_path.parent
@@ -1103,10 +1162,56 @@ def grade_cut_classifier(
 
 # ── Aggregate summary ─────────────────────────────────────────────────────────
 
+def parse_comparison_name(path: Path) -> tuple[str, str] | None:
+    """(episode_stem, detector_config_tag) from a comparison CSV filename.
+
+    Filenames are `<stem>__<tag>_comparison_<date>.csv`. Parsed structurally
+    rather than by substring search: `"content" in filename` would also match
+    an episode titled "Contentment", and would merge different thresholds and
+    dissolve settings into one supposedly-single configuration.
+    """
+    name = path.name
+    marker = "_comparison_"
+    if "__" not in name or marker not in name:
+        return None
+    stem, rest = name.split("__", 1)
+    tag = rest.split(marker, 1)[0]
+    return stem, tag
+
+
+def _latest_comparisons(vdir: Path,
+                        detector_tag: str | None = None) -> list[Path]:
+    """Newest comparison CSV per (episode, config), optionally one config."""
+    newest: dict[tuple[str, str], Path] = {}
+    for cf in vdir.rglob("*_comparison_*.csv"):
+        parsed = parse_comparison_name(cf)
+        if not parsed:
+            continue
+        stem, tag = parsed
+        if detector_tag is not None and tag != detector_tag:
+            continue
+        key = (stem, tag)
+        prev = newest.get(key)
+        if prev is None or cf.stat().st_mtime > prev.stat().st_mtime:
+            newest[key] = cf
+    return sorted(newest.values())
+
+
+def available_detector_tags(vdir: Path | None = None) -> list[str]:
+    """Detector-config tags that have comparison results on disk."""
+    vdir = vdir or get_validation_dir()
+    tags = {t for p in vdir.rglob("*_comparison_*.csv")
+            if (r := parse_comparison_name(p)) for t in (r[1],)}
+    return sorted(tags)
+
+
 def aggregate_summary(directory: Path | None = None) -> dict[str, Any]:
     """Combine all comparison CSVs (recursively) into one P/R/F1 table."""
     vdir = directory or get_validation_dir()
-    comparison_files = sorted(vdir.rglob("*_comparison_*.csv"))
+    # Keep only the LATEST comparison per (episode, detector-config). Summing
+    # every dated rerun double-counts episodes and silently over-weights
+    # whichever one was re-run most often.
+    comparison_files = _latest_comparisons(vdir)
     totals: dict[str, dict] = {}
     for cf in comparison_files:
         with cf.open(newline="", encoding="utf-8") as fh:
@@ -1115,10 +1220,14 @@ def aggregate_summary(directory: Path | None = None) -> dict[str, Any]:
                 if t == "ALL":
                     continue
                 # Newer files carry both scorings; aggregate the boundary view
-                # only, or the two would be summed together. Older files have
-                # no 'scoring' column and are boundary-scored by definition.
-                if (row.get("scoring") or "boundary") != "boundary":
-                    continue
+                # only, or the two would be summed together. A MISSING column
+                # means a legacy boundary-scored file; a PRESENT but blank or
+                # unrecognised value means a malformed file and is skipped
+                # rather than silently assumed to be boundary.
+                if "scoring" in row:
+                    if (row.get("scoring") or "").strip() != "boundary":
+                        continue
+                # else: legacy file, boundary by definition
                 totals.setdefault(t, {"TP": 0, "FP": 0, "FN": 0})
                 totals[t]["TP"] += int(row["TP"])
                 totals[t]["FP"] += int(row["FP"])

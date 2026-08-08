@@ -997,6 +997,70 @@ for the boundary figure.
 
 Tests: 39 passed, 13 skipped.
 
+## 2026-08-08 — Second review round: three material issues fixed
+
+Codex confirmed the first-round fixes to matching, typed scoring, kappa
+handling and short-gap crossing, and found three that still blocked reliance
+on the revised claims. All confirmed by reproducing the counterexamples.
+
+1. OFFSET CLAIM WAS FALSE (and now fixed, not just retracted). Nearest-first
+   edge traversal does NOT minimise total offset — an augmenting path can
+   displace an earlier good pairing. Verified: manual (0,1) vs detections
+   (0,2) at tolerance 2 produced total offset 3 where 1 is achievable.
+   Cardinality (and therefore TP/FP/FN) was never affected, but the
+   `offset_sec` values shown in the match-detail CSV — which the coder reads
+   while annotating — were wrong. Added a swap-refinement pass after matching:
+   exchanges partners between matched pairs where that lowers total offset and
+   both stay in tolerance. Counterexample now yields offset 1.0 at full
+   cardinality.
+
+2. MANUAL SHOT LENGTHS STILL DID NOT MATCH THE ENGINE. The previous fix
+   aligned rates and timelines but left interval statistics measuring only the
+   C−1 interior gaps between C hard cuts, while compute_cut_metrics() measures
+   the C+1 PySceneDetect scenes INCLUDING both edges. This was not "slight" as
+   the docstring claimed: one cut at 10s in a 100s episode gave manual
+   mean/median/CV of 0.0 against an engine mean of 50.0. Manual shot stats are
+   now bounded by the window (or 0..duration), giving C+1 intervals; verified
+   50.0 and 33.3 against Codex's two examples. A `shot_edges_included` flag
+   reports when the span end is unknown and the figure falls back to interior
+   gaps.
+
+3. AGGREGATION AND PROVENANCE WERE UNRELIABLE.
+   - aggregate_summary() summed EVERY dated rerun, double-counting episodes and
+     over-weighting whichever was re-run most. Now keeps only the newest
+     comparison per (episode, detector-config) via new _latest_comparisons().
+   - A present-but-blank `scoring` cell was treated as boundary; now only an
+     ABSENT column means legacy-boundary, malformed values are skipped.
+   - provenance selected files by `detector_tag in filename`, which would match
+     an episode titled "Contentment" and merged different thresholds and
+     dissolve settings into one supposedly-single configuration. Replaced with
+     structural parsing (parse_comparison_name) plus per-episode dedupe.
+   - provenance published the per-type `hard_cut` boundary row, which is a
+     HYBRID: TPs stratified by the human label, FPs by the tool's label, so its
+     precision mixes denominators. Only the ALL row is a clean detector-level
+     figure; provenance now uses it.
+
+Also: type_confusion() gained a `<missed>` column and `<spurious>` row so the
+matrix is self-contained (a detector could otherwise look perfect while missing
+most of the episode). classify_cut_transitions() no longer samples past the
+final frame (the old `max(duration, last_cut+1)` bound let a cut at 99.8s in a
+100s video sample ~100.3s) and returns `unknown` where no strictly-interior
+standoff exists rather than sampling at the cut itself.
+
+PUBLISHED FIGURE CHANGED as a result — this supersedes earlier entries:
+  self-reported accuracy was F1 0.91 over "9 comparison runs"
+  it is now  F1 0.85 over 2 episodes  (ContentDetector; TransNetV2 is 0.93)
+The drop is not a regression. It comes from removing double-counted reruns and
+from quoting the clean ALL row instead of the hybrid hard_cut row. The
+reference range moved from 0.84–0.96 (hard-cut basis) to 0.75–0.91 (all coded
+transition types), which is the honest basis given the tool is scored against
+everything a human coded, not just hard cuts.
+
+Per-episode boundary/typed F1 are unchanged: CB 0.753/0.612, CB-transnet
+0.902/0.707, LB 0.910/0.846, LB-transnet 0.942/0.890.
+
+Tests: 39 passed, 13 skipped.
+
 ## Planned validation sample (fill in)
 
 | Episode | Show | Era/style | Pacing regime | Set (tuning/test) | Coded | Re-coded |

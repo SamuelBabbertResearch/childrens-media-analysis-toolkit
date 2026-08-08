@@ -20,8 +20,8 @@ from typing import Any
 # Reference figures from CMAT's validation study (see validation/VALIDATION_LOG.md).
 # Per-episode hard-cut F1 spanned 0.84 (dissolve-heavy 1960s cel under snowfall)
 # to 0.96 (clean modern cel); aggregate ~0.91 across coded episodes.
-REFERENCE_HARD_CUT_F1_RANGE = "0.84–0.96"
-REFERENCE_HARD_CUT_F1_AGG = "0.91"
+REFERENCE_HARD_CUT_F1_RANGE = "0.75–0.91"
+REFERENCE_HARD_CUT_F1_AGG = "0.85"
 
 
 def local_hard_cut_f1(validation_dir: Path | None = None,
@@ -39,18 +39,27 @@ def local_hard_cut_f1(validation_dir: Path | None = None,
     import csv
     vdir = validation_dir
     try:
-        from .validation import get_validation_dir
+        from .validation import (get_validation_dir, _latest_comparisons,
+                                 available_detector_tags)
         vdir = vdir or get_validation_dir()
     except Exception:
         return None
     if not vdir or not vdir.exists():
         return None
 
+    # Match the detector config by parsed tag, and take only the newest run per
+    # episode — substring matching on filenames merged different thresholds and
+    # double-counted reruns.
+    tags = [t for t in available_detector_tags(vdir) if t.startswith(detector_tag)]
+    if not tags:
+        return None
+    files: list[Path] = []
+    for t in tags:
+        files.extend(_latest_comparisons(vdir, detector_tag=t))
+
     tp = fp = fn = 0
     n_files = 0
-    for cf in sorted(vdir.rglob("*_comparison_*.csv")):
-        if detector_tag not in cf.name:
-            continue
+    for cf in sorted(set(files)):
         try:
             with cf.open(newline="", encoding="utf-8") as fh:
                 rows = list(csv.DictReader(fh))
@@ -58,9 +67,13 @@ def local_hard_cut_f1(validation_dir: Path | None = None,
             continue
         used = False
         for row in rows:
-            if row.get("type") != "hard_cut":
+            # The ALL row is the only clean detector-level figure. Per-type
+            # boundary rows are hybrids: TPs are stratified by the HUMAN label
+            # while FPs are stratified by the TOOL's label, so their precision
+            # mixes denominators and must not be published as a headline.
+            if row.get("type") != "ALL":
                 continue
-            if (row.get("scoring") or "boundary") != "boundary":
+            if "scoring" in row and (row.get("scoring") or "").strip() != "boundary":
                 continue
             tp += int(row["TP"]); fp += int(row["FP"]); fn += int(row["FN"])
             used = True
@@ -117,7 +130,7 @@ def validation_short(validation_dir: Path | None = None) -> str:
     if live:
         f1, n = live
         return (f"Detection accuracy (preliminary): transition-BOUNDARY "
-                f"detection on human-coded hard cuts — i.e. whether a "
+                f"detection across all coded transition types — i.e. whether a "
                 f"transition was found there, not whether it was labelled "
                 f"correctly — agreed with human coding at F1 {f1} "
                 f"(±2s match, {n} comparison run(s), single coder; larger "

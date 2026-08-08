@@ -202,7 +202,11 @@ def classify_cut_transitions(
         return []
 
     prev_bounds = [0.0] + list(cut_times[:-1])
-    next_bounds = list(cut_times[1:]) + [max(duration_sec, cut_times[-1] + 1.0)]
+    # Final bound is the video end, NOT max(duration, last_cut+1): the latter
+    # let a cut near the end sample past the last frame (a cut at 99.8s in a
+    # 100s video sampled ~100.3s).
+    last_bound = duration_sec if duration_sec > 0 else cut_times[-1]
+    next_bounds = list(cut_times[1:]) + [last_bound]
     results: list[dict] = []
 
     for t, pb, nb in zip(cut_times, prev_bounds, next_bounds):
@@ -215,6 +219,14 @@ def classify_cut_transitions(
         half_a = max((nb - t) / 2.0, 0.0)
         off_b = min(max(min(offset_sec, half_b), 0.15), half_b)
         off_a = min(max(min(offset_sec, half_a), 0.15), half_a)
+        if off_b <= 0.0 or off_a <= 0.0:
+            # No strictly-interior sample exists on one side (zero-length gap,
+            # or a cut sitting on the video boundary). Sampling exactly AT the
+            # cut would compare transition frames, so report unknown instead of
+            # inventing a similarity.
+            results.append({"timestamp_sec": round(t, 3),
+                            "similarity": None, "label": "unknown"})
+            continue
         try:
             fa = _grab_frame(cap, t - off_b)
             fb = _grab_frame(cap, t + off_a)
