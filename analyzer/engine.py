@@ -17,12 +17,12 @@ from typing import Any, Callable
 import cv2
 
 from .config_loader import load_config
-from .measurements import measurement_fingerprint, normalize_config
+from .measurements import measurement_fingerprint, normalize_config, selection
 from .metrics_audio import compute_audio_metrics
 from .metrics_cuts import compute_cut_metrics
 from .metrics_frames import compute_frame_metrics
 from .metrics_sensory import compute_sensory_load
-from .schema import EpisodeMetrics, EpisodeResult
+from .schema import EpisodeMetrics, EpisodeResult, SpeechMetrics
 from .speech import compute_speech_metrics
 
 
@@ -44,6 +44,7 @@ def analyze_episode(
     config: dict[str, Any] | None = None,
     progress_cb: Callable[[float], None] | None = None,
     frame_cb: Callable | None = None,
+    status_cb: Callable[[str], None] | None = None,
 ) -> EpisodeResult:
     """
     Analyze a single episode and return an EpisodeResult.
@@ -54,6 +55,9 @@ def analyze_episode(
         progress_cb: Optional callback(fraction: float) called during analysis.
         frame_cb: Optional callback(frame, sat, motion, luminance, is_flash) for
                   each sampled frame — used by the live analysis viewer.
+        status_cb: Optional callback(text) for stage messages. The neural
+                  detector runs for minutes with no progress signal, so it
+                  reports through here rather than appearing to hang.
 
     Returns:
         EpisodeResult with all real metric values.
@@ -85,17 +89,24 @@ def analyze_episode(
         if progress_cb:
             progress_cb(-1.0)   # → UI enters indeterminate mode
 
+        trans_tool, trans_params, _ = selection(cfg, "transitions")
+        diss_tool, diss_params, diss_enabled = selection(cfg, "dissolves")
+        rel_tool, rel_params, rel_enabled = selection(cfg, "scene_relation")
+
         shot_metrics, pacing_metrics = compute_cut_metrics(
             video_path,
-            threshold=cfg["cut_detection_threshold"],
+            threshold=trans_params.get("threshold", 27.0),
             duration_sec=duration_sec,
-            detect_dissolves=cfg.get("dissolve_detection_enabled", False),
-            dissolve_noise_floor=cfg.get("dissolve_noise_floor", 3.0),
-            dissolve_min_frames=cfg.get("dissolve_min_frames", 15),
-            classify_cuts_enabled=cfg.get("cut_classification_enabled", False),
-            classify_offset_sec=cfg.get("cut_classification_offset_sec", 1.0),
-            scene_change_similarity_threshold=cfg.get(
-                "scene_change_similarity_threshold", 0.55),
+            tool=trans_tool.key,
+            tool_params=trans_params,
+            status_cb=status_cb,
+            detect_dissolves=diss_enabled,
+            dissolve_noise_floor=diss_params.get("noise_floor", 3.0),
+            dissolve_min_frames=diss_params.get("min_frames", 15),
+            classify_cuts_enabled=rel_enabled,
+            classify_offset_sec=rel_params.get("offset_sec", 1.0),
+            scene_change_similarity_threshold=rel_params.get(
+                "similarity_threshold", 0.55),
         )
 
         # Stage 3: frame sampling (color / motion / flashing)
@@ -106,11 +117,16 @@ def analyze_episode(
             if progress_cb:
                 progress_cb(0.55 + frac * 0.33)
 
+        samp_tool, samp_params, _ = selection(cfg, "sampling")
+        motion_tool, _motion_params, _ = selection(cfg, "motion")
+        flash_tool, flash_params, _ = selection(cfg, "flashing")
+
         color_metrics, motion_metrics, flashing_metrics = compute_frame_metrics(
             video_path,
-            sample_fps=cfg["sample_fps"],
-            flashing_sample_fps=cfg.get("flashing_sample_fps"),
-            flashing_threshold=cfg["flashing_luminance_threshold"],
+            sample_fps=samp_params.get("sample_fps", 2.0),
+            flashing_sample_fps=flash_params.get("sample_fps"),
+            flashing_threshold=flash_params.get("threshold", 0.1),
+            motion_method=motion_tool.key,
             duration_sec=duration_sec,
             progress_cb=_frame_progress,
             frame_cb=frame_cb,
@@ -124,7 +140,12 @@ def analyze_episode(
         # Stage 5: speech (CC file — fast; Whisper — slow; skipped by default)
         if progress_cb:
             progress_cb(0.93)
-        speech_metrics = compute_speech_metrics(video_path, duration_sec, cfg)
+        _speech_tool, _speech_params, speech_enabled = selection(cfg, "speech")
+        speech_metrics = (
+            compute_speech_metrics(video_path, duration_sec, cfg)
+            if speech_enabled
+            else SpeechMetrics(available=False, source="disabled")
+        )
 
         # Stage 6: composite
         if progress_cb:

@@ -519,7 +519,10 @@ SPEECH = MeasurementSpec(
     ),
     feeds="",
     can_disable=True,
-    default_enabled=False,
+    # Captions are parsed whenever a .srt/.vtt is present, so the measurement is
+    # on by default; the legacy speech_transcription_enabled flag chose the TOOL
+    # (whether to fall back to Whisper), not whether speech ran at all.
+    default_enabled=True,
     tools=[
         ToolSpec(
             key="captions_only",
@@ -615,10 +618,11 @@ _LEGACY_MAP: list[tuple[str, str, str]] = [
     ("speech_whisper_model",              "speech",         "model"),
 ]
 
+# speech_transcription_enabled is deliberately absent: it selects the speech
+# TOOL (captions-only vs captions-then-Whisper), not whether speech runs.
 _LEGACY_ENABLED: list[tuple[str, str]] = [
     ("dissolve_detection_enabled",   "dissolves"),
     ("cut_classification_enabled",   "scene_relation"),
-    ("speech_transcription_enabled", "speech"),
 ]
 
 

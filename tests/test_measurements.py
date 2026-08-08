@@ -205,3 +205,73 @@ def test_unfingerprinted_cache_is_grandfathered(tmp_path, cfg):
 
 def test_missing_cache_is_not_stale(cfg):
     assert is_stale(None, cfg) is False
+
+
+# ---------------------------------------------------------------------------
+# Dispatch — every declared tool must map to a real implementation
+# ---------------------------------------------------------------------------
+# The registry is a promise the engine has to keep. A tool key that no dispatch
+# branch recognises would silently fall through to the default detector, so the
+# user would select TransNetV2, see no error, and get ContentDetector numbers
+# labelled as TransNetV2.
+
+def test_every_transition_tool_has_a_dispatch_branch():
+    import inspect
+    from analyzer import metrics_cuts
+    source = inspect.getsource(metrics_cuts._detect_shots)
+    spec = M.get_measurement("transitions")
+    for tool in spec.tools:
+        if tool.key == "pyscenedetect_content":
+            continue          # the else-branch default
+        assert tool.key in source, f"no dispatch branch for {tool.key}"
+
+
+def test_motion_tool_keys_match_metrics_frames():
+    """motion_method is passed straight through as the tool key."""
+    import inspect
+    from analyzer import metrics_frames
+    source = inspect.getsource(metrics_frames.compute_frame_metrics)
+    for tool in M.get_measurement("motion").tools:
+        assert tool.key in source, f"metrics_frames does not handle {tool.key}"
+
+
+def test_transition_params_match_detector_signatures():
+    """Registry parameter names must be real constructor arguments."""
+    import inspect
+    from scenedetect import AdaptiveDetector, ContentDetector
+
+    spec = M.get_measurement("transitions")
+    content = spec.tool("pyscenedetect_content")
+    adaptive = spec.tool("pyscenedetect_adaptive")
+
+    content_args = inspect.signature(ContentDetector.__init__).parameters
+    for p in content.params:
+        assert p.key in content_args
+
+    adaptive_args = inspect.signature(AdaptiveDetector.__init__).parameters
+    for p in adaptive.params:
+        assert p.key in adaptive_args
+
+
+def test_speech_is_enabled_by_default_with_captions_only(cfg):
+    """Captions are parsed whenever present, so speech is on but Whisper is not."""
+    tool, _params, enabled = M.selection(cfg, "speech")
+    assert enabled is True
+    assert tool.key == "captions_only"
+    assert cfg["speech_transcription_enabled"] is False
+
+
+def test_speech_tool_choice_round_trips_to_legacy_flag(cfg):
+    cfg["measurements"]["speech"]["tool"] = "captions_then_whisper"
+    M.normalize_config(cfg)
+    assert cfg["speech_transcription_enabled"] is True
+    cfg["measurements"]["speech"]["tool"] = "captions_only"
+    M.normalize_config(cfg)
+    assert cfg["speech_transcription_enabled"] is False
+
+
+def test_transnet_declares_its_optional_dependency():
+    """Selecting a tool with a missing dependency must be detectable up front."""
+    tool = M.get_measurement("transitions").tool("transnetv2")
+    assert tool.optional_tool_key == "transnetv2"
+    assert isinstance(tool.is_available(), bool)
