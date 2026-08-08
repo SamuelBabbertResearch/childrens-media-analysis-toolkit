@@ -283,6 +283,8 @@ class App(tk.Tk):
         file_menu.add_command(label="Episode Sampler...", command=self._open_sampler)
         file_menu.add_command(label="Import Episode Metadata from Wikipedia...",
                               command=self._open_wiki_import)
+        file_menu.add_command(label="Measurement settings...",
+                              command=self._open_measurement_settings)
         file_menu.add_command(label="Optional tools...",
                               command=self._open_optional_tools)
         file_menu.add_command(label="Import Episode Metadata from TVMaze...",
@@ -2311,6 +2313,10 @@ class App(tk.Tk):
     def _open_optional_tools(self) -> None:
         from gui_optional_tools import OptionalToolsWindow
         OptionalToolsWindow(self)
+
+    def _open_measurement_settings(self) -> None:
+        from gui_measurements import MeasurementsDialog
+        MeasurementsDialog(self)
 
     def _open_wiki_import(self) -> None:
         WikiImportDialog(self, app_ref=self)

@@ -270,6 +270,21 @@ def test_speech_tool_choice_round_trips_to_legacy_flag(cfg):
     assert cfg["speech_transcription_enabled"] is False
 
 
+def test_provenance_map_survives_cache_round_trip(tmp_path, cfg):
+    """Validation status must reach exports, not just the live UI."""
+    tools = M.describe_selection(cfg)
+    result = EpisodeResult(file="ep.mp4", measurement_tools=tools)
+    save_cache(tmp_path, "MyShow", "ep", result.to_dict())
+    loaded = EpisodeResult.from_dict(load_cached(tmp_path, "MyShow", "ep"))
+    assert loaded.measurement_tools == tools
+    assert "[unvalidated]" in loaded.measurement_tools["scene_relation"]
+
+
+def test_provenance_map_covers_every_measurement(cfg):
+    described = M.describe_selection(cfg)
+    assert set(described) == {m.key for m in M.MEASUREMENTS}
+
+
 def test_transnet_declares_its_optional_dependency():
     """Selecting a tool with a missing dependency must be detectable up front."""
     tool = M.get_measurement("transitions").tool("transnetv2")
