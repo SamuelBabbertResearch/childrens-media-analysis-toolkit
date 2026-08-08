@@ -64,6 +64,9 @@ Pilot Trial Files/
 # Docs wiki (managed separately)
 docs/
 
+# Private paper notes — unpublished results and draft framings. NEVER push.
+FOR_PAPER.txt
+
 # Validation detection caches — regenerable machine outputs (the .npz are large
 # binaries); the coding, annotations, manifests, and .md docs ARE versioned.
 *_framescores.npz

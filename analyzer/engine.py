@@ -17,6 +17,7 @@ from typing import Any, Callable
 import cv2
 
 from .config_loader import load_config
+from .measurements import measurement_fingerprint, normalize_config
 from .metrics_audio import compute_audio_metrics
 from .metrics_cuts import compute_cut_metrics
 from .metrics_frames import compute_frame_metrics
@@ -58,7 +59,10 @@ def analyze_episode(
         EpisodeResult with all real metric values.
     """
     video_path = Path(video_path)
-    cfg = config or load_config()
+    # load_config() normalizes; a caller-supplied dict may not have been through
+    # it yet (the GUI holds a live config), so normalize here too. Idempotent.
+    cfg = normalize_config(config) if config else load_config()
+    fingerprint = measurement_fingerprint(cfg)
 
     if not video_path.exists():
         return EpisodeResult(
@@ -66,6 +70,7 @@ def analyze_episode(
             status="failed",
             error=f"File not found: {video_path}",
             config=cfg,
+            measurement_fingerprint=fingerprint,
         )
 
     try:
@@ -135,6 +140,7 @@ def analyze_episode(
             status="failed",
             error=str(exc),
             config=cfg,
+            measurement_fingerprint=fingerprint,
         )
 
     if progress_cb:
@@ -154,4 +160,5 @@ def analyze_episode(
             sensory_load=sensory_metrics,
         ),
         config=cfg,
+        measurement_fingerprint=fingerprint,
     )

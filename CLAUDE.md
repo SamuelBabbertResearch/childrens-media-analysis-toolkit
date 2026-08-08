@@ -38,6 +38,33 @@ Every composite score must show its component parts.
 
 ---
 
+## Paper notes — `FOR_PAPER.txt` (LOCAL ONLY, never push)
+
+`FOR_PAPER.txt` in the project root is the private working notebook for the
+methods/norms paper. It holds unpublished results, draft framings, honest
+limitations, and open items.
+
+**Two standing rules:**
+
+1. **Keep it updated.** Whenever work produces something the paper will need —
+   a validation figure, a corrected number, a methodological decision, a
+   limitation discovered, a citation, a piece of draft wording — append it to
+   the relevant section of `FOR_PAPER.txt` without being asked. Date anything
+   numeric. When a figure is revised, keep the superseded value and say what
+   changed and why, rather than silently overwriting; the record of *why a
+   number moved* is itself paper material.
+
+2. **Never commit or push it.** It is in `.gitignore` (`FOR_PAPER.txt`). Do not
+   add it with `git add -f`, do not include it in a commit, do not paste its
+   contents into a public file, a commit message, the README, or the website.
+   If a `git add -A` would stage it, stop and fix the ignore rule instead.
+
+Division of labour with the other records:
+- `validation/VALIDATION_LOG.md` — full lab notebook, **public**, committed.
+  Every run, decision, and result in chronological order.
+- `FOR_PAPER.txt` — distilled paper-relevant subset, **private**, ignored.
+- `ROADMAP.md` — forward-looking priorities, **public**, committed.
+
 ## What's built (feature inventory)
 
 ### Analysis engine (`analyzer/`)
