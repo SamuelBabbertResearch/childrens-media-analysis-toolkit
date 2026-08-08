@@ -396,10 +396,16 @@ def load_hard_cuts(
             return json.loads(cache.read_text(encoding="utf-8"))["cut_times"]
     if status_cb:
         status_cb(f"Detecting hard cuts ({detector}, threshold={threshold:g})…")
-    det = (ContentDetector(threshold=threshold) if detector == "content"
-           else AdaptiveDetector(adaptive_threshold=threshold))
-    scene_list = detect(str(video_path), det)
-    cut_times = [round(start.seconds, 3) for start, _end in scene_list[1:]]
+    if detector == "transnet":
+        # Optional neural detector — see analyzer/detector_transnet.py.
+        from .detector_transnet import detect_cuts as _tn_cuts
+        cut_times = _tn_cuts(video_path, threshold=threshold,
+                             status_cb=status_cb)
+    else:
+        det = (ContentDetector(threshold=threshold) if detector == "content"
+               else AdaptiveDetector(adaptive_threshold=threshold))
+        scene_list = detect(str(video_path), det)
+        cut_times = [round(start.seconds, 3) for start, _end in scene_list[1:]]
     vdir.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps({
         "video": video_path.name, "detector": detector,

@@ -1,0 +1,12 @@
+{
+  "video": "Shows\\A Charlie Brown Christmas (1965)\\A Charlie Brown Christmas 1965.mp4",
+  "date": "2026-08-08",
+  "git_commit": "8f24f20",
+  "detector": "transnet",
+  "threshold": 0.5,
+  "dissolve_pass": false,
+  "noise_floor": null,
+  "min_frames": null,
+  "n_hard_cuts": 172,
+  "n_dissolves": 0
+}

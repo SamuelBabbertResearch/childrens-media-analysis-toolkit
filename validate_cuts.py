@@ -283,7 +283,7 @@ def main() -> None:
 
     p_exp = sub.add_parser("export", help="Detect transitions and write CSVs + manifest")
     p_exp.add_argument("video", help="Path to video file")
-    p_exp.add_argument("--detector", choices=["content", "adaptive"], default="content",
+    p_exp.add_argument("--detector", choices=["content", "adaptive", "transnet"], default="content",
                        help="Hard-cut detector (default: content)")
     p_exp.add_argument("--threshold", type=float, default=27.0,
                        help="Detector threshold (ContentDetector default 27.0; "
@@ -310,7 +310,7 @@ def main() -> None:
     p_swp = sub.add_parser("sweep", help="Grid-search dissolve params against manual coding")
     p_swp.add_argument("video", help="Video path (caches used if present)")
     p_swp.add_argument("manual", help="Path to manually coded CSV")
-    p_swp.add_argument("--detector", choices=["content", "adaptive"], default="content")
+    p_swp.add_argument("--detector", choices=["content", "adaptive", "transnet"], default="content")
     p_swp.add_argument("--threshold", type=float, default=27.0)
     p_swp.add_argument("--tolerance", type=float, default=2.0)
     p_swp.add_argument("--floors", default="2,3,4,5",
@@ -329,7 +329,7 @@ def main() -> None:
                            help="Label each hard cut within_scene vs "
                                 "scene_change (experimental)")
     p_cls.add_argument("video", help="Path to video file")
-    p_cls.add_argument("--detector", choices=["content", "adaptive"],
+    p_cls.add_argument("--detector", choices=["content", "adaptive", "transnet"],
                        default="content")
     p_cls.add_argument("--threshold", type=float, default=27.0)
     p_cls.add_argument("--offset", type=float, default=1.0,
@@ -344,7 +344,7 @@ def main() -> None:
                                "hand-labeled scene_relation column")
     p_gc.add_argument("video", help="Path to video file")
     p_gc.add_argument("manual", help="Manual CSV with a scene_relation column")
-    p_gc.add_argument("--detector", choices=["content", "adaptive"],
+    p_gc.add_argument("--detector", choices=["content", "adaptive", "transnet"],
                       default="content")
     p_gc.add_argument("--threshold", type=float, default=27.0)
     p_gc.add_argument("--tolerance", type=float, default=2.0)

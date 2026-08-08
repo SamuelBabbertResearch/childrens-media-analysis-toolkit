@@ -811,6 +811,114 @@ Verified against the live Little Bear page:
   scope = (all shows)                -> 202 files, 63 matched, 14 wrong-show
 S1E1 now maps to "Little Bear 1x01 What Will Little Bear Wear", not SpongeBob.
 
+## 2026-08-03 — Optional tools framework + TransNetV2 detector (opt-in)
+
+Rationale: CMAT's dissolve detection fails (F1 0.17) because frame-differencing
+structurally cannot separate a dissolve (two shots blending) from a camera pan
+(one shot translating) — confirmed by the frame-score analysis below. That
+needs a different FEATURE, not recalibration, so the fix is an optional
+learned detector rather than more tuning.
+
+Frame-score separability check (Charlie Brown, cached scores vs hand coding):
+  background (no transition within 3s): median 0.61, p90 4.00, p99 8.75
+  hand-coded dissolves: peaks 3.80–9.35 (median 4.6) → sit at p89–p99
+  hand-coded hard cuts: median peak 15.1
+So the dissolve signal EXISTS but overlaps the band where camera motion lives.
+Note the dissolve upper bound (`hard_threshold`, 27) was never binding —
+dissolves peak far below it — so the earlier ContentDetector-scale error, while
+real, is not what caused the poor performance.
+
+Built:
+- `analyzer/optional_tools.py` — registry for opt-in components: description,
+  benefits, costs, caveats, availability probe (by import), and a pip installer
+  that streams output. Extensible; TransNetV2 is the first entry.
+- `analyzer/detector_transnet.py` — wraps `transnetv2-pytorch` and returns cut
+  times in CMAT's existing convention (scene starts after the first), so it
+  drops into the detection + validation flow unchanged. Fails with an
+  actionable message when absent; nothing in the validated core depends on it.
+- `gui_optional_tools.py` — explanation screen shown BEFORE install: what it
+  does, why you might want it, what it costs (~2 GB PyTorch), and the caveats
+  (community port of the official MIT model; benchmarks are live-action, so
+  ANIMATION accuracy is unverified).
+- Selectable as `--detector transnet` in the CLI and wherever a detector is
+  chosen, so it can be graded against existing hand coding immediately.
+
+Authors' reported F1: BBC Planet Earth 96.2, RAI 93.9, ClipShots 77.9 (vs
+TransNet v1: 92.9 / 94.3 / 73.5). Trained ~35% hard cuts, ~50% dissolves.
+
+NEXT: this is a hypothesis to TEST, not an assumed upgrade. Run it on Charlie
+Brown and Little Bear and compare against the same hand coding — head-to-head
+against ContentDetector's 0.836 / 0.964 hard-cut F1 and the 6 missed dissolves.
+
+## 2026-08-03 — RESULT: TransNetV2 vs ContentDetector on animation
+
+First head-to-head on identical hand coding, same window (0:00–5:00), same
+tolerance (±2s). This is the "does the learned detector actually help on
+animation" test — animation is OUTSIDE TransNetV2's training distribution, so
+the outcome was genuinely uncertain.
+
+Charlie Brown (the hard case: 1960s cel, dissolve-heavy, constant snowfall):
+
+| Metric | ContentDetector | TransNetV2 |
+|---|---|---|
+| ALL F1 | 0.753 | **0.902** |
+| ALL precision / recall | 0.762 / 0.744 | 0.949 / 0.860 |
+| hard_cut F1 | 0.836 | **0.906** |
+| dissolves found (of 6) | 1 | **6** |
+| false positives | 10 | **2** |
+
+The dissolve result is the headline: CMAT's experimental pass found 1 of 6;
+TransNetV2 located all 6 within tolerance. False positives dropped 10 → 2,
+i.e. the pan/zoom confusions that dominated the error taxonomy largely
+disappeared — consistent with the diagnosis that the failure was a FEATURE
+limitation (frame-differencing cannot separate blending from translation),
+not a calibration problem.
+
+IMPORTANT INTERPRETATION CAVEAT: TransNetV2 emits shot boundaries WITHOUT type
+labels, so every detection enters the comparison as `hard_cut`. Because the
+matcher scores a TP by the HUMAN label on temporal match alone (see the
+type-correctness issue in the code-review entry), "dissolve F1 = 1.000" means
+"all six hand-coded dissolves had a detection within 2s" — it does NOT mean
+TransNetV2 classified them as dissolves. For cuts/min and transition-rate
+purposes that is exactly what matters; for type-conditional claims it is not.
+The ALL row is the trustworthy figure.
+
+Prior expectation was "modest gains, possibly worse on animation given domain
+shift." That was too pessimistic — it substantially outperformed on the
+hardest content in the corpus. Worth reporting honestly as a corrected
+prediction.
+
+Little Bear 1x01 (the clean case, 0:00–5:20):
+
+| Metric | ContentDetector | TransNetV2 |
+|---|---|---|
+| ALL F1 | 0.910 | **0.942** |
+| hard_cut F1 | 0.964 | **0.979** |
+| dissolves found (of 2) | 0 | **2** |
+| false positives | 4 | **1** |
+
+As predicted, the hard-cut gain on clean animation is small (0.964 → 0.979,
+little headroom). The ALL gain comes from the dissolves. So the pattern holds
+across both episodes: large win on gradual transitions, marginal on hard cuts,
+fewer false positives everywhere.
+
+NEW LIMITATION FOUND: TransNetV2 misses `other` transitions — wipes, iris
+transitions, and graphic overlays (5 FN on Little Bear, 1 on Charlie Brown, 0
+detected of 6 total). Little Bear's intro uses wipes and irises heavily, and
+none were found. So geometric/decorative transitions remain a gap for BOTH
+detectors, and hand-coding is currently the only reliable way to capture them.
+Worth stating in the paper: automated detection covers hard cuts well and
+(with TransNetV2) dissolves well, but not stylised transitions.
+
+Practical notes: full-episode CPU inference ran several minutes (25-min
+episode); clipping to the coded window took ~330–400s per 5-minute clip, so
+clipping is not obviously faster — model load and per-frame cost dominate.
+The model loads once and is cached. `--threshold` means a PROBABILITY
+(0–1, default 0.5) for transnet but a frame-difference magnitude (27) for
+content — passing 27 to transnet silently detects nothing. Use
+`--no-dissolves` with transnet: it detects gradual transitions natively, so
+CMAT's dissolve pass would double-count.
+
 ## Planned validation sample (fill in)
 
 | Episode | Show | Era/style | Pacing regime | Set (tuning/test) | Coded | Re-coded |
