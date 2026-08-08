@@ -119,6 +119,23 @@ def cmd_compare(args: argparse.Namespace) -> None:
     print(f"Manual coded    : {res['n_manual']} transitions")
     _print_score_table(res["summary_rows"])
 
+    # Rate calibration — the estimand CMAT publishes (cuts/min). Reported
+    # alongside F1, never instead of it: they assess different properties.
+    if res.get("count_ratio") is not None:
+        all_row = next((r for r in res["summary_rows"] if r["type"] == "ALL"), None)
+        print(f"\nRate calibration (a DIFFERENT property from the F1 above):")
+        print(f"  count ratio (tool/human)     : {res['count_ratio']:.3f}")
+        print(f"  signed relative count error  : {res['rel_count_error']*100:+.1f}%")
+        if all_row and all_row["precision"] and all_row["recall"]:
+            direction = ("over" if all_row["recall"] > all_row["precision"]
+                         else "under" if all_row["recall"] < all_row["precision"]
+                         else "un")
+            print(f"  recall {all_row['recall']:.3f} vs precision "
+                  f"{all_row['precision']:.3f} → {direction}counts "
+                  f"(ratio == recall/precision, exactly)")
+        print("  Single episode: this is an ERROR, not a bias. Bias requires a "
+              "held-out sample.")
+
     fn_list = [r for r in res["results"] if r["match"] == "FN"]
     if fn_list:
         print(f"\nMissed by tool (false negatives — {len(fn_list)}):")

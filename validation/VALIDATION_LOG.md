@@ -1061,6 +1061,56 @@ Per-episode boundary/typed F1 are unchanged: CB 0.753/0.612, CB-transnet
 
 Tests: 39 passed, 13 skipped.
 
+## 2026-08-08 — Count/rate reasoning reviewed; terminology corrected
+
+Independent review of the claim that per-event F1 and cut-RATE accuracy are
+distinct estimands. Verdict: legitimate, but only framed as an estimand-specific
+calibration check, never as a substitute for event-level validation.
+
+KEY IDENTITY (verified exactly on all 9 comparison runs on disk):
+
+    predicted_count / actual_count  ==  recall / precision
+
+so recall > precision predicts an OVERCOUNT and precision > recall an
+UNDERCOUNT. This is the exact form of the pattern noted informally earlier.
+Charlie Brown: P .762, R .744 → ratio .976 (measured .977). Little Bear:
+P .947, R .877 → .926 (measured .926).
+
+WHEN CANCELLATION FAILS (both plausible in real video):
+  - Poor F1, perfect count: 50 TP / 50 FN / 50 FP → count exact, F1 = .50.
+    In the limit FP = FN = all, F1 = 0 with an exactly correct count.
+  - Good F1, large rate error: 100 TP / 0 FN / 11 FP → F1 ≈ .948 but +11%.
+    Especially likely AFTER threshold tuning, which trades precision against
+    recall and therefore moves the count in a predictable direction.
+
+TERMINOLOGY CORRECTION (supersedes earlier entries): a single episode's +3.0%
+is a signed relative count error, NOT a "bias". Bias is a property of an
+estimator across a representative held-out sample. Earlier log entries used "count
+bias" for single episodes; read those as "count error". Across episodes the
+correct terms are mean percentage error / relative bias (signed) and MAPE
+(absolute). Computer vision calls the raw difference DiC (difference in count).
+
+NOT METRIC-SHOPPING IF: pre-specified as co-primary outcomes, computed on
+held-out episodes, and reported as per-episode distributions rather than a
+single pooled figure that hides cancellation. It becomes metric-shopping if the
+favourable rate result is foregrounded while event-level failures are buried,
+or if episodes/thresholds are chosen after seeing results.
+
+IMPLEMENTED: compare_detections() now returns and records count_ratio and
+signed_relative_count_error in the comparison manifest, and the CLI prints them
+under a "Rate calibration" heading that states explicitly that it is a
+different property from the F1 above, shows the recall-vs-precision direction,
+and labels the single-episode figure an error rather than a bias.
+
+STILL TO DO for the paper: report per-episode rate errors (table or plot, not
+just pooled), stratify by production style and cut density, and give
+uncertainty intervals clustered by episode. For zero-count windows report an
+absolute count difference, since percentage error is undefined.
+
+Suggested wording: "On held-out coded windows, CMAT's boundary-detection F1 was
+X; its cut-rate ratio was Y (signed relative rate error Z%). These assess
+distinct properties: boundary localisation and aggregate rate calibration."
+
 ## Planned validation sample (fill in)
 
 | Episode | Show | Era/style | Pacing regime | Set (tuning/test) | Coded | Re-coded |

@@ -793,6 +793,17 @@ def compare_detections(
     confusion = type_confusion(results, false_positives)
     mismatches = [r for r in results if r["match"] == "TP" and r["type_match"] == "no"]
 
+    # Rate calibration — a DIFFERENT estimand from boundary localisation, and
+    # the one CMAT actually publishes (cuts/min). False positives and false
+    # negatives partly cancel in a count, so a rate can be accurate while
+    # individual detections are not (and vice versa). Both must be reported.
+    #
+    # Exact identity: predicted/actual == recall/precision. So recall >
+    # precision predicts an OVERCOUNT, precision > recall an UNDERCOUNT.
+    # "Error" for a single episode; "bias" only across a held-out sample.
+    count_ratio = (len(detections) / len(manual)) if manual else None
+    rel_count_error = (count_ratio - 1.0) if count_ratio is not None else None
+
     out_dir = manual_path.parent
     out_path = out_dir / f"{ep_stem}__{tag}_comparison_{date.today()}.csv"
     with out_path.open("w", newline="", encoding="utf-8") as fh:
@@ -843,6 +854,12 @@ def compare_detections(
         "tolerance_sec": tolerance,
         "window": [window[0], window[1]] if window else None,
         "n_detections": len(detections), "n_manual": len(manual),
+        # Rate calibration (see compare_detections): a separate estimand from
+        # boundary localisation. Single-episode figure — an ERROR, not a bias.
+        "count_ratio": (round(count_ratio, 4)
+                        if count_ratio is not None else None),
+        "signed_relative_count_error": (round(rel_count_error, 4)
+                                        if rel_count_error is not None else None),
     }
     man_path = out_dir / f"{ep_stem}__{tag}_comparison_manifest_{date.today()}.json"
     man_path.write_text(json.dumps(cmp_manifest, indent=2), encoding="utf-8")
@@ -850,6 +867,10 @@ def compare_detections(
     return {
         "summary_rows": summary_rows, "typed_rows": typed_rows,
         "confusion": confusion, "results": results,
+        "count_ratio": (round(count_ratio, 4)
+                        if count_ratio is not None else None),
+        "rel_count_error": (round(rel_count_error, 4)
+                            if rel_count_error is not None else None),
         "false_positives": false_positives, "mismatches": mismatches,
         "n_detections": len(detections), "n_manual": len(manual),
         "window": window, "tolerance": tolerance,
