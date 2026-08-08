@@ -910,6 +910,20 @@ detectors, and hand-coding is currently the only reliable way to capture them.
 Worth stating in the paper: automated detection covers hard cuts well and
 (with TransNetV2) dissolves well, but not stylised transitions.
 
+INTEGRITY CHECK: Little Bear was scored twice — once from detections computed
+on a 0:00–5:20 CLIP, once from detections computed on the FULL episode and
+filtered to the same window. Both gave 74 detections and identical scores
+(ALL F1 0.942, hard_cut 0.979). Clipping to the coded window is therefore a
+valid shortcut; it just isn't a fast one (see timings below).
+
+⚠ FULL-EPISODE COUNT SHIFT — comparability warning. Across whole episodes:
+  Charlie Brown : ContentDetector 163 cuts → TransNetV2 172 (+5.5%)
+  Little Bear   : ContentDetector 316 cuts → TransNetV2 337 (+6.6%)
+Adopting TransNetV2 would move published cuts/min by roughly 5–7%. As with
+`flashing_sample_fps`, this must be an all-or-nothing corpus re-analysis —
+mixing detectors across shows would make pacing incomparable, which is exactly
+the failure mode the meta-analysis criticises in the existing literature.
+
 Practical notes: full-episode CPU inference ran several minutes (25-min
 episode); clipping to the coded window took ~330–400s per 5-minute clip, so
 clipping is not obviously faster — model load and per-frame cost dominate.

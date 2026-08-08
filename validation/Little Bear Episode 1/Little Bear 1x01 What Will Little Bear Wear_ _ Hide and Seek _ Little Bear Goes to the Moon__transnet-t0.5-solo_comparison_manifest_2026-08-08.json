@@ -1,6 +1,6 @@
 {
   "date": "2026-08-08",
-  "git_commit": "8f24f20",
+  "git_commit": "702cadd",
   "detections_file": "Little Bear 1x01 What Will Little Bear Wear_ _ Hide and Seek _ Little Bear Goes to the Moon__transnet-t0.5-solo_detections.csv",
   "manual_file": "Little Bear 1x01_manual.csv",
   "tolerance_sec": 2.0,
