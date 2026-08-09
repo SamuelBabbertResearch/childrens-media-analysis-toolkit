@@ -1406,22 +1406,13 @@ class PipelineWindow(tk.Toplevel):
 # --- startup preference ------------------------------------------------------
 
 def _get_show_on_start(app) -> bool:
-    cfg = getattr(app, "_cfg", None) or {}
-    return bool(cfg.get("show_pipeline_on_start", True))
+    from analyzer.prefs import get_pref
+    return bool(get_pref("show_pipeline_on_start", True))
 
 
 def _set_show_on_start(app, value: bool) -> None:
-    import json
-    from analyzer.config_loader import _base_dir
-    if getattr(app, "_cfg", None) is not None:
-        app._cfg["show_pipeline_on_start"] = bool(value)
-    path = _base_dir() / "config.json"
-    try:
-        existing = json.loads(path.read_text(encoding="utf-8"))
-        existing["show_pipeline_on_start"] = bool(value)
-        path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
-    except Exception:
-        pass
+    from analyzer.prefs import set_pref
+    set_pref("show_pipeline_on_start", bool(value))
 
 
 # --- vector icons ------------------------------------------------------------

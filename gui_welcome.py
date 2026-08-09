@@ -124,9 +124,9 @@ class WelcomeWindow(tk.Toplevel):
         foot = tk.Frame(self, bg=INSPECTOR_BG)
         foot.pack(fill=tk.X)
 
+        from analyzer.prefs import get_pref
         self._show_var = tk.BooleanVar(
-            value=bool((getattr(self._app, "_cfg", None) or {})
-                       .get("show_welcome_on_start", True)))
+            value=bool(get_pref("show_welcome_on_start", True)))
         tk.Checkbutton(foot, text="Show this when CMAT starts",
                        variable=self._show_var, bg=INSPECTOR_BG,
                        activebackground=INSPECTOR_BG, fg=TEXT,
@@ -279,18 +279,8 @@ class WelcomeWindow(tk.Toplevel):
         return doc
 
     def _save_pref(self) -> None:
-        import json
-        from analyzer.config_loader import _base_dir
-        value = bool(self._show_var.get())
-        if getattr(self._app, "_cfg", None) is not None:
-            self._app._cfg["show_welcome_on_start"] = value
-        path = _base_dir() / "config.json"
-        try:
-            existing = json.loads(path.read_text(encoding="utf-8"))
-            existing["show_welcome_on_start"] = value
-            path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
-        except Exception:
-            pass
+        from analyzer.prefs import set_pref
+        set_pref("show_welcome_on_start", bool(self._show_var.get()))
 
     def _finish(self, choice: str, doc) -> None:
         self.destroy()

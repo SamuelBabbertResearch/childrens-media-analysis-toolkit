@@ -287,7 +287,9 @@ class App(tk.Tk):
         # First question, not first diagram: ask how the tool is going to be
         # used and route from the answer. Shown after the main window is
         # mapped so it does not lose the initial focus race.
-        if self._cfg.get("show_welcome_on_start", True):
+        from analyzer.prefs import get_pref, migrate_from_config
+        migrate_from_config(self._cfg)     # honour settings from older builds
+        if get_pref("show_welcome_on_start", True):
             self.after(350, self._open_welcome)
 
     # -----------------------------------------------------------------------
@@ -748,15 +750,13 @@ class App(tk.Tk):
             panel.pack(fill=tk.X, padx=6, pady=6, before=panel.master.winfo_children()[-1])
 
     def _remember_root_folder(self, folder: Path) -> None:
-        """Persist the library location so the next launch opens straight into it."""
-        self._cfg["last_root_folder"] = str(folder)
-        config_path = _base_dir() / "config.json"
-        try:
-            existing = json.loads(config_path.read_text(encoding="utf-8"))
-            existing["last_root_folder"] = str(folder)
-            config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
-        except Exception:
-            pass
+        """Persist the library location so the next launch opens straight into it.
+
+        Stored in user_prefs.json, not config.json: this is a local absolute
+        path, and config.json is versioned and shared.
+        """
+        from analyzer.prefs import set_pref
+        set_pref("last_root_folder", str(folder))
 
     def _restore_root_folder(self) -> None:
         """Reopen the last library, if it is still there.
@@ -765,7 +765,8 @@ class App(tk.Tk):
         rather than reported as an error — the user simply lands on the
         first-run screen, which tells them what to do.
         """
-        saved = (self._cfg or {}).get("last_root_folder")
+        from analyzer.prefs import get_pref
+        saved = get_pref("last_root_folder")
         if not saved:
             return
         try:
