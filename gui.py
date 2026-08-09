@@ -3346,6 +3346,15 @@ class App(tk.Tk):
         _sp_hdrs   = ("Show", "File", "Air Date", "WPM", "Density", "Total Words", "Source")
         _sp_widths = (90, 120, 72, 55, 62, 78, 60)
 
+        # Anchored to the bottom and packed before the expanding tree, so the
+        # explanation of why rows are missing cannot be squeezed to nothing.
+        self._lang_sp_note = tk.Label(
+            sp_tab, text="Choose a root folder, then click Refresh.",
+            fg="#555555", font=("TkDefaultFont", 8), anchor="w",
+            justify="left", wraplength=460,
+        )
+        self._lang_sp_note.pack(side=tk.BOTTOM, fill=tk.X, padx=4, pady=(2, 4))
+
         sp_tree_frame = tk.Frame(sp_tab)
         sp_tree_frame.pack(fill=tk.BOTH, expand=True)
 
@@ -3366,12 +3375,6 @@ class App(tk.Tk):
         sp_vsb.pack(side=tk.RIGHT, fill=tk.Y)
         sp_hsb.pack(side=tk.BOTTOM, fill=tk.X)
         self._lang_sp_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        self._lang_sp_note = tk.Label(
-            sp_tab, text="Choose a root folder, then click Refresh.",
-            fg="#555555", font=("TkDefaultFont", 8), anchor="w",
-        )
-        self._lang_sp_note.pack(fill=tk.X, padx=4, pady=(2, 4))
 
         # ---- Vocabulary sub-tab ----
         vc_tab = tk.Frame(sub_nb)
@@ -3432,6 +3435,13 @@ class App(tk.Tk):
         _vc_hdrs   = ("File", "Status", "Flesch", "F-K Gr", "T1%", "T2%", "T3%", "AoA", "MTLD")
         _vc_widths = (130, 52, 50, 50, 42, 42, 42, 44, 55)
 
+        # The action row is packed BEFORE the expanding tree, anchored to the
+        # bottom. Packed after it, pack hands the tree its full requested
+        # height first and leaves this row ~2px in a short pane — the buttons
+        # are present but invisible.
+        action_row = tk.Frame(vc_tab)
+        action_row.pack(side=tk.BOTTOM, fill=tk.X, padx=4, pady=(4, 4))
+
         vc_tree_frame = tk.Frame(vc_tab)
         vc_tree_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=(2, 0))
 
@@ -3451,8 +3461,6 @@ class App(tk.Tk):
         vc_hsb.pack(side=tk.BOTTOM, fill=tk.X)
         self._vocab_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        action_row = tk.Frame(vc_tab)
-        action_row.pack(fill=tk.X, padx=4, pady=(4, 4))
         self._vocab_chart_var = tk.StringVar(value="Stacked Tiers")
         ttk.Combobox(
             action_row, textvariable=self._vocab_chart_var,
