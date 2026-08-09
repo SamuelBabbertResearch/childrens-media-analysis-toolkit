@@ -54,6 +54,9 @@ COLORS: dict[str, str] = {
     "control_top":             "#fdfdfe",
     "control_bottom":          "#e4e6ea",
     "control_border":          "#9ea1a7",
+    # Darker top edge only — how a sunken control is drawn when the toolkit
+    # has no inset shadow.
+    "control_border_dark":     "#666666",
     "control_gloss":           "#ffffff",
     "control_shadow":          "#c2c5ca",
     "control_disabled_top":    "#f2f3f4",
@@ -71,6 +74,58 @@ COLORS: dict[str, str] = {
     "mw_border":       "#a2a9b1",
     "mw_row_line":     "#eaecf0",
     "row_selected_bg": "#e8f2ff",
+
+    # --- menu bar and tab strip (see ui/DESIGN.md §8) -----------------------
+    "menu_bg":       "#e5e5e5",
+    "menu_line":     "#c0c0c0",
+    "tabstrip_top":    "#d5d5d5",
+    "tabstrip_bottom": "#c0c0c0",
+    "tab_inactive_top":    "#cecece",
+    "tab_inactive_bottom": "#b8b8b8",
+
+    # --- sub-toolbar: per-tab controls, below the tab strip -----------------
+    "subbar_top":    "#ececec",
+    "subbar_bottom": "#d8d8d8",
+
+    # --- toolbar ------------------------------------------------------------
+    "toolbar_top":    "#e6e6e6",
+    "toolbar_bottom": "#d5d5d5",
+
+    # --- status bar ---------------------------------------------------------
+    "statusbar_top":    "#e2e2e2",
+    "statusbar_bottom": "#cccccc",
+
+    # --- graph canvas -------------------------------------------------------
+    "canvas_bg":   "#eaeaea",
+    "canvas_grid": "#e0e0e0",
+    "node_bg":     "#ffffff",
+    "node_border": "#999999",
+    "node_rule":   "#ececec",
+    "node_status": "#888888",
+    "port_fill":   "#ffffff",
+    "port_border": "#666666",
+    "wire":        "#666666",
+
+    # --- default (Aqua) button ---------------------------------------------
+    "aqua_top":     "#429ce3",
+    "aqua_bottom":  "#1066c7",
+    "aqua_border":  "#0f4f96",
+    "aqua_pressed_top":    "#0d56aa",
+    "aqua_pressed_bottom": "#257ecb",
+
+    # --- inspector key/value grid -------------------------------------------
+    "kv_key_bg":   "#f0f0f0",
+    "kv_key_fg":   "#444444",
+    "kv_row_line": "#e5e5e5",
+
+    # --- views --------------------------------------------------------------
+    "row_hover":      "#f0f4f9",
+    "table_header":   "#eaeaea",
+    "table_alt_row":  "#f9f9f9",
+    "table_cell_line": "#d0d0d0",
+
+    # --- path display -------------------------------------------------------
+    "path_text": "#003a70",
 
     # --- modal framing (see ui/DESIGN.md §1) --------------------------------
     "window_ring":   "#7a7a7a",

@@ -80,6 +80,60 @@ class Ambox(QFrame):
         lay.addWidget(text)
 
 
+class Panel(QFrame):
+    """A titled content panel: header strip over a body, hairline framed.
+
+    `body_layout` is where callers put their content. The header carries a
+    title on the left and optional widgets on the right (a count, a button).
+    """
+
+    def __init__(self, title: str) -> None:
+        super().__init__()
+        self.setProperty("panel", "true")
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        self._header = QWidget()
+        self._header.setStyleSheet(
+            f"background:{color('panel_header')};"
+            f"border-bottom:1px solid {color('panel_border')};")
+        hh = QHBoxLayout(self._header)
+        hh.setContentsMargins(6, 3, 5, 3)
+        hh.setSpacing(6)
+        self._title = QLabel(title)
+        self._title.setTextFormat(Qt.PlainText)
+        self._title.setStyleSheet("font-weight:bold; border:none;")
+        hh.addWidget(self._title)
+        hh.addStretch(1)
+        self._header_row = hh
+        outer.addWidget(self._header)
+
+        body = QWidget()
+        self.body_layout = QVBoxLayout(body)
+        self.body_layout.setContentsMargins(0, 0, 0, 0)
+        self.body_layout.setSpacing(0)
+        outer.addWidget(body, 1)
+
+    def set_title(self, text: str) -> None:
+        self._title.setText(text)
+
+    def add_header_widget(self, widget: QWidget) -> None:
+        widget.setStyleSheet(widget.styleSheet() + ";border:none;")
+        self._header_row.addWidget(widget)
+
+
+class SubToolBar(QFrame):
+    """Per-tab controls, sitting directly under the tab strip."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setProperty("subbar", "true")
+        self.row = QHBoxLayout(self)
+        self.row.setContentsMargins(8, 4, 8, 4)
+        self.row.setSpacing(6)
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -89,9 +143,10 @@ class MainWindow(QMainWindow):
         self._cfg = load_config()
         self._root: Path | None = None
 
+        self._build_menu()
         self._build_toolbar()
         self._build_tabs()
-        self.statusBar().showMessage("Ready.")
+        self._build_status_bar()
 
         # Reopen the last library, exactly as the Tk build does.
         saved = get_pref("last_root_folder")
@@ -99,6 +154,38 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, lambda: self.set_root(Path(saved)))
 
     # ---- chrome ----
+
+    def _build_menu(self) -> None:
+        bar = self.menuBar()
+        file_menu = bar.addMenu("&File")
+        act_open = QAction("Choose Root Folder…", self)
+        act_open.triggered.connect(self.choose_root)
+        file_menu.addAction(act_open)
+        file_menu.addSeparator()
+        act_quit = QAction("E&xit", self)
+        act_quit.triggered.connect(self.close)
+        file_menu.addAction(act_quit)
+
+        help_menu = bar.addMenu("&Help")
+        act_about = QAction("About CMAT", self)
+        act_about.triggered.connect(lambda: QMessageBox.information(
+            self, "About CMAT",
+            "Children's Media Analysis Toolkit.\n\n"
+            "Measures formal features of children's television — pacing, "
+            "colour, motion, flashing, audio, language — and supports "
+            "structured hand-coding.\n\n"
+            "It reports measurements of the stimulus. It does not rate "
+            "appropriateness, target age, or educational value."))
+        help_menu.addAction(act_about)
+
+    def _build_status_bar(self) -> None:
+        """Message on the left, state on the right."""
+        sb = self.statusBar()
+        sb.setSizeGripEnabled(True)
+        self._state = QLabel("Ready")
+        self._state.setStyleSheet(f"color:{color('text_dim')};")
+        sb.addPermanentWidget(self._state)
+        sb.showMessage("Ready.")
 
     def _build_toolbar(self) -> None:
         tb = QToolBar()
@@ -111,7 +198,8 @@ class MainWindow(QMainWindow):
         tb.addWidget(choose)
 
         self._root_label = QLabel("(none chosen)")
-        self._root_label.setStyleSheet(f"color:{color('accent_dark')};")
+        self._root_label.setProperty("pathDisplay", "true")
+        self._root_label.setTextFormat(Qt.PlainText)
         tb.addWidget(self._root_label)
 
         spacer = QWidget()
@@ -173,28 +261,10 @@ class MainWindow(QMainWindow):
         split = QSplitter(Qt.Horizontal)
         lay.addWidget(split, 1)
 
-        left = QWidget()
-        lv = QVBoxLayout(left)
-        lv.setContentsMargins(0, 0, 0, 0)
-        lv.setSpacing(0)
-
-        header = QWidget()
-        hh = QHBoxLayout(header)
-        hh.setContentsMargins(8, 4, 8, 4)
-        title = QLabel("Shows & Episodes")
-        # QLabel treats "&" as a mnemonic marker; without PlainText it either
-        # swallows the character or renders the entity literally.
-        title.setTextFormat(Qt.PlainText)
-        title.setStyleSheet("font-weight:bold;")
-        hh.addWidget(title)
-        hh.addStretch(1)
+        left = Panel("Shows / Episodes")
         self._count = QLabel("no library loaded")
         self._count.setProperty("role", "dim")
-        hh.addWidget(self._count)
-        header.setStyleSheet(
-            f"background:{color('mw_header_bg')};"
-            f"border:1px solid {color('mw_border')}; border-bottom:none;")
-        lv.addWidget(header)
+        left.add_header_widget(self._count)
 
         self._model = QStandardItemModel()
         self._model.setHorizontalHeaderLabels(
@@ -210,17 +280,29 @@ class MainWindow(QMainWindow):
         hv.setSectionResizeMode(COL_NAME, QHeaderView.Stretch)
         for col in (COL_STATUS, COL_LENGTH, COL_ADDED):
             hv.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+        self._tree.setFrameShape(QFrame.NoFrame)
         self._tree.selectionModel().selectionChanged.connect(self._on_select)
-        lv.addWidget(self._tree, 1)
+        left.body_layout.addWidget(self._tree)
         split.addWidget(left)
+
+        right = Panel("Results")
+        self._btn_chart = QPushButton("Show Chart")
+        self._btn_chart.setProperty("primary", "true")
+        self._btn_chart.setEnabled(False)
+        right.add_header_widget(self._btn_chart)
 
         self._report = QTextBrowser()
         self._report.setOpenExternalLinks(False)
+        self._report.setFrameShape(QFrame.NoFrame)
         self._report.setHtml(
-            "<p style='color:#54595d'>Choose a show or episode on the left.</p>")
-        split.addWidget(self._report)
-        split.setStretchFactor(0, 3)
-        split.setStretchFactor(1, 4)
+            f"<p style='color:{color('text_dim')}'>Choose a show or episode "
+            f"on the left.</p>")
+        right.body_layout.addWidget(self._report)
+        split.addWidget(right)
+
+        # 46 / 54, matching the reference layout.
+        split.setStretchFactor(0, 46)
+        split.setStretchFactor(1, 54)
         return page
 
     # ---- data ----

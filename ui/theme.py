@@ -81,6 +81,7 @@ def stylesheet() -> str:
     c = COLORS
     pt = FONT_PT
     fam = ui_family()
+    mono = mono_family()
     return f"""
 /* ---------------------------------------------------------------- base -- */
 QWidget {{
@@ -100,17 +101,26 @@ QLabel[role="faint"]   {{ color: {c['text_faint']}; font-size: {pt['small']}pt; 
 /* ------------------------------------------------------------ toolbar -- */
 QToolBar {{
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 {c['chrome_top']}, stop:1 {c['chrome_bottom']});
+                stop:0 {c['toolbar_top']}, stop:1 {c['toolbar_bottom']});
     border: none;
-    border-bottom: 1px solid {c['chrome_line']};
+    border-bottom: 1px solid {c['panel_border']};
     spacing: 6px;
     padding: 4px 8px;
 }}
+/* Per-tab controls, one step lighter than the main toolbar so the hierarchy
+   reads: window chrome, then tab strip, then this. */
+QFrame[subbar="true"] {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['subbar_top']}, stop:1 {c['subbar_bottom']});
+    border: none;
+    border-bottom: 1px solid {c['panel_border']};
+}}
 QStatusBar {{
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 {c['chrome_top']}, stop:1 {c['chrome_bottom']});
+                stop:0 {c['statusbar_top']}, stop:1 {c['statusbar_bottom']});
     border-top: 1px solid {c['chrome_line']};
-    color: {c['text_dim']};
+    color: {c['text']};
+    font-size: {pt['small']}pt;
 }}
 QStatusBar::item {{ border: none; }}
 
@@ -142,41 +152,89 @@ QPushButton:disabled {{
     border-color: {c['hairline']};
 }}
 QPushButton:focus {{ border: 1px solid {c['accent']}; }}
-/* One default button per dialog, as Aqua had. */
+/* One default button per window, as the period convention had it. More than
+   one and it stops meaning "this is the action you probably want". */
 QPushButton[primary="true"] {{
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 #5b9ae4, stop:1 {c['accent_dark']});
-    border: 1px solid {c['accent_dark']};
+                stop:0 {c['aqua_top']}, stop:1 {c['aqua_bottom']});
+    border: 1px solid {c['aqua_border']};
     color: {c['text_on_accent']};
     font-weight: bold;
 }}
 QPushButton[primary="true"]:hover {{
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 #6ba7ea, stop:1 #1a63c8);
+                stop:0 #55a8e8, stop:1 #1470d4);
+}}
+QPushButton[primary="true"]:pressed {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['aqua_pressed_top']},
+                stop:1 {c['aqua_pressed_bottom']});
+}}
+QPushButton[primary="true"]:disabled {{
+    background: {c['control_disabled_bottom']};
+    border-color: {c['hairline']};
+    color: {c['text_disabled']};
+}}
+
+/* ------------------------------------------------------------ menu bar -- */
+QMenuBar {{
+    background: {c['menu_bg']};
+    border-bottom: 1px solid {c['menu_line']};
+    padding: 1px 4px;
+}}
+QMenuBar::item {{ padding: 2px 8px; border-radius: 2px; }}
+QMenuBar::item:selected {{
+    background: {c['accent']};
+    color: {c['text_on_accent']};
+}}
+QMenu {{
+    background: {c['panel_bg']};
+    border: 1px solid {c['mw_border']};
+    padding: 2px;
+}}
+QMenu::item {{ padding: 4px 22px 4px 18px; }}
+QMenu::item:selected {{
+    background: {c['accent']};
+    color: {c['text_on_accent']};
+}}
+QMenu::separator {{
+    height: 1px;
+    background: {c['hairline']};
+    margin: 3px 6px;
 }}
 
 /* --------------------------------------------------------------- tabs -- */
 QTabWidget::pane {{
-    border: 1px solid {c['chrome_line']};
+    border: 1px solid {c['panel_border']};
     background: {c['panel_bg']};
     top: -1px;
 }}
-QTabBar::tab {{
-    background: {c['tab_bg']};
-    color: {c['tab_fg']};
-    border: 1px solid {c['chrome_line']};
-    border-bottom: none;
-    border-top-left-radius: 4px;
-    border-top-right-radius: 4px;
-    padding: 5px 14px;
-    margin-right: 2px;
+QTabBar {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['tabstrip_top']}, stop:1 {c['tabstrip_bottom']});
 }}
-QTabBar::tab:hover     {{ background: {c['tab_active']}; }}
-QTabBar::tab:selected  {{
+QTabBar::tab {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['tab_inactive_top']},
+                stop:1 {c['tab_inactive_bottom']});
+    color: {c['tab_fg']};
+    border: 1px solid {c['panel_border']};
+    border-bottom: none;
+    border-top-left-radius: 3px;
+    border-top-right-radius: 3px;
+    padding: 4px 12px;
+    margin-right: 1px;
+}}
+QTabBar::tab:hover {{ background: {c['tab_active']}; }}
+/* The accent rule along the top edge is what marks the active tab; the
+   fill alone is too quiet once several tabs are open. */
+QTabBar::tab:selected {{
     background: {c['panel_bg']};
     color: {c['text']};
+    font-weight: bold;
+    border-top: 2px solid {c['accent']};
     margin-bottom: -1px;
-    padding-bottom: 6px;
+    padding-bottom: 5px;
 }}
 
 /* ------------------------------------------------- inputs and combos -- */
@@ -203,28 +261,62 @@ QComboBox QAbstractItemView {{
 /* ------------------------------------------------- wikitable-style views */
 QTreeView, QTableView, QListView {{
     background: {c['mw_bg']};
-    alternate-background-color: {c['mw_subtle_bg']};
-    border: 1px solid {c['mw_border']};
-    gridline-color: {c['mw_row_line']};
-    selection-background-color: {c['row_selected_bg']};
-    selection-color: {c['text']};
+    alternate-background-color: {c['table_alt_row']};
+    /* Sunken frame: Qt ignores inset box-shadow, but a darker top edge
+       against three lighter ones reads the same way. */
+    border: 1px solid {c['panel_border']};
+    border-top-color: {c['list_sunken_edge']};
+    gridline-color: {c['table_cell_line']};
     outline: none;
 }}
-QTreeView::item, QTableView::item {{ padding: 3px 4px; }}
+QTreeView::item, QTableView::item, QListView::item {{ padding: 2px 4px; }}
+QTreeView::item:hover, QTableView::item:hover {{
+    background: {c['row_hover']};
+}}
+/* Choosing an item uses the solid accent; a table of FIGURES uses the light
+   wash instead, so the numbers keep their contrast. See ui/DESIGN.md §3. */
+QListView::item:selected {{
+    background: {c['accent']};
+    color: {c['text_on_accent']};
+}}
 QTreeView::item:selected, QTableView::item:selected {{
     background: {c['row_selected_bg']};
     color: {c['text']};
 }}
 QHeaderView::section {{
-    background: {c['mw_header_bg']};
+    background: {c['table_header']};
     color: {c['text']};
     border: none;
-    border-right: 1px solid {c['mw_border']};
-    border-bottom: 1px solid {c['mw_border']};
-    padding: 4px 6px;
+    border-right: 1px solid {c['panel_border']};
+    border-bottom: 1px solid {c['panel_border']};
+    padding: 3px 6px;
     font-weight: bold;
 }}
 QHeaderView::section:hover {{ background: {c['panel_header']}; }}
+
+/* ------------------------------------------------------------- panels -- */
+QFrame[panel="true"] {{
+    background: {c['panel_bg']};
+    border: 1px solid {c['panel_border']};
+    border-radius: 2px;
+}}
+QLabel[panelHeader="true"] {{
+    background: {c['panel_header']};
+    border-bottom: 1px solid {c['panel_border']};
+    padding: 3px 6px;
+    font-weight: bold;
+}}
+/* Monospace, inset, so a long path reads as a value rather than prose. */
+QLabel[pathDisplay="true"] {{
+    font-family: "{mono}";
+    font-size: {pt['small']}pt;
+    color: {c['path_text']};
+    background: {c['panel_bg']};
+    border: 1px solid {c['control_border']};
+    border-top-color: {c['control_border_dark']};
+    border-radius: 2px;
+    padding: 1px 6px;
+}}
 
 /* ---------------------------------------------------------- scrollbars -- */
 QScrollBar:vertical   {{ background: {c['surface_bottom']}; width: 12px;
