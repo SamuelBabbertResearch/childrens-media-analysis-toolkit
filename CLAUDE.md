@@ -22,8 +22,9 @@ Every composite score must show its component parts.
 - Frame analysis: **OpenCV** (`opencv-python`) + **NumPy**
 - Audio metrics: **FFmpeg** (must be on PATH)
 - Aggregation / export: **pandas**
-- GUI: **Tkinter** (standard library) — plain and classic; no Qt, no web frameworks
-- Charts: **matplotlib** embedded in Tk
+- GUI: **PySide6** (Qt 6). Migrating from Tkinter — see "GUI migration" below.
+  No web frameworks.
+- Charts: **matplotlib** (Tk backend today; `FigureCanvasQTAgg` after the move)
 
 ---
 
@@ -35,6 +36,44 @@ Every composite score must show its component parts.
    layer over this same engine — never duplicate analysis logic in the UI.
 3. **GUI worker thread** — all analysis runs on a background thread with a progress callback.
    The UI must never freeze.
+
+---
+
+## GUI migration — Tkinter → PySide6 (in progress)
+
+Tkinter could not render the intended look. Qt has a real stylesheet engine and
+renders HTML/CSS, so the design is declarative instead of hand-drawn.
+
+**This is a presentation rewrite, not an application rewrite.** Because rule 1
+above was enforced from the start, `analyzer/` imports no GUI framework at all
+— verified, not assumed. The engine, CLI, and site builder (~12,000 lines) do
+not move. Only the `gui*.py` layer (~13,400 lines) is ported.
+
+**Method: build beside, not on top.** The Qt front-end lives in `ui/`; the Tk
+front-end stays in `gui*.py` and keeps working. Both import the same
+`analyzer/` and the same palette. There is never a broken state, the two can be
+compared directly, and if the migration stalls nothing is lost. Tk modules are
+deleted only as each screen reaches parity.
+
+    ui/tokens.py    design tokens; NO framework imports — shared by both
+    ui/theme.py     fonts, Qt stylesheet
+    ui/report.py    analysis results as HTML; no Qt import, so it is testable
+                    headless and reusable for PDF export and the static site
+
+**Rules that carry over unchanged:**
+- No GUI imports in `analyzer/`. This is what made the migration cheap; do not
+  spend it.
+- One accent colour, one palette, in `ui/tokens.py`. Two sources of truth is
+  how two different blues came to mean "selected".
+- Type sizes are POINTS. Qt scales them for the display.
+- The stimulus-only guardrail: no token, badge, column, or field reports
+  appropriateness, target age, or educational value.
+
+**Rules that no longer apply** (they were Tk workarounds):
+- Pack ordering (`side=BOTTOM` before `expand=True`) — Qt layouts do not have
+  this failure mode.
+- Manual DPI awareness via `ctypes` — Qt 6 is per-monitor aware by default.
+- Hand-drawn canvas controls for gradients and bevels — the stylesheet does it.
 
 ---
 

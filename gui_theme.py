@@ -39,11 +39,19 @@ import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import ttk
 
-# ---------------------------------------------------------------------------
-# Colour tokens
-# ---------------------------------------------------------------------------
+# The palette lives in ui/tokens.py, which imports no GUI framework, so the Tk
+# and Qt front-ends cannot drift apart during the migration. Re-exported here
+# so the existing Tk call sites keep working unchanged.
+from ui.tokens import (  # noqa: F401
+    COLORS,
+    FONT_PT,
+    MONO_FAMILY_PREFERENCE,
+    OUTLIER_LEGEND,
+    UI_FAMILY_PREFERENCE,
+    color,
+)
 
-COLORS: dict[str, str] = {
+_RETIRED_COLORS = {
     # --- window chrome (early OS X) ---------------------------------------
     "chrome_top":     "#f4f5f7",
     "chrome_bottom":  "#dcdee2",
@@ -135,45 +143,15 @@ COLORS: dict[str, str] = {
     "emphasis_low_bg":  "#e1effe",
     "emphasis_low_fg":  "#1e429f",
 }
-
-
-def color(name: str) -> str:
-    """Look up a token. Unknown names raise rather than silently rendering black."""
-    try:
-        return COLORS[name]
-    except KeyError:
-        raise KeyError(
-            f"Unknown theme colour {name!r}. Add it to gui_theme.COLORS rather "
-            f"than using a literal — two sources of truth is how the app ended "
-            f"up with two different blues meaning 'selected'."
-        ) from None
+# The dict above is dead — kept only as a diff anchor for this commit and
+# removed with the Tk front-end. ui.tokens.COLORS is what everything reads.
+assert set(_RETIRED_COLORS) <= set(COLORS), \
+    "ui/tokens.py is missing a colour the Tk theme still expects"
 
 
 # ---------------------------------------------------------------------------
 # Typography
 # ---------------------------------------------------------------------------
-
-# Point sizes. 9pt is the Windows system default and the density this kind of
-# instrument wants; the earlier draft's "11px" was a units error — Snow
-# Leopard's 11 was POINTS, which is ~15px at today's densities.
-FONT_PT: dict[str, int] = {
-    "tiny":    8,
-    "small":   8,
-    "body":    9,
-    "table":   9,
-    "heading": 11,
-    "title":   13,
-}
-
-# First available wins. Worth knowing what this actually resolves to on
-# Windows: Lucida Grande is Mac-only, so the real pick is Lucida Sans Unicode —
-# a genuine Lucida face, closest to the OS X reference, but wide and softly
-# hinted at small sizes. Put "Segoe UI" first for a crisper, more modern face
-# at the cost of the period character. One line, deliberately visible.
-UI_FAMILY_PREFERENCE = ("Lucida Grande", "Lucida Sans Unicode",
-                        "Segoe UI", "Tahoma")
-MONO_FAMILY_PREFERENCE = ("Consolas", "Menlo", "DejaVu Sans Mono",
-                          "Courier New")
 
 _FAMILY: str | None = None
 _MONO: str | None = None
@@ -251,11 +229,6 @@ def canvas_font(widget: tk.Misc, role: str = "body", zoom: float = 1.0,
 # ---------------------------------------------------------------------------
 # Emphasis that is not a verdict
 # ---------------------------------------------------------------------------
-
-OUTLIER_LEGEND = (
-    "Highlighted values are unusual for the comparison set shown — not "
-    "judgements of quality, suitability, or effect on a viewer."
-)
 
 # Default to weight, not colour. Red beside a high number reads as "bad" to
 # every user regardless of what the caption says, and CMAT does not rank shows.
