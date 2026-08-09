@@ -70,6 +70,38 @@ def test_every_template_builds_a_valid_graph():
         assert t.name and t.summary and t.detail
 
 
+def test_full_study_validates_on_a_subset_not_the_whole_sample():
+    """Hand coding in a full study estimates error; it does not measure the corpus.
+
+    If every sampled episode were hand-coded, the automated pass would be
+    redundant for those episodes — so the node carries a subset target.
+    """
+    doc = G.template("full").build()
+    hand = next(n for n in doc.nodes if n.type == "handcode_transitions")
+    assert hand.config.get("coding_target"), "subset target must be set"
+    assert "subset" in hand.title.lower()
+
+
+def test_full_study_reports_automated_numbers_directly():
+    """Results come from the automated pass; validation attaches the error rate."""
+    doc = G.template("full").build()
+    auto = next(n for n in doc.nodes if n.type == "automated")
+    res = next(n for n in doc.nodes if n.type == "results")
+    val = next(n for n in doc.nodes if n.type == "validation")
+    assert doc.has_connection(auto.id, res.id), "automated feeds results"
+    assert doc.has_connection(val.id, res.id), "validation also feeds results"
+    hand = next(n for n in doc.nodes if n.type == "handcode_transitions")
+    assert not doc.has_connection(hand.id, res.id), \
+        "hand coding reaches results through validation, not around it"
+
+
+def test_validation_study_codes_everything():
+    """Where the coded set IS the study, there is no subset target."""
+    doc = G.template("validation").build()
+    hand = next(n for n in doc.nodes if n.type == "handcode_transitions")
+    assert not hand.config.get("coding_target")
+
+
 def test_hand_coding_preset_has_no_validation():
     """Hand coding is a measurement, not a step towards validating the tool.
 

@@ -425,6 +425,60 @@ def _handcode_stage(key: str, name: str, subtitle: str, explanation: str,
     return s
 
 
+def rescope_to_target(stage: Stage, target: int, total: int) -> Stage:
+    """Re-express a hand-coding stage against a validation subset.
+
+    A stage reports coverage of the whole selection, which is right when the
+    coded set IS the study. It is wrong — and actively misleading — when the
+    hand coding exists only to estimate the tool's error on a subset: "0/20
+    coded, 20 still to code" tells a researcher to do five times the work the
+    design calls for, and would make the automated pass redundant if followed.
+    """
+    if target <= 0:
+        return stage
+    # You cannot code more episodes than the sample contains. A default target
+    # carried in from a preset will often exceed a small sample.
+    if total > 0:
+        target = min(target, total)
+    coded = _coded_count(stage)
+    done = min(coded, target)
+    out = Stage(
+        key=stage.key, name=stage.name, subtitle="Validation subset",
+        explanation=stage.explanation,
+        status=_status_from_counts(done, target),
+        headline=f"{done}/{target} of subset coded",
+    )
+    out.details = [
+        ("Subset target", _plural(target, "episode")),
+        ("Coded so far", str(coded)),
+        ("Sample size", _plural(total, "episode")),
+        ("Why a subset",
+         "the error rate measured here is applied to the automated numbers "
+         "for the whole sample"),
+    ] + [d for d in stage.details if d[0] == "Codebook"]
+    if done < target:
+        out.next_action = (
+            f"Code {_plural(target - done, 'more episode')} to reach the "
+            "subset target. Coding beyond it adds little — the point is to "
+            "estimate error, not to hand-measure the corpus.")
+    else:
+        out.next_action = (
+            "Subset complete. Run the comparison (Human coding → Validate "
+            "tool), and consider a second coder on one episode for "
+            "inter-rater reliability.")
+    return out
+
+
+def _coded_count(stage: Stage) -> int:
+    """Pull the coded count back out of a hand-coding stage's details."""
+    for label, value in stage.details:
+        if label == "Episodes coded":
+            head = str(value).split("/", 1)[0].strip()
+            if head.isdigit():
+                return int(head)
+    return 0
+
+
 def _validation_stage(trials: list[dict], coverage: dict | None) -> Stage:
     s = Stage(
         key="validation",

@@ -104,12 +104,20 @@ class Template:
     name: str
     summary: str
     detail: str
-    nodes: tuple[tuple[str, float, float], ...]      # (type, x, y)
+    # (type, x, y) or (type, x, y, title) or (type, x, y, title, config)
+    nodes: tuple[tuple, ...]
     edges: tuple[tuple[int, int], ...]               # indices into nodes
 
     def build(self, name: str | None = None) -> "PipelineDoc":
         doc = PipelineDoc(id=_new_id("p"), name=name or self.name)
-        made = [doc.add_node(t, x, y) for t, x, y in self.nodes]
+        made = []
+        for spec in self.nodes:
+            kind, x, y = spec[0], spec[1], spec[2]
+            title = spec[3] if len(spec) > 3 else None
+            cfg = dict(spec[4]) if len(spec) > 4 else {}
+            node = doc.add_node(kind, x, y, title=title)
+            node.config.update(cfg)
+            made.append(node)
         for a, b in self.edges:
             doc.connect(made[a].id, made[b].id)
         return doc
@@ -121,15 +129,23 @@ _TOP, _MID, _BOT = 40.0, 150.0, 260.0
 TEMPLATES: tuple[Template, ...] = (
     Template(
         "full", "Full study",
-        "Automated measures and hand coding, with validation",
-        "Samples episodes, measures them automatically, hand-codes the same "
-        "episodes, then grades the tool against the human coding. Use this "
-        "when you intend to report an error rate for the automated measures.",
-        (("sampling", 40, _MID), ("selection", 40 + _R, _MID),
-         ("automated", 40 + 2 * _R, _TOP),
-         ("handcode_transitions", 40 + 2 * _R, _BOT),
-         ("validation", 40 + 3 * _R, _MID), ("results", 40 + 4 * _R, _MID)),
-        ((0, 1), (1, 2), (1, 3), (2, 4), (3, 4), (4, 5)),
+        "Automated measures across the sample, validated on a subset",
+        "The automated pass runs on every sampled episode. A SMALL SUBSET is "
+        "also hand-coded, and the two are compared to estimate the tool's "
+        "error — which is then reported alongside the automated numbers. You "
+        "do not hand-code the whole sample: if you did, the automated measure "
+        "would be redundant for those episodes.",
+        (("sampling", 40, _MID),
+         ("selection", 40 + _R, _MID),
+         ("automated", 40 + 2 * _R, _TOP, "Automated coding (all episodes)"),
+         ("handcode_transitions", 40 + 2 * _R, _BOT,
+          "Hand-code validation subset", {"coding_target": 4}),
+         ("validation", 40 + 3 * _R, _BOT),
+         ("results", 40 + 4 * _R, _MID)),
+        # Automated feeds the results directly; validation attaches the error
+        # rate to them. Hand coding reaches results THROUGH validation, because
+        # in this design it exists to grade the tool, not to measure the corpus.
+        ((0, 1), (1, 2), (1, 3), (2, 4), (3, 4), (2, 5), (4, 5)),
     ),
     Template(
         "automated", "Automated only",
@@ -178,9 +194,10 @@ TEMPLATES: tuple[Template, ...] = (
     Template(
         "validation", "Validation study",
         "Grade the tool against a human coder",
-        "For calibrating the detector rather than studying shows. Runs the "
-        "automated pass and hand coding on the same episodes and compares "
-        "them. Report accuracy on held-out episodes, not the ones you tuned on.",
+        "For calibrating the detector rather than studying shows. Here hand "
+        "coding DOES cover every episode, because the coded set is the study. "
+        "Tune thresholds on one group of episodes and report accuracy on a "
+        "different, held-out group — not on the ones you tuned against.",
         (("selection", 40, _MID),
          ("automated", 40 + _R, _TOP),
          ("handcode_transitions", 40 + _R, _BOT),

@@ -143,6 +143,62 @@ def test_validation_warns_when_evidence_is_thin():
 
 
 # ---------------------------------------------------------------------------
+# Validation subsets
+# ---------------------------------------------------------------------------
+
+def _hand_stage(coded: int, total: int) -> P.Stage:
+    return P._handcode_stage("handcode_transitions", "Hand-code transitions",
+                             "sub", "expl", coded, total, "CODEBOOK.md")
+
+
+def test_subset_target_replaces_whole_sample_arithmetic():
+    """'0/20 coded, 20 to go' is wrong advice when only 4 need coding."""
+    stage = _hand_stage(coded=0, total=20)
+    assert "0/20" in stage.headline
+
+    scoped = P.rescope_to_target(stage, target=4, total=20)
+    assert "0/4" in scoped.headline
+    assert "20" not in scoped.headline
+    assert "4" in scoped.next_action
+
+
+def test_subset_is_complete_at_the_target_not_at_the_sample_size():
+    scoped = P.rescope_to_target(_hand_stage(4, 20), target=4, total=20)
+    assert scoped.status == P.COMPLETE
+    assert "second coder" in scoped.next_action
+
+
+def test_subset_progress_is_partial_partway_through():
+    scoped = P.rescope_to_target(_hand_stage(2, 20), target=4, total=20)
+    assert scoped.status == P.PARTIAL
+    assert "2/4" in scoped.headline
+
+
+def test_coding_past_the_target_does_not_overflow():
+    scoped = P.rescope_to_target(_hand_stage(9, 20), target=4, total=20)
+    assert scoped.headline.startswith("4/4")
+    assert scoped.status == P.COMPLETE
+    assert dict(scoped.details)["Coded so far"] == "9"
+
+
+def test_target_cannot_exceed_the_sample():
+    """A preset default of 4 must not ask for 4 of 2 episodes."""
+    scoped = P.rescope_to_target(_hand_stage(0, 2), target=4, total=2)
+    assert scoped.headline.startswith("0/2")
+    assert dict(scoped.details)["Subset target"] == "2 episodes"
+
+
+def test_no_target_leaves_the_stage_alone():
+    stage = _hand_stage(3, 20)
+    assert P.rescope_to_target(stage, target=0, total=20) is stage
+
+
+def test_subset_stage_explains_why_it_is_a_subset():
+    scoped = P.rescope_to_target(_hand_stage(0, 20), target=4, total=20)
+    assert any("whole sample" in v for _, v in scoped.details)
+
+
+# ---------------------------------------------------------------------------
 # Discovery / grouping
 # ---------------------------------------------------------------------------
 

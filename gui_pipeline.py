@@ -575,6 +575,27 @@ class PipelineView(tk.Frame):
                 return True
         return False
 
+    def _stage_for(self, node, ntype):
+        """Live status for a node, re-scoped when it codes only a subset."""
+        if not ntype.stage_key:
+            return None
+        stage = self._derived.get(ntype.stage_key)
+        if stage is None:
+            return None
+        target = node.config.get("coding_target")
+        if target and ntype.stage_key.startswith("handcode"):
+            from analyzer.pipeline import rescope_to_target
+            sel = self._derived.get("selection")
+            total = 0
+            if sel is not None:
+                head = str(sel.headline).split(" ", 1)[0]
+                total = int(head) if head.isdigit() else 0
+            try:
+                return rescope_to_target(stage, int(target), total)
+            except (TypeError, ValueError):
+                return stage
+        return stage
+
     def _rebind_derived(self) -> None:
         """Bind the open document to the sample whose status it reports.
 
@@ -1146,7 +1167,7 @@ class PipelineView(tk.Frame):
             _outline_round(c, x0 - 4 * z, y0 - 4 * z, x1 + 4 * z, y1 + 4 * z,
                            r + 4 * z, SEL_BORDER, dash=(2, 2), tags="gfx")
 
-        stage = self._derived.get(t.stage_key) if t.stage_key else None
+        stage = self._stage_for(n, t)
         status = getattr(stage, "status", None)
         headline = getattr(stage, "headline", "") if stage else ""
         pad = 10 * z
@@ -1157,12 +1178,17 @@ class PipelineView(tk.Frame):
             icx = x0 + pad + ir
             _icon(c, t.icon, icx, y0 + 15 * z, ir,
                   SEL_BORDER if selected else TEXT_DIM)
-            c.create_text(icx + ir + 7 * z, y0 + 15 * z, anchor="w",
-                          text=n.title, font=_f(self, 12 * z, True), fill=TEXT,
-                          width=avail - (ir * 2 + 7 * z), tags="gfx")
-            sub = c.create_text(x0 + pad, y0 + 29 * z, anchor="nw",
-                                text=t.description, font=_f(self, 11 * z),
-                                fill=TEXT_FAINT, width=avail, tags="gfx")
+            title = c.create_text(
+                icx + ir + 7 * z, y0 + 15 * z, anchor="w", text=n.title,
+                font=_f(self, 12 * z, True), fill=TEXT,
+                width=avail - (ir * 2 + 7 * z), tags="gfx")
+            # A user-set title can wrap to two or three lines, so the subtitle
+            # starts below whatever the title actually occupied.
+            title_bottom = (c.bbox(title) or (0, 0, 0, y0 + 22 * z))[3]
+            sub = c.create_text(x0 + pad, max(y0 + 29 * z, title_bottom + 3 * z),
+                                anchor="nw", text=t.description,
+                                font=_f(self, 11 * z), fill=TEXT_FAINT,
+                                width=avail, tags="gfx")
             bottom = (c.bbox(sub) or (0, 0, 0, y0 + 42 * z))[3]
             if headline:
                 c.create_text(x0 + pad, bottom + 5 * z, anchor="nw",
@@ -1236,7 +1262,7 @@ class PipelineView(tk.Frame):
         if n is None:
             return
         t = node_type(n.type)
-        stage = self._derived.get(t.stage_key) if t.stage_key else None
+        stage = self._stage_for(n, t)
 
         self._i_title.configure(text=n.title)
         if stage is not None:
@@ -1254,6 +1280,49 @@ class PipelineView(tk.Frame):
         if stage is not None:
             rows = [("Status", stage.status_label)] + list(stage.details) + rows
         self._add_props(rows, next_action=getattr(stage, "next_action", ""))
+        if t.stage_key and t.stage_key.startswith("handcode"):
+            self._add_target_editor(n)
+
+    def _add_target_editor(self, node) -> None:
+        """Let a hand-coding node be scoped to a subset, or to everything.
+
+        Blank means "code the whole selection" — right when the coded set is
+        the study. A number means "code this many to estimate the tool's
+        error", which is what a validation subset is.
+        """
+        row = len(self._props.grid_slaves()) + 20
+        tk.Frame(self._props, bg=HAIRLINE, height=1).grid(
+            row=row, column=0, columnspan=2, sticky="ew",
+            padx=self._s(14), pady=(self._s(6), self._s(5)))
+        tk.Label(self._props, text="Subset target", bg=INSPECTOR_BG,
+                 fg=TEXT_DIM, font=_f(self, 12), anchor="e").grid(
+                     row=row + 1, column=0, sticky="e",
+                     padx=(self._s(14), self._s(10)))
+
+        holder = tk.Frame(self._props, bg=INSPECTOR_BG)
+        holder.grid(row=row + 1, column=1, sticky="w")
+        var = tk.StringVar(value=str(node.config.get("coding_target", "") or ""))
+        entry = tk.Entry(holder, textvariable=var, width=5, font=_f(self, 12))
+        entry.pack(side=tk.LEFT)
+        tk.Label(holder, text="episodes  (blank = code them all)",
+                 bg=INSPECTOR_BG, fg=TEXT_FAINT, font=_f(self, 11)).pack(
+                     side=tk.LEFT, padx=(self._s(6), 0))
+
+        def _apply(_e=None) -> None:
+            raw = var.get().strip()
+            self._push_undo()
+            if raw.isdigit() and int(raw) > 0:
+                node.config["coding_target"] = int(raw)
+            else:
+                node.config.pop("coding_target", None)
+                var.set("")
+            self._draw()
+            self._show_inspector()
+            self._touch()
+
+        entry.bind("<Return>", _apply)
+        entry.bind("<FocusOut>", _apply)
+        self._prop_rows += [holder, entry]
 
     def _add_props(self, rows, next_action: str = "") -> None:
         # Value labels reflow against the CONTAINER width, never their own.
