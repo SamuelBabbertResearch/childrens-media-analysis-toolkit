@@ -119,10 +119,16 @@ python cmat_qt.py   Qt build      — Library + analysis report ported so far
 
 | File | Role |
 |---|---|
+| **`ui/DESIGN.md`** | **the visual specification — read before building any screen** |
 | `ui/tokens.py` | design tokens; **no framework imports** — shared by both builds |
 | `ui/theme.py` | fonts, Qt stylesheet |
 | `ui/report.py` | analysis results as HTML; no Qt import, so it is testable headless and reusable for PDF export and the static site |
 | `ui/main_window.py` | Qt shell: toolbar, tabs, Library grid, report pane |
+
+**Terminology:** call the interface a **Classic Desktop UI**, or a
+**Mavericks-inspired layout** when a period reference is needed. Avoid naming
+trademarked operating systems or applications in documentation, comments,
+commit messages, or UI strings.
 
 **Migration conventions:**
 

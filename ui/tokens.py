@@ -72,6 +72,28 @@ COLORS: dict[str, str] = {
     "mw_row_line":     "#eaecf0",
     "row_selected_bg": "#e8f2ff",
 
+    # --- modal framing (see ui/DESIGN.md §1) --------------------------------
+    "window_ring":   "#7a7a7a",
+    "dialog_seam":   "#b0b0b0",
+    "action_bar_top":    "#e2e2e2",
+    "action_bar_bottom": "#d0d0d0",
+    # Kept for in-canvas use only. The application uses the native Windows
+    # title bar: replacing it would break snap, maximise, the system menu, and
+    # screen-reader window handling for the sake of decoration.
+    "light_close": "#ff5f56",
+    "light_min":   "#ffbd2e",
+    "light_max":   "#27c93f",
+
+    # --- list views (see ui/DESIGN.md §3) -----------------------------------
+    "list_divider":     "#f0f0f0",
+    "list_sunken_edge": "#666666",
+    # Secondary text on a selected row, where the fill is the solid accent.
+    "text_on_accent_dim": "#e0ecff",
+
+    # --- form validation ----------------------------------------------------
+    # Paired with a word or glyph, never colour alone.
+    "valid_ok": "#1b7a2b",
+
     # --- callouts (ambox) ---------------------------------------------------
     "info_bg":     "#f0f6ff",
     "info_border": "#a3c7ee",
