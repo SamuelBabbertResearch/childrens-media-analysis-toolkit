@@ -84,8 +84,12 @@ def mark(value: float | None, fences: tuple[float, float] | None) -> str:
 class Column:
     """One table column.
 
-    numeric columns are right-aligned, monospaced so digits line up, and are
-    the only ones eligible for unusual-value marking.
+    Numeric columns are right-aligned and are the only ones eligible for
+    unusual-value marking. They are NOT monospaced: a ttk.Treeview applies one
+    font to every column, and monospace is not needed anyway — Lucida Sans
+    Unicode, Segoe UI and Consolas all render digits at a single fixed advance
+    width, so right-alignment already makes a column of numbers scan cleanly.
+    Forcing a mono face would only make episode titles look like source code.
     """
 
     def __init__(self, key: str, heading: str, width: int = 90,

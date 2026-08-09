@@ -58,6 +58,9 @@ COLORS: dict[str, str] = {
     "panel_bg":     "#ffffff",
     "panel_border": "#b8b8b8",
     "panel_header": "#e2e2e2",
+    "tab_bg":       "#e1e1e1",   # unselected tab
+    "tab_fg":       "#4a4d52",
+    "tab_active":   "#eaebed",   # hover
     "hairline":     "#c8cbd0",
     "grid_dot":     "#d7dade",
 
@@ -182,12 +185,15 @@ def family(widget: tk.Misc) -> str:
 
 
 def mono_family(widget: tk.Misc) -> str:
-    """Face for numeric columns.
+    """Fixed-pitch face — for content that needs column-exact CHARACTERS.
 
-    Tk cannot reach OpenType tabular figures, so a monospace face is the only
-    way to get digits that line up in a column. The cost is that tables read a
-    little like terminal output; the benefit is that a column of numbers is
-    actually comparable by eye, which is the entire point of the table.
+    Reserved for things like timestamps in the coding editor and raw
+    provenance output. NOT for table numbers: every face in the UI stack
+    renders digits at one fixed advance width, so right-alignment already
+    aligns a numeric column, and a mono face there would only make the
+    surrounding text look like source code.
+
+    Never use this for UI body text or labels.
     """
     global _MONO
     if _MONO is None:
@@ -317,13 +323,29 @@ def apply_theme(root: tk.Misc) -> ttk.Style:
         foreground=[("selected", color("text_on_accent"))],
     )
 
-    # --- notebook, scrollbars, controls -----------------------------------
-    style.configure("TNotebook", background=color("window_bg"),
-                    borderwidth=0)
-    style.configure("TNotebook.Tab", font=body, padding=(10, 4))
-    style.map("TNotebook.Tab",
-              background=[("selected", color("panel_bg"))],
-              foreground=[("selected", color("text"))])
+    # --- notebook ----------------------------------------------------------
+    # Unselected tabs are styled explicitly: with only a `map` for the
+    # selected state, the clam defaults show through for every other tab and
+    # the strip does not match the surrounding chrome.
+    pad_x, pad_y = (int(round(10 * dpi_scale(root))),
+                    int(round(4 * dpi_scale(root))))
+    style.configure("TNotebook", background=color("window_bg"), borderwidth=0,
+                    tabmargins=(2, 2, 2, 0))
+    style.configure("TNotebook.Tab", font=body, padding=(pad_x, pad_y),
+                    background=color("tab_bg"), foreground=color("tab_fg"),
+                    borderwidth=1, bordercolor=color("chrome_line"))
+    style.map(
+        "TNotebook.Tab",
+        # Selected uses the panel colour so the tab reads as continuous with
+        # the content below it, and the near-black ink rather than pure black.
+        background=[("selected", color("panel_bg")),
+                    ("active", color("tab_active"))],
+        foreground=[("selected", color("text")),
+                    ("active", color("text"))],
+        expand=[("selected", (0, 0, 0, 1))],
+    )
+
+    # --- scrollbars and controls -------------------------------------------
 
     style.configure("TCombobox", font=body, arrowsize=12)
     style.configure("Vertical.TScrollbar", background=color("chrome_bottom"),

@@ -154,6 +154,45 @@ def test_treeview_is_styled_for_data(root):
                         "background") == T.color("mw_header_bg")
 
 
+def test_unselected_tabs_are_styled_not_left_to_clam(root):
+    """A map for only the selected state leaves every other tab default."""
+    style = T.apply_theme(root)
+    assert style.lookup("TNotebook.Tab", "background") == T.color("tab_bg")
+    assert style.lookup("TNotebook.Tab", "foreground") == T.color("tab_fg")
+
+
+def test_selected_tab_uses_panel_colour_and_near_black(root):
+    style = T.apply_theme(root)
+    bg = dict(style.map("TNotebook.Tab", "background"))
+    fg = dict(style.map("TNotebook.Tab", "foreground"))
+    assert bg["selected"] == T.color("panel_bg")
+    assert fg["selected"] == T.color("text")
+    assert fg["selected"] != "#000000", "pure black is harsher than the ink token"
+
+
+def test_tab_padding_scales_with_display(root):
+    style = T.apply_theme(root)
+    pad = style.lookup("TNotebook.Tab", "padding")
+    values = [int(v) for v in (pad if isinstance(pad, (list, tuple))
+                               else str(pad).split())]
+    assert values[0] >= int(round(10 * T.dpi_scale(root)))
+
+
+def test_mono_is_never_the_ui_face(root):
+    """Consolas is for fixed-pitch content, not for labels or body text."""
+    assert T.font(root, "body")[0] != T.mono_family(root)
+    assert T.font(root, "table")[0] != T.mono_family(root)
+    assert T.font(root, "body", mono=True)[0] == T.mono_family(root)
+
+
+def test_digits_are_uniform_width_in_the_ui_face(root):
+    """Why numeric columns need right-alignment, not a mono font."""
+    from tkinter import font as tkfont
+    f = tkfont.Font(root=root, font=T.font(root, "table"))
+    widths = {f.measure(d) for d in "0123456789"}
+    assert len(widths) == 1, f"digits are not tabular in {T.family(root)}"
+
+
 def test_row_height_scales_with_display(root):
     style = T.apply_theme(root)
     height = int(style.lookup("CMAT.Treeview", "rowheight"))
