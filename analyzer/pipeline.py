@@ -38,6 +38,7 @@ Pure functions, zero GUI imports.
 from __future__ import annotations
 
 import csv
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -59,7 +60,17 @@ STATUS_LABEL = {
     BLOCKED: "Waiting on earlier stage",
 }
 
-STAGE_KEYS = ["sampling", "selection", "measurement", "validation", "results"]
+# Canonical stage order. "measurement" is the combined automated+hand track and
+# is kept because saved pipelines reference it; new work should use the
+# separate tracks, which is what lets a hand-coding-only or language-only study
+# be expressed without dragging the automated pass along.
+STAGE_KEYS = [
+    "sampling", "selection",
+    "automated", "language",
+    "handcode_transitions", "handcode_events",
+    "measurement",
+    "validation", "results",
+]
 
 
 @dataclass
@@ -168,6 +179,30 @@ def _count_analyzed(root: Path | None, episodes: list[Path],
         return 0
     available = cached_stems(root) if stems is None else stems
     return sum(1 for ep in episodes if ep.stem in available)
+
+
+def _count_with_speech(root: Path | None, episodes: list[Path]) -> int:
+    """Episodes whose cached result carries usable speech data."""
+    if not root or not episodes:
+        return 0
+    cache_root = Path(root) / ".analysis"
+    if not cache_root.is_dir():
+        return 0
+    wanted = {ep.stem for ep in episodes}
+    found = 0
+    try:
+        for p in cache_root.rglob("*.json"):
+            if p.stem == "aggregate" or p.stem not in wanted:
+                continue
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if (data.get("metrics", {}).get("speech", {}) or {}).get("available"):
+                found += 1
+    except Exception:
+        return found
+    return found
 
 
 def _pct(n: int, total: int) -> str:
@@ -305,6 +340,91 @@ def _measurement_stage(episodes: list[Path], analyzed: int,
     return s
 
 
+def _automated_stage(episodes: list[Path], analyzed: int,
+                     trials: list[dict]) -> Stage:
+    """The machine pass on its own — separate from human coding."""
+    s = Stage(
+        key="automated",
+        name="Automated coding",
+        subtitle="Machine-measured features",
+        explanation="Shot transitions, colour, motion, flashing, and audio, "
+                    "measured by the tool.",
+    )
+    total = len(episodes)
+    if total == 0:
+        s.status = BLOCKED
+        s.headline = "Nothing selected"
+        s.next_action = "Select episodes first."
+        return s
+    s.status = _status_from_counts(analyzed, total)
+    s.headline = _pct(analyzed, total) + " analyzed"
+    s.details = [
+        ("Episodes analyzed", _pct(analyzed, total)),
+        ("Detector exports",
+         _plural(len([t for t in trials if t.get("kind") == "detection_run"]),
+                 "run")),
+    ]
+    if analyzed < total:
+        s.next_action = (f"Analyze the remaining "
+                         f"{_plural(total - analyzed, 'episode')} "
+                         "(Automated coding → Analyze).")
+    return s
+
+
+def _language_stage(root: Path | None, episodes: list[Path]) -> Stage:
+    """Speech and vocabulary, which some studies use on their own."""
+    s = Stage(
+        key="language",
+        name="Language",
+        subtitle="Speech rate and vocabulary",
+        explanation="Words per minute, speech density, and lexical complexity "
+                    "from captions or transcripts. English-only.",
+    )
+    total = len(episodes)
+    if total == 0:
+        s.status = BLOCKED
+        s.headline = "Nothing selected"
+        return s
+    with_speech = _count_with_speech(root, episodes)
+    s.status = _status_from_counts(with_speech, total)
+    s.headline = _pct(with_speech, total) + " with speech data"
+    s.details = [
+        ("Episodes with speech", _pct(with_speech, total)),
+        ("Source", "caption files, or Whisper when enabled"),
+        ("Language support", "English only"),
+    ]
+    if with_speech < total:
+        s.next_action = ("Episodes without captions have no speech data. Use "
+                         "Analyze → Transcribe Missing Subtitles, or enable "
+                         "Whisper in Settings.")
+    return s
+
+
+def _handcode_stage(key: str, name: str, subtitle: str, explanation: str,
+                    coded: int, total: int, codebook: str) -> Stage:
+    """One human-coding track. Deliberately independent of the machine pass.
+
+    Hand coding is a measurement in its own right, not a step on the way to
+    validating automation — a study can consist of nothing else.
+    """
+    s = Stage(key=key, name=name, subtitle=subtitle, explanation=explanation)
+    if total == 0:
+        s.status = BLOCKED
+        s.headline = "Nothing selected"
+        return s
+    s.status = _status_from_counts(coded, total)
+    s.headline = _pct(coded, total) + " coded"
+    s.details = [("Episodes coded", _pct(coded, total)),
+                 ("Codebook", codebook)]
+    if coded < total:
+        s.next_action = (f"{_plural(total - coded, 'episode')} still to code "
+                         "(Human coding → Code).")
+    elif coded >= 2:
+        s.next_action = ("Consider a second coder on at least one episode "
+                         "(Human coding → Agreement) to report reliability.")
+    return s
+
+
 def _validation_stage(trials: list[dict], coverage: dict | None) -> Stage:
     s = Stage(
         key="validation",
@@ -391,6 +511,40 @@ def _results_stage(root: Path | None, analyzed: int, trials: list[dict],
 # Discovery
 # ---------------------------------------------------------------------------
 
+def _all_stages(root, manifest, trial, episodes, analyzed, coverage,
+                trials, folder) -> list[Stage]:
+    """Every stage a pipeline can report on, in canonical order.
+
+    A document draws on whichever of these its nodes reference, so a
+    hand-coding-only study simply never looks at the automated ones.
+    """
+    hand = coverage.get("n_transition_coded", 0) if coverage else 0
+    events = coverage.get("n_event_coded", 0) if coverage else 0
+    total = len(episodes)
+    return [
+        _sampling_stage(manifest, trial),
+        _selection_stage(episodes, analyzed, coverage),
+        _automated_stage(episodes, analyzed, trials),
+        _language_stage(root, episodes),
+        _handcode_stage(
+            "handcode_transitions", "Hand-code transitions",
+            "Human-coded cuts and dissolves",
+            "A person logs every transition. A measurement in its own right — "
+            "it does not require the automated pass.",
+            hand, total, "validation/CODEBOOK.md"),
+        _handcode_stage(
+            "handcode_events", "Hand-code events",
+            "Human-coded fantastical events",
+            "A person logs fantastical events — the content variable the "
+            "current literature points to, and one no formal-features "
+            "measure can see.",
+            events, total, "validation/EVENT_CODEBOOK.md"),
+        _measurement_stage(episodes, analyzed, coverage, trials),
+        _validation_stage(trials, coverage),
+        _results_stage(root, analyzed, trials, folder),
+    ]
+
+
 def build_pipelines(
     root: Path | None = None,
     validation_dir: Path | None = None,
@@ -436,13 +590,8 @@ def build_pipelines(
             manifest_path=trial.get("manifest_path"),
             folder=folder,
             trials=mine,
-            stages=[
-                _sampling_stage(manifest, trial),
-                _selection_stage(episodes, analyzed, coverage),
-                _measurement_stage(episodes, analyzed, coverage, mine),
-                _validation_stage(mine, coverage),
-                _results_stage(root, analyzed, mine, folder),
-            ],
+            stages=_all_stages(root, manifest, trial, episodes, analyzed,
+                               coverage, mine, folder),
         ))
 
     # Everything worked on outside a formal sample draw.
@@ -467,13 +616,9 @@ def build_pipelines(
             episode_count=len(stems),
             is_synthetic=True,
             trials=orphans,
-            stages=[
-                _sampling_stage(None, None),
-                _selection_stage(episodes, analyzed, coverage),
-                _measurement_stage(episodes, analyzed, coverage, orphans),
-                _validation_stage(orphans, coverage),
-                _results_stage(root, max(analyzed, len(coded)), orphans, None),
-            ],
+            stages=_all_stages(root, None, None, episodes,
+                               max(analyzed, len(coded)), coverage, orphans,
+                               None),
         ))
 
     return pipelines
@@ -485,13 +630,7 @@ def empty_pipeline() -> Pipeline:
     A new user opening CMAT for the first time should still see the shape of
     the workflow, with every stage explained — an empty screen teaches nothing.
     """
-    stages = [
-        _sampling_stage(None, None),
-        _selection_stage([], 0, None),
-        _measurement_stage([], 0, None, []),
-        _validation_stage([], None),
-        _results_stage(None, 0, [], None),
-    ]
+    stages = _all_stages(None, None, None, [], 0, None, [], None)
     stages[0].next_action = (
         "Start here: choose a root folder with your video files, then use "
         "File → Episode Sampler to draw a documented sample."

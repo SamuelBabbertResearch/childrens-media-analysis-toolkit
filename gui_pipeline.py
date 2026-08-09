@@ -40,7 +40,7 @@ from analyzer.pipeline import (
     BLOCKED, COMPLETE, PARTIAL, PENDING, build_pipelines,
 )
 from analyzer.pipeline_graph import (
-    NODE_TYPES, PipelineDoc, blank_doc, default_doc, delete_doc,
+    NODE_TYPES, TEMPLATES, PipelineDoc, blank_doc, default_doc, delete_doc,
     duplicate_doc, list_docs, node_type, save_doc, unique_name,
 )
 
@@ -99,6 +99,7 @@ class AquaButton(tk.Canvas):
                  width=None, tooltip: str = "", scale: float = 1.0) -> None:
         self._text, self._command = text, command
         self._pressed = self._disabled = False
+        self._scale = scale
         self._fnt = tkfont.Font(family=_family(parent), size=-int(11 * scale))
         w = width or (self._fnt.measure(text) + int(22 * scale))
         super().__init__(parent, width=w, height=int(20 * scale),
@@ -112,6 +113,13 @@ class AquaButton(tk.Canvas):
         self.bind("<FocusOut>", lambda _e: self._paint())
         if tooltip:
             _Tip(self, tooltip)
+        self._paint()
+
+    def set_text(self, text: str) -> None:
+        """Relabel and resize. The width is measured from the label, so a
+        longer caption set after construction would otherwise be clipped."""
+        self._text = text
+        self.configure(width=self._fnt.measure(text) + int(22 * self._scale))
         self._paint()
 
     def set_enabled(self, on: bool) -> None:
@@ -556,6 +564,17 @@ class PipelineView(tk.Frame):
         self._draw()
         self._show_inspector()
 
+    def select_document(self, doc_id: str) -> bool:
+        """Bring a document to the front by id. Used after the welcome screen."""
+        self.refresh()
+        for i, d in enumerate(self._docs):
+            if d.id == doc_id:
+                self._doc_cb.current(i)
+                self._on_doc_selected()
+                self.after(40, self.fit_to_view)
+                return True
+        return False
+
     def _rebind_derived(self) -> None:
         """Bind the open document to the sample whose status it reports.
 
@@ -635,9 +654,12 @@ class PipelineView(tk.Frame):
 
     def _show_manage_menu(self) -> None:
         m = tk.Menu(self, tearoff=0)
+        presets = tk.Menu(m, tearoff=0)
+        for t in TEMPLATES:
+            presets.add_command(label=t.name,
+                                command=lambda k=t.key: self._new_from_template(k))
+        m.add_cascade(label="New Pipeline from preset", menu=presets)
         m.add_command(label="New Pipeline...", command=self._new_doc)
-        m.add_command(label="New from Standard Stages...",
-                      command=lambda: self._new_doc(standard=True))
         m.add_separator()
         m.add_command(label="Link to Episode Sample...",
                       command=self._choose_source)
@@ -667,6 +689,18 @@ class PipelineView(tk.Frame):
     def _root(self):
         return getattr(self._app, "_root_folder", None) if self._app else None
 
+    def _new_from_template(self, key: str) -> None:
+        from analyzer.pipeline_graph import template
+        t = template(key)
+        name = simpledialog.askstring(
+            "New Pipeline", f"Name for the new “{t.name}” pipeline:",
+            parent=self,
+            initialvalue=unique_name([d.name for d in self._docs], t.name))
+        if not name or not name.strip():
+            return
+        self._adopt(t.build(unique_name([d.name for d in self._docs],
+                                        name.strip())))
+
     def _new_doc(self, standard: bool = False) -> None:
         name = simpledialog.askstring(
             "New Pipeline", "Name for the new pipeline:", parent=self,
@@ -674,10 +708,13 @@ class PipelineView(tk.Frame):
         if not name or not name.strip():
             return
         name = unique_name([d.name for d in self._docs], name.strip())
-        doc = default_doc(name) if standard else blank_doc(name)
+        self._adopt(default_doc(name) if standard else blank_doc(name))
+
+    def _adopt(self, doc) -> None:
+        """Save a freshly created pipeline and make it the open one."""
         try:
             save_doc(doc, self._root())
-        except Exception as exc:
+        except Exception as exc:                        # noqa: BLE001
             messagebox.showerror("Could not save", str(exc), parent=self)
             return
         self._docs.insert(0, doc)
@@ -1425,6 +1462,26 @@ def _icon(c: tk.Canvas, kind: str, cx: float, cy: float, r: float,
                       width=w * 1.6, tags="gfx")
         c.create_line(cx - r * .1, cy + r * .42, cx + r * .5, cy - r * .45,
                       fill=color, width=w * 1.6, tags="gfx")
+    elif kind == "language":                     # speech bubble with a line
+        c.create_oval(cx - r, cy - r * .85, cx + r, cy + r * .5,
+                      outline=color, width=w, tags="gfx")
+        c.create_polygon(cx - r * .35, cy + r * .4, cx - r * .05, cy + r * .4,
+                         cx - r * .45, cy + r, fill=color, outline=color,
+                         tags="gfx")
+        c.create_line(cx - r * .45, cy - r * .2, cx + r * .45, cy - r * .2,
+                      fill=color, tags="gfx")
+    elif kind == "handcode":                     # pencil on a ruled sheet
+        c.create_rectangle(cx - r, cy - r * .8, cx + r * .25, cy + r * .9,
+                           outline=color, width=w, tags="gfx")
+        for i in range(2):
+            yy = cy - r * .3 + i * r * .5
+            c.create_line(cx - r * .7, yy, cx - r * .05, yy, fill=color,
+                          tags="gfx")
+        c.create_line(cx + r * .35, cy + r * .8, cx + r * 1.05, cy - r * .5,
+                      fill=color, width=w * 1.6, tags="gfx")
+        c.create_polygon(cx + r * .25, cy + r, cx + r * .5, cy + r * .85,
+                         cx + r * .3, cy + r * .72, fill=color, outline=color,
+                         tags="gfx")
     elif kind == "export":
         c.create_rectangle(cx - r * .8, cy - r * .3, cx + r * .8, cy + r,
                            outline=color, width=w, tags="gfx")
@@ -1463,12 +1520,24 @@ def _blend(c1: str, c2: str, t: float) -> str:
 
 
 def _corner_inset(dy: float, r: float) -> float:
-    if dy >= r or r <= 0:
+    """Horizontal inset of the rounded corner at vertical distance *dy*.
+
+    dy is clamped to [0, r]: a widget that has not been mapped yet reports a
+    height of 1, which makes the caller pass a negative dy, and a negative
+    value under ** 0.5 returns a COMPLEX number in Python rather than raising —
+    which then blows up on the next comparison.
+    """
+    if r <= 0:
         return 0.0
-    return r - (r * r - (r - dy) * (r - dy)) ** 0.5
+    dy = min(max(dy, 0.0), r)
+    inner = max(r * r - (r - dy) * (r - dy), 0.0)
+    return r - inner ** 0.5
 
 
 def _grad_round(canvas, x0, y0, x1, y1, r, top, bottom, tags=None) -> None:
+    if x1 <= x0 or y1 <= y0:            # degenerate box: nothing to draw
+        return
+    r = max(0.0, min(r, (y1 - y0) / 2, (x1 - x0) / 2))
     h = max(1.0, y1 - y0)
     steps = max(6, int(min(h, 48)))
     kw = {"tags": tags} if tags else {}

@@ -284,12 +284,11 @@ class App(tk.Tk):
         # F1 is the Windows convention for "explain this program".
         self.bind_all("<F1>", lambda _e: self._open_pipeline_window())
 
-        # The pipeline window is only meaningful once there is a library to
-        # report on. With no root folder it would show another project's
-        # numbers, so a first-time user gets the Library's getting-started
-        # panel instead. Suppressible from inside the window either way.
-        if self._cfg.get("show_pipeline_on_start", True) and self._root_folder:
-            self.after(400, self._open_pipeline_window)
+        # First question, not first diagram: ask how the tool is going to be
+        # used and route from the answer. Shown after the main window is
+        # mapped so it does not lose the initial focus race.
+        if self._cfg.get("show_welcome_on_start", True):
+            self.after(350, self._open_welcome)
 
     # -----------------------------------------------------------------------
     # UI construction
@@ -2619,6 +2618,62 @@ class App(tk.Tk):
     def _open_measurement_settings(self) -> None:
         from gui_measurements import MeasurementsDialog
         MeasurementsDialog(self)
+
+    def _open_welcome(self) -> None:
+        """Ask what the user is here to do, then route to it."""
+        from gui_welcome import WelcomeWindow
+        WelcomeWindow(self, on_done=self._on_welcome_done)
+
+    def _on_welcome_done(self, choice: str | None, doc) -> None:
+        """Act on the welcome choice.
+
+        Both routes need a library, so anyone without one lands on Library
+        with the getting-started panel. Cancelling changes nothing.
+        """
+        if choice is None:
+            return
+        if not self._root_folder:
+            try:
+                self._left_nb.select(1)                  # Library
+            except Exception:
+                pass
+            if choice == "pipeline" and doc is not None:
+                self._status_var.set(
+                    f"Pipeline “{doc.name}” created. Choose a media folder to "
+                    "start filling it in.")
+            else:
+                self._status_var.set(
+                    "Choose a media folder to begin — see Getting started.")
+            self._choose_folder()
+            if not self._root_folder:
+                return
+
+        if choice == "explore":
+            try:
+                self._left_nb.select(1)                  # Library
+            except Exception:
+                pass
+            self._status_var.set(
+                "Pick a show or episode, then Automated coding → Analyze "
+                "Episode.")
+            return
+
+        # Pipeline route: adopt the new document and show it.
+        self._refresh_pipeline()
+        view = getattr(self, "_pipeline_view", None)
+        if view is not None and doc is not None:
+            try:
+                view.select_document(doc.id)
+            except Exception:
+                pass
+        try:
+            self._left_nb.select(0)                      # Pipeline
+        except Exception:
+            pass
+        if doc is not None:
+            self._status_var.set(
+                f"Pipeline “{doc.name}” created. Link it to an episode sample "
+                "from Manage ▾ to show live progress.")
 
     def _open_pipeline_window(self) -> None:
         """Open (or re-focus) the standalone pipeline window."""

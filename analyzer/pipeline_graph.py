@@ -56,12 +56,31 @@ NODE_TYPES: dict[str, NodeType] = {
     "selection": NodeType(
         "selection", "Selection", "Working set and tracks", "selection",
         stage_key="selection"),
+    # The two measurement tracks are separate node types on purpose. A study
+    # may use either alone: hand coding is a measurement in its own right, not
+    # a step towards validating automation, and language work often needs no
+    # automated sensory pass at all.
+    "automated": NodeType(
+        "automated", "Automated coding", "Machine-measured features",
+        "measurement", stage_key="automated"),
+    "language": NodeType(
+        "language", "Language", "Speech rate and vocabulary", "language",
+        stage_key="language"),
+    "handcode_transitions": NodeType(
+        "handcode_transitions", "Hand-code transitions",
+        "Human-coded cuts and dissolves", "handcode",
+        stage_key="handcode_transitions"),
+    "handcode_events": NodeType(
+        "handcode_events", "Hand-code events",
+        "Human-coded fantastical events", "handcode",
+        stage_key="handcode_events"),
+    # Kept so pipelines saved before the split still load.
     "measurement": NodeType(
-        "measurement", "Measurement", "Metrics and hand coding", "measurement",
-        stage_key="measurement"),
+        "measurement", "Measurement (combined)", "Metrics and hand coding",
+        "measurement", stage_key="measurement"),
     "validation": NodeType(
-        "validation", "Validation", "Graded against humans", "validation",
-        stage_key="validation"),
+        "validation", "Validation", "Tool vs. human coding", "validation",
+        stage_key="validation", inputs=2),
     "results": NodeType(
         "results", "Results", "Outputs and locations", "results",
         stage_key="results", outputs=1),
@@ -71,7 +90,115 @@ NODE_TYPES: dict[str, NodeType] = {
         "note", "Note", "Free-text annotation", "note", inputs=0, outputs=0),
 }
 
-DEFAULT_CHAIN = ["sampling", "selection", "measurement", "validation", "results"]
+DEFAULT_CHAIN = ["sampling", "selection", "automated", "validation", "results"]
+
+
+# --- workflow presets --------------------------------------------------------
+# A preset is a starting layout, not a constraint: every node can be added,
+# removed, rewired, or repositioned afterwards. They exist because the five
+# stages in a row implied one narrow study design, and most users have another.
+
+@dataclass(frozen=True)
+class Template:
+    key: str
+    name: str
+    summary: str
+    detail: str
+    nodes: tuple[tuple[str, float, float], ...]      # (type, x, y)
+    edges: tuple[tuple[int, int], ...]               # indices into nodes
+
+    def build(self, name: str | None = None) -> "PipelineDoc":
+        doc = PipelineDoc(id=_new_id("p"), name=name or self.name)
+        made = [doc.add_node(t, x, y) for t, x, y in self.nodes]
+        for a, b in self.edges:
+            doc.connect(made[a].id, made[b].id)
+        return doc
+
+
+_R = 250.0          # horizontal step between stages
+_TOP, _MID, _BOT = 40.0, 150.0, 260.0
+
+TEMPLATES: tuple[Template, ...] = (
+    Template(
+        "full", "Full study",
+        "Automated measures and hand coding, with validation",
+        "Samples episodes, measures them automatically, hand-codes the same "
+        "episodes, then grades the tool against the human coding. Use this "
+        "when you intend to report an error rate for the automated measures.",
+        (("sampling", 40, _MID), ("selection", 40 + _R, _MID),
+         ("automated", 40 + 2 * _R, _TOP),
+         ("handcode_transitions", 40 + 2 * _R, _BOT),
+         ("validation", 40 + 3 * _R, _MID), ("results", 40 + 4 * _R, _MID)),
+        ((0, 1), (1, 2), (1, 3), (2, 4), (3, 4), (4, 5)),
+    ),
+    Template(
+        "automated", "Automated only",
+        "Machine measures, no hand coding",
+        "Samples episodes and runs the automated pass. Fastest route to "
+        "pacing, colour, motion, flashing, and audio across a corpus. No "
+        "validation stage, because there is no human coding to compare with.",
+        (("sampling", 40, _MID), ("selection", 40 + _R, _MID),
+         ("automated", 40 + 2 * _R, _MID), ("results", 40 + 3 * _R, _MID)),
+        ((0, 1), (1, 2), (2, 3)),
+    ),
+    Template(
+        "handcoding", "Hand coding only",
+        "Human coding as the measurement",
+        "Samples episodes and codes them by hand — transitions, fantastical "
+        "events, or both. Nothing here is validated against automation, "
+        "because the human coding IS the measurement.",
+        (("sampling", 40, _MID), ("selection", 40 + _R, _MID),
+         ("handcode_transitions", 40 + 2 * _R, _TOP),
+         ("handcode_events", 40 + 2 * _R, _BOT),
+         ("results", 40 + 3 * _R, _MID)),
+        ((0, 1), (1, 2), (1, 3), (2, 4), (3, 4)),
+    ),
+    Template(
+        "language", "Language only",
+        "Speech rate and vocabulary",
+        "Selects episodes and analyses dialogue: words per minute, speech "
+        "density, and lexical complexity from captions or transcripts. No "
+        "sensory measures. English-only.",
+        (("selection", 40, _MID), ("language", 40 + _R, _MID),
+         ("results", 40 + 2 * _R, _MID)),
+        ((0, 1), (1, 2)),
+    ),
+    Template(
+        "mixed", "Mixed methods",
+        "Hand-code transitions, automate language",
+        "A worked example of mixing tracks: transitions coded by a person, "
+        "dialogue measured automatically. Any combination of tracks is "
+        "possible — this one is just a starting point.",
+        (("sampling", 40, _MID), ("selection", 40 + _R, _MID),
+         ("handcode_transitions", 40 + 2 * _R, _TOP),
+         ("language", 40 + 2 * _R, _BOT),
+         ("results", 40 + 3 * _R, _MID)),
+        ((0, 1), (1, 2), (1, 3), (2, 4), (3, 4)),
+    ),
+    Template(
+        "validation", "Validation study",
+        "Grade the tool against a human coder",
+        "For calibrating the detector rather than studying shows. Runs the "
+        "automated pass and hand coding on the same episodes and compares "
+        "them. Report accuracy on held-out episodes, not the ones you tuned on.",
+        (("selection", 40, _MID),
+         ("automated", 40 + _R, _TOP),
+         ("handcode_transitions", 40 + _R, _BOT),
+         ("validation", 40 + 2 * _R, _MID), ("results", 40 + 3 * _R, _MID)),
+        ((0, 1), (0, 2), (1, 3), (2, 3), (3, 4)),
+    ),
+    Template(
+        "blank", "Blank canvas",
+        "Start with nothing and build your own",
+        "An empty canvas. Add stages from the Add menu and wire them up "
+        "however your study actually works.",
+        (), (),
+    ),
+)
+
+
+def template(key: str) -> Template:
+    return next((t for t in TEMPLATES if t.key == key), TEMPLATES[-1])
 
 
 def node_type(key: str) -> NodeType:
@@ -260,16 +387,9 @@ class PipelineDoc:
 
 def default_doc(name: str = "New Pipeline",
                 source_key: str | None = None) -> PipelineDoc:
-    """A blank pipeline seeded with the standard chain as ordinary nodes."""
-    doc = PipelineDoc(id=_new_id("p"), name=name, source_key=source_key)
-    x, y, step = 60.0, 120.0, 250.0
-    prev: GraphNode | None = None
-    for key in DEFAULT_CHAIN:
-        n = doc.add_node(key, x, y)
-        if prev:
-            doc.connect(prev.id, n.id)
-        prev = n
-        x += step
+    """A pipeline seeded from the full-study preset, as ordinary nodes."""
+    doc = template("full").build(name)
+    doc.source_key = source_key
     return doc
 
 

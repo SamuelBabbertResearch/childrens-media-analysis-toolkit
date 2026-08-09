@@ -24,11 +24,22 @@ def doc():
 # Structure
 # ---------------------------------------------------------------------------
 
-def test_default_doc_is_a_connected_chain(doc):
-    assert [n.type for n in doc.nodes] == G.DEFAULT_CHAIN
-    assert len(doc.connections) == len(G.DEFAULT_CHAIN) - 1
-    for a, b in zip(doc.nodes, doc.nodes[1:]):
-        assert doc.has_connection(a.id, b.id)
+def test_default_doc_branches_into_both_measurement_tracks(doc):
+    """The default is a full study: machine and human tracks run in parallel.
+
+    It is deliberately NOT a straight line — collapsing both tracks into one
+    box is what made every other study design awkward to express.
+    """
+    types = [n.type for n in doc.nodes]
+    assert "automated" in types
+    assert "handcode_transitions" in types
+    assert "validation" in types
+    selection = next(n for n in doc.nodes if n.type == "selection")
+    downstream = [c.dst for c in doc.connections if c.src == selection.id]
+    assert len(downstream) == 2, "selection feeds both tracks"
+    validation = next(n for n in doc.nodes if n.type == "validation")
+    into_validation = [c.src for c in doc.connections if c.dst == validation.id]
+    assert len(into_validation) == 2, "validation compares the two tracks"
 
 
 def test_blank_doc_is_empty_but_valid():
@@ -43,6 +54,69 @@ def test_stages_are_ordinary_nodes_not_special_cases(doc):
     doc.remove_node(first.id)
     assert all(n.id != first.id for n in doc.nodes)
     assert all(first.id not in (c.src, c.dst) for c in doc.connections)
+
+
+# ---------------------------------------------------------------------------
+# Workflow presets
+# ---------------------------------------------------------------------------
+
+def test_every_template_builds_a_valid_graph():
+    for t in G.TEMPLATES:
+        doc = t.build()
+        ids = {n.id for n in doc.nodes}
+        assert len(ids) == len(doc.nodes), "node ids are unique"
+        for c in doc.connections:
+            assert c.src in ids and c.dst in ids
+        assert t.name and t.summary and t.detail
+
+
+def test_hand_coding_preset_has_no_validation():
+    """Hand coding is a measurement, not a step towards validating the tool.
+
+    A study that only codes by hand has nothing to validate against, so the
+    preset must not imply otherwise.
+    """
+    doc = G.template("handcoding").build()
+    types = [n.type for n in doc.nodes]
+    assert "validation" not in types
+    assert "automated" not in types
+    assert "handcode_transitions" in types and "handcode_events" in types
+
+
+def test_language_preset_skips_the_sensory_pass():
+    doc = G.template("language").build()
+    types = [n.type for n in doc.nodes]
+    assert types.count("language") == 1
+    assert "automated" not in types and "validation" not in types
+
+
+def test_mixed_preset_combines_tracks():
+    """The point of splitting the tracks: hand-code one thing, automate another."""
+    doc = G.template("mixed").build()
+    types = [n.type for n in doc.nodes]
+    assert "handcode_transitions" in types
+    assert "language" in types
+
+
+def test_blank_preset_is_empty():
+    doc = G.template("blank").build()
+    assert doc.nodes == [] and doc.connections == []
+
+
+def test_unknown_template_falls_back_to_blank():
+    assert G.template("nope").key == "blank"
+
+
+def test_templates_are_editable_after_creation():
+    """Presets are starting points, not modes."""
+    doc = G.template("automated").build()
+    before = len(doc.nodes)
+    added = doc.add_node("handcode_events", 500, 500)
+    assert doc.connect(doc.nodes[1].id, added.id) is not None
+    first = doc.nodes[0].id
+    doc.remove_node(first)
+    assert len(doc.nodes) == before          # one added, one removed
+    assert all(n.id != first for n in doc.nodes)
 
 
 def test_new_node_types_need_no_ui_change():
@@ -180,12 +254,14 @@ def test_names_with_path_characters_do_not_escape_the_folder(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_snapshot_restores_nodes_and_edges(doc):
+    before_types = [n.type for n in doc.nodes]
+    before_edges = len(doc.connections)
     snap = doc.snapshot()
     doc.remove_node(doc.nodes[0].id)
     doc.add_node("note", 10, 10)
     doc.restore(snap)
-    assert [n.type for n in doc.nodes] == G.DEFAULT_CHAIN
-    assert len(doc.connections) == len(G.DEFAULT_CHAIN) - 1
+    assert [n.type for n in doc.nodes] == before_types
+    assert len(doc.connections) == before_edges
 
 
 def test_snapshot_ignores_view_state(doc):
