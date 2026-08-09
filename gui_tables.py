@@ -263,3 +263,91 @@ class WikiTable(tk.Frame):
         """
         text.window_create(tk.END, window=self, padx=4, pady=4)
         text.insert(tk.END, "\n")
+
+
+# ---------------------------------------------------------------------------
+# Status badges
+# ---------------------------------------------------------------------------
+
+BADGE_STYLES = {
+    "ready":    ("badge_ready_bg", "badge_ready_fg"),
+    "analyzed": ("badge_analyzed_bg", "badge_analyzed_fg"),
+    "none":     ("badge_none_bg", "badge_none_fg"),
+}
+
+
+class Badge(tk.Label):
+    """A small pill showing the state of the WORK on an item.
+
+    Deliberately limited to workflow state — analyzed, coded, not yet
+    measured. A badge is the most eye-catching thing in a panel, so it must
+    never carry a property of the programme itself: "Analyzed" means a
+    measurement exists, not that the measurement found anything good.
+    """
+
+    def __init__(self, parent, text: str, kind: str = "none", **kw) -> None:
+        bg_token, fg_token = BADGE_STYLES.get(kind, BADGE_STYLES["none"])
+        super().__init__(parent, text=f" {text} ", bg=color(bg_token),
+                         fg=color(fg_token), font=font(parent, "small", bold=True),
+                         padx=int(round(4 * dpi_scale(parent))), **kw)
+
+
+class InfoboxPanel(tk.Frame):
+    """MediaWiki-style key/value inspector: shaded key column, boxed values.
+
+    Values may be plain strings or (text, badge_kind) pairs, which render as a
+    pill instead of text.
+    """
+
+    def __init__(self, parent, title: str = "", **kw) -> None:
+        super().__init__(parent, bg=color("mw_subtle_bg"),
+                         highlightthickness=1,
+                         highlightbackground=color("mw_border"), **kw)
+        s = dpi_scale(self)
+        self._pad = int(round(5 * s))
+
+        self._title = tk.Label(
+            self, text=title or "Nothing selected", bg=color("mw_header_bg"),
+            fg=color("text"), font=font(self, "heading", bold=True),
+            pady=int(round(3 * s)), highlightthickness=1,
+            highlightbackground=color("mw_border"))
+        self._title.pack(fill=tk.X, padx=self._pad, pady=(self._pad, self._pad))
+
+        self._rows = tk.Frame(self, bg=color("mw_subtle_bg"))
+        self._rows.pack(fill=tk.BOTH, expand=True,
+                        padx=self._pad, pady=(0, self._pad))
+        self._rows.columnconfigure(1, weight=1)
+        self._widgets: list[tk.Widget] = []
+
+    def set_rows(self, title: str, pairs) -> None:
+        """Replace the contents. pairs is [(key, value_or_(text, badge_kind))]."""
+        self._title.configure(text=title or "Nothing selected")
+        for w in self._widgets:
+            w.destroy()
+        self._widgets.clear()
+
+        for i, (key, value) in enumerate(pairs):
+            k = tk.Label(self._rows, text=key, bg=color("mw_label_bg"),
+                         fg=color("text"), font=font(self, "body", bold=True),
+                         anchor="w", padx=self._pad, pady=int(self._pad * 0.6),
+                         highlightthickness=1,
+                         highlightbackground=color("mw_border"))
+            k.grid(row=i, column=0, sticky="nsew")
+
+            if isinstance(value, tuple):
+                holder = tk.Frame(self._rows, bg=color("mw_bg"),
+                                  highlightthickness=1,
+                                  highlightbackground=color("mw_border"))
+                Badge(holder, value[0], value[1]).pack(
+                    anchor="w", padx=self._pad, pady=int(self._pad * 0.5))
+                holder.grid(row=i, column=1, sticky="nsew")
+                self._widgets.append(holder)
+            else:
+                v = tk.Label(self._rows, text=str(value), bg=color("mw_bg"),
+                             fg=color("text"), font=font(self, "body"),
+                             anchor="w", justify="left", padx=self._pad,
+                             pady=int(self._pad * 0.6), highlightthickness=1,
+                             highlightbackground=color("mw_border"))
+                v.grid(row=i, column=1, sticky="nsew")
+                self._widgets.append(v)
+            self._widgets.append(k)

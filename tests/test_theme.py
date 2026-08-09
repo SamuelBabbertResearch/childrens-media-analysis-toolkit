@@ -108,12 +108,25 @@ def test_body_type_is_not_the_units_error(root):
 # ---------------------------------------------------------------------------
 
 def test_no_token_names_a_judgement():
-    """CMAT measures the stimulus; the palette must not imply a rating."""
-    forbidden = ("good", "bad", "safe", "unsafe", "harm", "risk",
-                 "appropriate", "suitable", "age_", "educational", "quality")
+    """CMAT measures the stimulus; the palette must not imply a rating.
+
+    Matches whole underscore-separated words, not substrings — "bad" is
+    inside "badge", and a check that cannot tell those apart is a check
+    nobody will trust for long.
+    """
+    forbidden = {"good", "bad", "safe", "unsafe", "harm", "harmful", "risk",
+                 "risky", "appropriate", "inappropriate", "suitable", "age",
+                 "ages", "educational", "quality", "rating", "verdict"}
     offenders = [k for k in T.COLORS
-                 if any(word in k.lower() for word in forbidden)]
+                 if forbidden & set(k.lower().split("_"))]
     assert offenders == [], f"verdict-flavoured tokens: {offenders}"
+
+
+def test_the_judgement_check_is_not_fooled_by_substrings():
+    """Guards the guard: 'badge' must not read as 'bad'."""
+    forbidden = {"bad", "age"}
+    assert not (forbidden & set("badge_ready_bg".split("_")))
+    assert forbidden & set("bad_idea_bg".split("_"))
 
 
 def test_emphasis_defaults_to_weight_not_colour(root):

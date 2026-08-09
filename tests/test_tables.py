@@ -148,6 +148,67 @@ def test_failed_rows_are_flagged_not_dropped(root):
     assert len(t.tree.get_children()) == 2
 
 
+# ---------------------------------------------------------------------------
+# Infobox and badges
+# ---------------------------------------------------------------------------
+
+def test_infobox_renders_key_value_pairs(root):
+    p = G.InfoboxPanel(root, "Ep 1")
+    p.set_rows("Ep 1", [("Series", "Little Bear"), ("Duration", "11:45")])
+    assert len(p._widgets) == 4          # a key and a value per row
+
+
+def test_infobox_replaces_rather_than_appends(root):
+    p = G.InfoboxPanel(root)
+    p.set_rows("A", [("k", "v")])
+    p.set_rows("B", [("k", "v"), ("k2", "v2")])
+    assert len(p._widgets) == 4
+    assert p._title.cget("text") == "B"
+
+
+def test_infobox_shows_a_placeholder_when_empty(root):
+    p = G.InfoboxPanel(root)
+    p.set_rows("", [])
+    assert "nothing selected" in p._title.cget("text").lower()
+
+
+def test_badge_value_renders_as_a_pill(root):
+    p = G.InfoboxPanel(root)
+    p.set_rows("Ep", [("Automated", ("Analyzed", "analyzed"))])
+    pills = [w for w in p._widgets
+             if isinstance(w, tk.Frame)
+             for c in w.winfo_children() if isinstance(c, G.Badge)]
+    assert pills, "a (text, kind) value must render as a Badge"
+
+
+def test_badge_kinds_are_visually_distinct(root):
+    ready = G.Badge(root, "Ready", "ready")
+    analyzed = G.Badge(root, "Analyzed", "analyzed")
+    assert ready.cget("background") != analyzed.cget("background")
+
+
+def test_unknown_badge_kind_degrades_quietly(root):
+    b = G.Badge(root, "Whatever", "not_a_kind")
+    assert b.cget("background") == __import__("gui_theme").color("badge_none_bg")
+
+
+def test_badges_describe_work_state_not_the_programme():
+    """A badge is the loudest thing in a panel; it must not carry a verdict."""
+    forbidden = ("good", "bad", "safe", "age", "suitable", "educational",
+                 "quality", "recommend")
+    for kind, (bg, fg) in G.BADGE_STYLES.items():
+        assert not any(w in kind.lower() for w in forbidden)
+
+
+def test_data_table_selection_keeps_numbers_readable(root):
+    """White-on-blue is right for a list, wrong for a table of figures."""
+    import gui_theme as T
+    style = T.apply_theme(root)
+    fg = dict(style.map("CMAT.Treeview", "foreground"))
+    assert fg["selected"] == T.color("text")
+    assert fg["selected"] != T.color("text_on_accent")
+
+
 def test_sorting_toggles_and_orders_numerically(root):
     cols = [G.Column("v", "Value", numeric=True, fmt="{:.0f}")]
     t = G.WikiTable(root, cols, emphasis=False)

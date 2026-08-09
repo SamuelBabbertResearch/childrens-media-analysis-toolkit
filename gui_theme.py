@@ -92,8 +92,23 @@ COLORS: dict[str, str] = {
     "mw_bg":        "#ffffff",
     "mw_subtle_bg": "#f8f9fa",
     "mw_header_bg": "#eaecf0",
+    "mw_label_bg":  "#f2f2f2",   # infobox key column
     "mw_border":    "#a2a9b1",
     "mw_row_line":  "#eaecf0",
+    # Selection inside a DATA table is a light wash, not the accent fill.
+    # White-on-blue is right for picking one item from a list; in a numeric
+    # table it destroys the contrast the numbers are read with.
+    "row_selected_bg": "#e8f2ff",
+
+    # --- status badges ------------------------------------------------------
+    # State of the WORK, never a property of the programme. "Analyzed" says a
+    # measurement exists; it says nothing about what the measurement found.
+    "badge_ready_bg":    "#e6f4ea",
+    "badge_ready_fg":    "#137333",
+    "badge_analyzed_bg": "#e8f0fe",
+    "badge_analyzed_fg": "#1a73e8",
+    "badge_none_bg":     "#f0f1f3",
+    "badge_none_fg":     "#54595d",
 
     # --- callouts (ambox) ---------------------------------------------------
     "info_bg":     "#f0f6ff",
@@ -319,8 +334,8 @@ def apply_theme(root: tk.Misc) -> ttk.Style:
     )
     style.map(
         "CMAT.Treeview",
-        background=[("selected", color("accent"))],
-        foreground=[("selected", color("text_on_accent"))],
+        background=[("selected", color("row_selected_bg"))],
+        foreground=[("selected", color("text"))],
     )
 
     # --- notebook ----------------------------------------------------------
