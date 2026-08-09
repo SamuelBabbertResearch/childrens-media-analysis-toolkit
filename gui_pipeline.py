@@ -45,22 +45,30 @@ from analyzer.pipeline_graph import (
 )
 
 # --- palette -----------------------------------------------------------------
-CHROME_TOP, CHROME_BOT, CHROME_LINE = "#f4f5f7", "#dcdee2", "#a8abb1"
-SURFACE_TOP, SURFACE_BOT = "#fbfbfc", "#eef0f3"
-GRID_DOT = "#d7dade"
-INSPECTOR_BG, FOOTER_BG = "#f6f7f8", "#e8eaed"
+# Defined once in gui_theme; aliased here so the drawing code stays readable.
+from gui_theme import color as _c
 
-TEXT, TEXT_DIM, TEXT_FAINT, HAIRLINE = "#2b2d30", "#6b6f75", "#8d9198", "#c8cbd0"
+CHROME_TOP, CHROME_BOT, CHROME_LINE = (_c("chrome_top"), _c("chrome_bottom"),
+                                       _c("chrome_line"))
+SURFACE_TOP, SURFACE_BOT = _c("surface_top"), _c("surface_bottom")
+GRID_DOT = _c("grid_dot")
+INSPECTOR_BG, FOOTER_BG = _c("inspector_bg"), _c("footer_bg")
 
-NODE_TOP, NODE_BOT, NODE_BORDER = "#ffffff", "#e7e9ec", "#a6a9af"
-NODE_GLOSS, NODE_SHADOW = "#ffffff", "#c2c5ca"
-HOV_TOP, HOV_BOT = "#ffffff", "#eef0f3"
-SEL_TOP, SEL_BOT, SEL_BORDER, SEL_GLOW = "#f6faff", "#dbe8f8", "#3f76bd", "#a9c8ea"
+TEXT, TEXT_DIM = _c("text"), _c("text_dim")
+TEXT_FAINT, HAIRLINE = _c("text_faint"), _c("hairline")
 
-WIRE, WIRE_HOT, PORT, PORT_HOT = "#9296a0", "#3f76bd", "#b7bbc2", "#3f76bd"
+NODE_TOP, NODE_BOT, NODE_BORDER = (_c("panel_bg"), "#e7e9ec",
+                                   _c("control_border"))
+NODE_GLOSS, NODE_SHADOW = _c("control_gloss"), _c("control_shadow")
+HOV_TOP, HOV_BOT = _c("panel_bg"), _c("surface_bottom")
+SEL_TOP, SEL_BOT = _c("accent_fill_top"), _c("accent_fill_bottom")
+SEL_BORDER, SEL_GLOW = _c("accent"), _c("accent_glow")
 
-STATUS_COLOR = {COMPLETE: "#3c7a36", PARTIAL: "#9a6714",
-                PENDING: "#767b82", BLOCKED: "#8c3a36"}
+WIRE, WIRE_HOT = "#9296a0", _c("accent")
+PORT, PORT_HOT = "#b7bbc2", _c("accent")
+
+STATUS_COLOR = {COMPLETE: _c("status_complete"), PARTIAL: _c("status_partial"),
+                PENDING: _c("status_pending"), BLOCKED: _c("status_blocked")}
 STATUS_GLYPH = {COMPLETE: "✓", PARTIAL: "▸", PENDING: "·", BLOCKED: "×"}
 
 MIN_ZOOM, MAX_ZOOM = 0.3, 3.0
@@ -227,6 +235,7 @@ class PipelineView(tk.Frame):
         self._undo: list[dict] = []
         self._redo: list[dict] = []
         self._prop_rows: list[tk.Widget] = []
+        self._inspector_flush = None
         self._dirty = False
         self._save_job: str | None = None
 
@@ -266,7 +275,7 @@ class PipelineView(tk.Frame):
 
         self._insp = tk.Frame(self._pane, bg=INSPECTOR_BG)
         self._pane.add(self._insp, minsize=self._s(60),
-                       height=self._s(150), stretch="never")
+                       height=self._s(240), stretch="never")
         self._build_inspector(self._insp)
 
         self._bind_canvas()
@@ -322,8 +331,11 @@ class PipelineView(tk.Frame):
 
         ToolSeparator(left, CHROME_BOT, sc).pack(side=tk.LEFT)
 
-        AquaButton(left, "Add ▾", self._show_add_menu, bg=CHROME_BOT, scale=sc,
-                   tooltip="Add a stage node").pack(side=tk.LEFT)
+        self._btn_add = AquaButton(
+            left, "Add ▾", self._show_add_menu, bg=CHROME_BOT, scale=sc,
+            tooltip="Add a stage node",
+        )
+        self._btn_add.pack(side=tk.LEFT)
         self._btn_del = AquaButton(left, "Delete", self._delete_selection,
                                    bg=CHROME_BOT, scale=sc,
                                    tooltip="Delete selection (Del)")
@@ -698,7 +710,7 @@ class PipelineView(tk.Frame):
         for t in NODE_TYPES.values():
             m.add_command(label=t.name,
                           command=lambda k=t.key: self._add_node(k))
-        self._popup(m, self.nametowidget(self._btn_manage.winfo_parent()))
+        self._popup(m, self._btn_add)
 
     def _popup(self, menu: tk.Menu, near: tk.Widget) -> None:
         try:
@@ -824,7 +836,7 @@ class PipelineView(tk.Frame):
         self._sel &= {n.id for n in self._doc.nodes}
         self._sync_doc_list()
         self._draw()
-        self._show_inspector()
+        self._show_inspector(flush=False)
         self._touch(save_only=True)
 
     def redo(self) -> None:
@@ -835,7 +847,7 @@ class PipelineView(tk.Frame):
         self._sel &= {n.id for n in self._doc.nodes}
         self._sync_doc_list()
         self._draw()
-        self._show_inspector()
+        self._show_inspector(flush=False)
         self._touch(save_only=True)
 
     def _touch(self, save_only: bool = False) -> None:
@@ -956,10 +968,13 @@ class PipelineView(tk.Frame):
             return
         node = self._node_at(e.x, e.y)
         if node:
+            sel_changed = False
             if e.state & 0x0001:                      # Shift toggles
                 self._sel ^= {node.id}
+                sel_changed = True
             elif node.id not in self._sel:
                 self._sel = {node.id}
+                sel_changed = True
             self._drag = {
                 "moved": False,
                 "start": (e.x, e.y),
@@ -967,8 +982,9 @@ class PipelineView(tk.Frame):
                            for nid in self._sel if self._doc.node(nid)},
             }
             self._draw()
-            self._show_inspector()
-            self._sync_doc_list()
+            if sel_changed:
+                self._show_inspector()
+                self._sync_doc_list()
             return
         if e.state & 0x0001:
             self._marquee = (e.x, e.y, e.x, e.y)
@@ -1057,6 +1073,18 @@ class PipelineView(tk.Frame):
     def _on_double(self, e) -> None:
         node = self._node_at(e.x, e.y)
         if not node:
+            return
+        if node.type == "note":
+            if self._sel != {node.id}:
+                self._sel = {node.id}
+                self._draw()
+                self._show_inspector()
+            note_text = getattr(self, "_note_text", None)
+            if note_text is not None:
+                try:
+                    note_text.focus_set()
+                except tk.TclError:
+                    pass
             return
         name = simpledialog.askstring("Rename Node", "Node title:",
                                       parent=self, initialvalue=node.title)
@@ -1185,8 +1213,13 @@ class PipelineView(tk.Frame):
             # A user-set title can wrap to two or three lines, so the subtitle
             # starts below whatever the title actually occupied.
             title_bottom = (c.bbox(title) or (0, 0, 0, y0 + 22 * z))[3]
+            if n.type == "note":
+                body = str(n.config.get("text") or "").strip()
+                sub_text = body if body else t.description
+            else:
+                sub_text = t.description
             sub = c.create_text(x0 + pad, max(y0 + 29 * z, title_bottom + 3 * z),
-                                anchor="nw", text=t.description,
+                                anchor="nw", text=sub_text,
                                 font=_f(self, 11 * z), fill=TEXT_FAINT,
                                 width=avail, tags="gfx")
             bottom = (c.bbox(sub) or (0, 0, 0, y0 + 42 * z))[3]
@@ -1225,10 +1258,26 @@ class PipelineView(tk.Frame):
 
     # ---- inspector ----
 
-    def _show_inspector(self) -> None:
+    def _flush_inspector(self) -> None:
+        """Commit in-progress inspector edits before the widgets are destroyed."""
+        flush = self._inspector_flush
+        self._inspector_flush = None
+        if flush is None:
+            return
+        try:
+            flush()
+        except tk.TclError:
+            pass
+
+    def _show_inspector(self, flush: bool = True) -> None:
+        if flush:
+            self._flush_inspector()
+        else:
+            self._inspector_flush = None
         for w in self._prop_rows:
             w.destroy()
         self._prop_rows.clear()
+        self._note_text = None
 
         if not self._doc:
             self._i_title.configure(text="No pipeline")
@@ -1282,6 +1331,102 @@ class PipelineView(tk.Frame):
         self._add_props(rows, next_action=getattr(stage, "next_action", ""))
         if t.stage_key and t.stage_key.startswith("handcode"):
             self._add_target_editor(n)
+        elif n.type == "note":
+            self._add_note_editor(n)
+
+    def _add_note_editor(self, node) -> None:
+        """Editable title and body for annotation nodes."""
+        row = len(self._props.grid_slaves()) + 20
+        sep = tk.Frame(self._props, bg=HAIRLINE, height=1)
+        sep.grid(row=row, column=0, columnspan=2, sticky="ew",
+                 padx=self._s(14), pady=(self._s(6), self._s(5)))
+
+        title_lbl = tk.Label(self._props, text="Title", bg=INSPECTOR_BG,
+                             fg=TEXT_DIM, font=_f(self, 12), anchor="e")
+        title_lbl.grid(row=row + 1, column=0, sticky="e",
+                       padx=(self._s(14), self._s(10)))
+        title_var = tk.StringVar(value=node.title)
+        title_entry = tk.Entry(self._props, textvariable=title_var,
+                               font=_f(self, 12))
+        title_entry.grid(row=row + 1, column=1, sticky="ew",
+                         padx=(0, self._s(14)))
+
+        text_lbl = tk.Label(self._props, text="Text", bg=INSPECTOR_BG,
+                            fg=TEXT_DIM, font=_f(self, 12), anchor="ne")
+        text_lbl.grid(row=row + 2, column=0, sticky="ne",
+                      padx=(self._s(14), self._s(10)), pady=(self._s(6), 0))
+        holder = tk.Frame(self._props, bg=INSPECTOR_BG)
+        holder.grid(row=row + 2, column=1, sticky="ew",
+                    padx=(0, self._s(14)), pady=(self._s(6), 0))
+        text = tk.Text(holder, height=8, font=_f(self, 12), wrap=tk.WORD,
+                       relief=tk.SOLID, bd=1)
+        text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        vs = ttk.Scrollbar(holder, orient=tk.VERTICAL, command=text.yview)
+        vs.pack(side=tk.RIGHT, fill=tk.Y)
+        text.configure(yscrollcommand=vs.set)
+        text.insert("1.0", str(node.config.get("text") or ""))
+
+        applying = {"active": False}
+        committed = {
+            "title": node.title,
+            "text": str(node.config.get("text") or ""),
+        }
+
+        def _values() -> tuple[str, str]:
+            title = title_var.get().strip() or node_type("note").name
+            return title, text.get("1.0", "end-1c")
+
+        def _write(title: str, body: str) -> None:
+            node.title = title
+            if body.strip():
+                node.config["text"] = body
+            else:
+                node.config.pop("text", None)
+            self._i_title.configure(text=node.title)
+            self._draw()
+
+        def _preview(_e=None) -> None:
+            if applying["active"]:
+                return
+            applying["active"] = True
+            try:
+                title, body = _values()
+                _write(title, body)
+            finally:
+                applying["active"] = False
+
+        def _commit(_e=None) -> None:
+            if applying["active"]:
+                return
+            applying["active"] = True
+            try:
+                title, body = _values()
+                if title == committed["title"] and body == committed["text"]:
+                    return
+                self._push_undo()
+                _write(title, body)
+                committed["title"] = title
+                committed["text"] = body
+                self._touch()
+            finally:
+                applying["active"] = False
+
+        def _title_focus_out(e) -> None:
+            # Tab from title into the body should not commit mid-field.
+            if e.widget == title_entry:
+                nxt = e.widget.tk.call("focus")
+                if nxt and str(nxt) == str(text):
+                    return
+            _commit(e)
+
+        title_var.trace_add("write", lambda *_a: _preview())
+        title_entry.bind("<Return>", _commit)
+        title_entry.bind("<FocusOut>", _title_focus_out)
+        text.bind("<KeyRelease>", _preview)
+        text.bind("<FocusOut>", _commit)
+        self._inspector_flush = _commit
+        self._note_text = text
+        self._prop_rows += [sep, title_lbl, title_entry, text_lbl, holder, text, vs]
 
     def _add_target_editor(self, node) -> None:
         """Let a hand-coding node be scoped to a subset, or to everything.
@@ -1322,6 +1467,7 @@ class PipelineView(tk.Frame):
 
         entry.bind("<Return>", _apply)
         entry.bind("<FocusOut>", _apply)
+        self._inspector_flush = _apply
         self._prop_rows += [holder, entry]
 
     def _add_props(self, rows, next_action: str = "") -> None:

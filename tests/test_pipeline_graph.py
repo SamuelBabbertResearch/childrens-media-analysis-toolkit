@@ -214,6 +214,17 @@ def test_round_trip_preserves_everything(doc, tmp_path):
     assert back.zoom == pytest.approx(1.75)
 
 
+def test_note_text_persists_in_config(tmp_path):
+    doc = G.blank_doc("Notes")
+    n = doc.add_node("note", 40, 40, title="Reminder")
+    n.config["text"] = "Code only the first four episodes."
+    path = G.save_doc(doc, tmp_path)
+    back = G.list_docs(tmp_path)[0]
+    note = next(x for x in back.nodes if x.type == "note")
+    assert note.title == "Reminder"
+    assert note.config["text"] == "Code only the first four episodes."
+
+
 def test_node_positions_live_in_the_document(doc, tmp_path):
     """Positions must persist — the window is a viewport, not the layout."""
     doc.nodes[0].x, doc.nodes[0].y = 1234.0, -567.0
