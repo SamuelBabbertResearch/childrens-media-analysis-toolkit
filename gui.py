@@ -1591,6 +1591,90 @@ class App(tk.Tk):
         self._agree_out.insert(tk.END, "\n".join(lines))
         self._agree_out.config(state=tk.DISABLED)
 
+    def _embed_aggregate_table(self, t: tk.Text, agg: ShowAggregate) -> None:
+        """Show-level summary statistics as a table.
+
+        Emphasis is off here: the rows are different measures on different
+        scales, so "unusual" across them would be meaningless — a cuts/min
+        value is not comparable with a saturation value.
+        """
+        from gui_tables import Column, WikiTable
+
+        columns = [
+            Column("metric", "Metric", width=150, stretch=True),
+            Column("mean", "Mean", width=60, numeric=True),
+            Column("median", "Median", width=60, numeric=True),
+            Column("std", "Std", width=56, numeric=True),
+            Column("min", "Min", width=56, numeric=True),
+            Column("max", "Max", width=56, numeric=True),
+        ]
+        stats = [
+            ("Sensory load score",   agg.sensory_load_score),
+            ("Cuts / min",           agg.cuts_per_min),
+            ("Shot length mean (s)", agg.shot_length_mean_sec),
+            ("Colour saturation",    agg.color_saturation_mean),
+            ("Colour contrast",      agg.color_contrast_mean),
+            ("Motion mean",          agg.motion_mean),
+            ("Flashing events/min",  agg.flashing_events_per_min),
+        ]
+        rows = [{"metric": label, "mean": s.mean, "median": s.median,
+                 "std": s.std, "min": s.min, "max": s.max}
+                for label, s in stats]
+        audio = agg.audio_rms_mean
+        rows.append({"metric": "Audio RMS mean"} if audio.mean <= 0 else
+                    {"metric": "Audio RMS mean", "mean": audio.mean,
+                     "median": audio.median, "std": audio.std,
+                     "min": audio.min, "max": audio.max})
+
+        table = WikiTable(t, columns, height=len(rows), emphasis=False)
+        table.set_rows(rows)
+        table.embed_in(t)
+
+    def _embed_episode_table(self, t: tk.Text,
+                             results: list[EpisodeResult]) -> None:
+        """Per-episode metrics as a real table rather than padded text.
+
+        The old block truncated episode names to 26 characters and lost its
+        column alignment as soon as a name ran long, which is most of the time
+        with real filenames.
+        """
+        from gui_tables import Column, WikiTable
+
+        # Declared at 96 DPI; WikiTable scales them. Headings are abbreviated
+        # so seven columns have a chance of fitting the results pane before
+        # the user has to scroll.
+        columns = [
+            Column("episode", "Episode", width=170, stretch=True),
+            Column("cuts", "Cuts/min", width=58, numeric=True, fmt="{:.1f}"),
+            Column("sat", "Sat.", width=48, numeric=True),
+            Column("motion", "Motion", width=52, numeric=True),
+            Column("flash", "Flash/min", width=62, numeric=True, fmt="{:.1f}"),
+            Column("audio", "Audio", width=56, numeric=True, fmt="{:.4f}"),
+            Column("load", "Load", width=52, numeric=True),
+        ]
+        rows: list[dict] = []
+        for r in results:
+            if r.status == "failed":
+                rows.append({"episode": f"{r.file} — analysis failed",
+                             "_failed": True})
+                continue
+            m = r.metrics
+            rows.append({
+                "episode": r.file,
+                "cuts":   m.scene_pacing.cuts_per_min,
+                "sat":    m.color_saturation.mean,
+                "motion": m.motion.mean,
+                "flash":  m.flashing.luminance_delta_events_per_min,
+                "audio":  m.audio.rms_mean if m.audio.available else None,
+                "load":   m.sensory_load.score,
+            })
+
+        table = WikiTable(
+            t, columns, height=min(14, max(4, len(rows))),
+            comparison_set="this show's analyzed episodes")
+        table.set_rows(rows)
+        table.embed_in(t)
+
     def _render_provenance(self, t: tk.Text, result: EpisodeResult) -> None:
         """How this episode was measured, and whether the settings still match.
 
@@ -1700,48 +1784,12 @@ class App(tk.Tk):
 
         t.insert(tk.END, "Aggregate across episodes\n", "h2")
         t.insert(tk.END, "  Each episode weighted equally regardless of length.\n", "dim")
-        t.insert(tk.END,
-                 f"\n{'Metric':<28} {'Mean':>8} {'Median':>8} "
-                 f"{'Std':>8} {'Min':>8} {'Max':>8}\n", "mono")
-        t.insert(tk.END, "-" * 70 + "\n", "dim")
-
-        def row(label: str, s) -> None:
-            t.insert(tk.END,
-                     f"  {label:<26} {s.mean:>8.3f} {s.median:>8.3f} "
-                     f"{s.std:>8.3f} {s.min:>8.3f} {s.max:>8.3f}\n", "mono")
-
-        row("Sensory load score", agg.sensory_load_score)
-        row("Cuts / min",         agg.cuts_per_min)
-        row("Shot length mean (s)", agg.shot_length_mean_sec)
-        row("Color saturation",   agg.color_saturation_mean)
-        row("Motion mean",        agg.motion_mean)
-        row("Flashing events/min", agg.flashing_events_per_min)
-        if agg.audio_rms_mean.mean > 0:
-            row("Audio RMS mean",     agg.audio_rms_mean)
-        else:
-            t.insert(tk.END, f"  {'Audio RMS mean':<26} {'n/a':>8}\n", "dim")
+        self._embed_aggregate_table(t, agg)
 
         ok = [r for r in results if r.status == "ok"]
         if ok:
             t.insert(tk.END, "\n\nPer-episode breakdown\n", "h2")
-            t.insert(tk.END,
-                     f"\n{'Episode':<28} {'Cut/m':>6} {'Sat':>6} "
-                     f"{'Mot':>6} {'Flash':>7} {'Audio':>7} {'Load':>7}\n", "mono")
-            t.insert(tk.END, "-" * 73 + "\n", "dim")
-            for r in results:
-                if r.status == "failed":
-                    t.insert(tk.END, f"  {r.file:<26}  FAILED\n", "err")
-                else:
-                    m = r.metrics
-                    audio_str = f"{m.audio.rms_mean:>7.4f}" if m.audio.available else f"{'n/a':>7}"
-                    t.insert(tk.END,
-                             f"  {r.file:<26} "
-                             f"{m.scene_pacing.cuts_per_min:>6.1f} "
-                             f"{m.color_saturation.mean:>6.3f} "
-                             f"{m.motion.mean:>6.3f} "
-                             f"{m.flashing.luminance_delta_events_per_min:>7.1f} "
-                             f"{audio_str} "
-                             f"{m.sensory_load.score:>7.3f}\n", "mono")
+            self._embed_episode_table(t, results)
 
         # Fantastical events — human-coded channel, joined from validation/
         from analyzer.event_coding import events_stats_for_stems

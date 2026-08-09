@@ -14,16 +14,7 @@ import pytest
 tk = pytest.importorskip("tkinter")
 import gui_theme as T  # noqa: E402
 
-
-@pytest.fixture
-def root():
-    try:
-        r = tk.Tk()
-    except tk.TclError:
-        pytest.skip("no display")
-    r.withdraw()
-    yield r
-    r.destroy()
+# `root` comes from tests/conftest.py — one shared Tk root for the session.
 
 
 # ---------------------------------------------------------------------------
