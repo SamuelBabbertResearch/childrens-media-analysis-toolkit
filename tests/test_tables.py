@@ -149,6 +149,34 @@ def test_failed_rows_are_flagged_not_dropped(root):
 
 
 # ---------------------------------------------------------------------------
+# Property table
+# ---------------------------------------------------------------------------
+
+def test_property_table_builds_a_cell_per_column(root):
+    p = G.PropertyTable(root, [("Cuts per minute", "6.4"),
+                               ("Mean shot", "9.32 s", "seconds")])
+    assert len(p._cells) == 6            # label, value, note on both rows
+
+
+def test_property_table_replaces_rather_than_appends(root):
+    p = G.PropertyTable(root, [("a", "1")])
+    p.set_rows([("a", "1"), ("b", "2")])
+    assert len(p._cells) == 6
+
+
+def test_property_table_is_content_width(root):
+    """A wikitable is content-width; stretching a column strands the value."""
+    p = G.PropertyTable(root, [("k", "v")])
+    for col in (0, 1, 2):
+        assert p.grid_columnconfigure(col)["weight"] == 0
+
+
+def test_property_table_accepts_rows_without_notes(root):
+    p = G.PropertyTable(root, [("k", "v")])
+    assert len(p._cells) == 3
+
+
+# ---------------------------------------------------------------------------
 # Infobox and badges
 # ---------------------------------------------------------------------------
 

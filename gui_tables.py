@@ -115,7 +115,8 @@ class WikiTable(tk.Frame):
 
     def __init__(self, parent, columns: list[Column], caption: str = "",
                  height: int = 8, emphasis: bool = True,
-                 comparison_set: str = "the episodes listed here") -> None:
+                 comparison_set: str = "the episodes listed here",
+                 scrollbars: bool = True) -> None:
         super().__init__(parent, bg=color("panel_bg"))
         self._columns = columns
         self._emphasis = emphasis
@@ -151,16 +152,19 @@ class WikiTable(tk.Frame):
                              minwidth=int(round(40 * scale)),
                              anchor="e" if c.numeric else "w",
                              stretch=c.stretch)
-        # Both scrollbars. A seven-column metric table at 150% scaling needs
-        # roughly 900px, and the results pane can be half that — without
-        # horizontal scrolling the right-hand columns are simply unreachable.
-        vsb = ttk.Scrollbar(holder, orient=tk.VERTICAL,
-                            command=self.tree.yview)
-        hsb = ttk.Scrollbar(holder, orient=tk.HORIZONTAL,
-                            command=self.tree.xview)
-        self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-        vsb.pack(side=tk.RIGHT, fill=tk.Y)
-        hsb.pack(side=tk.BOTTOM, fill=tk.X)
+        # Scrollbars for a browsable table; suppressed for a short embedded
+        # one, where a scrollbar beside six rows that all fit is pure noise.
+        if scrollbars:
+            # A seven-column metric table at 150% scaling needs roughly 900px
+            # and the results pane can be half that, so horizontal scrolling
+            # is what keeps the right-hand columns reachable at all.
+            vsb = ttk.Scrollbar(holder, orient=tk.VERTICAL,
+                                command=self.tree.yview)
+            hsb = ttk.Scrollbar(holder, orient=tk.HORIZONTAL,
+                                command=self.tree.xview)
+            self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+            vsb.pack(side=tk.RIGHT, fill=tk.Y)
+            hsb.pack(side=tk.BOTTOM, fill=tk.X)
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=1, pady=1)
 
         self._odd, self._even = zebra_tags(self.tree)
@@ -290,6 +294,67 @@ class Badge(tk.Label):
         super().__init__(parent, text=f" {text} ", bg=color(bg_token),
                          fg=color(fg_token), font=font(parent, "small", bold=True),
                          padx=int(round(4 * dpi_scale(parent))), **kw)
+
+
+class PropertyTable(tk.Frame):
+    """A bordered label/value grid in the MediaWiki `wikitable` idiom.
+
+    Deliberately built from Labels rather than a Treeview: these rows are
+    key/value facts, not records. They never need sorting or selection, they
+    should size to their content rather than scroll, and a dozen embedded
+    Treeviews in one report is a great deal of machinery for what is really
+    a definition list.
+    """
+
+    def __init__(self, parent, rows=(), value_width: int = 0, **kw) -> None:
+        super().__init__(parent, bg=color("mw_border"), **kw)
+        self._pad = int(round(5 * dpi_scale(self)))
+        self._value_width = value_width
+        self._cells: list[tk.Widget] = []
+        # No column stretches: the table is content-width, as a wikitable is
+        # unless it explicitly asks for 100%. Stretching the value column
+        # flings a two-character number to the far edge of the pane, and
+        # stretching the notes leaves a wide empty box on every row without one.
+        if rows:
+            self.set_rows(rows)
+
+    def set_rows(self, rows) -> None:
+        """rows: [(label, value)] or [(label, value, note)]."""
+        for c in self._cells:
+            c.destroy()
+        self._cells.clear()
+
+        for i, row in enumerate(rows):
+            label, value = row[0], row[1]
+            note = row[2] if len(row) > 2 else ""
+
+            k = tk.Label(self, text=label, bg=color("mw_label_bg"),
+                         fg=color("text"), font=font(self, "table", bold=True),
+                         anchor="w", padx=self._pad,
+                         pady=int(self._pad * 0.55))
+            k.grid(row=i, column=0, sticky="nsew", padx=(1, 0),
+                   pady=(1 if i == 0 else 0, 1))
+
+            v = tk.Label(self, text=str(value), bg=color("mw_bg"),
+                         fg=color("text"), font=font(self, "table"),
+                         anchor="e", padx=self._pad,
+                         pady=int(self._pad * 0.55),
+                         width=self._value_width or 0)
+            v.grid(row=i, column=1, sticky="nsew", padx=(1, 0),
+                   pady=(1 if i == 0 else 0, 1))
+            self._cells += [k, v]
+
+            n = tk.Label(self, text=note, bg=color("mw_bg"),
+                         fg=color("text_dim"), font=font(self, "small"),
+                         anchor="w", justify="left", padx=self._pad,
+                         pady=int(self._pad * 0.55))
+            n.grid(row=i, column=2, sticky="nsew", padx=(1, 1),
+                   pady=(1 if i == 0 else 0, 1))
+            self._cells.append(n)
+
+    def embed_in(self, text: tk.Text) -> None:
+        text.window_create(tk.END, window=self, padx=6, pady=3)
+        text.insert(tk.END, "\n")
 
 
 class InfoboxPanel(tk.Frame):

@@ -461,21 +461,15 @@ class App(tk.Tk):
         tk.Frame(_inner, bg=_ibg, height=int(round(6 * _bs))).pack()
         self._first_run.pack(fill=tk.X, padx=6, pady=(6, 4))
 
-        # Library body: a multi-column tree beside an identification panel,
-        # split so the user can size or collapse the panel.
-        from gui_tables import InfoboxPanel
+        # The grid gets the whole tab. An inspector here would only repeat what
+        # the Results panel already shows for the same selection.
         from gui_theme import apply_theme, color as _tc, dpi_scale as _tds
 
         apply_theme(self)
         _s = _tds(self)
-        body = tk.PanedWindow(lib_tab, orient=tk.HORIZONTAL,
-                              sashwidth=int(round(5 * _s)), sashrelief=tk.FLAT,
-                              bg=_tc("chrome_bottom"), bd=0, showhandle=False)
-        body.pack(fill=tk.BOTH, expand=True, padx=int(round(4 * _s)),
-                  pady=int(round(4 * _s)))
-
-        tree_wrap = tk.Frame(body, bg=_tc("panel_bg"))
-        body.add(tree_wrap, minsize=int(round(280 * _s)), stretch="always")
+        tree_wrap = tk.Frame(lib_tab, bg=_tc("panel_bg"))
+        tree_wrap.pack(fill=tk.BOTH, expand=True, padx=int(round(4 * _s)),
+                       pady=int(round(4 * _s)))
 
         hdr = tk.Frame(tree_wrap, bg=_tc("mw_header_bg"))
         hdr.pack(fill=tk.X)
@@ -526,13 +520,6 @@ class App(tk.Tk):
         hsb.pack(side=tk.BOTTOM, fill=tk.X)
         self._tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self._tree.bind("<<TreeviewSelect>>", self._on_tree_select)
-
-        # Identification and workflow state only. Measurements stay in the
-        # Results panel — two places showing the same numbers is how a user
-        # ends up unsure which one is current.
-        self._lib_info = InfoboxPanel(body, "Nothing selected")
-        body.add(self._lib_info, minsize=int(round(150 * _s)), stretch="never",
-                 width=int(round(196 * _s)))
 
         # ---- Index tab ----
         idx_tab = tk.Frame(left_nb)
@@ -966,68 +953,6 @@ class App(tk.Tk):
         self._lib_shows += 1
         self._lib_episodes += total
 
-    def _update_library_infobox(self, kind: str | None, path: str | None) -> None:
-        """Identify the selected item and say what measurement exists for it.
-
-        Deliberately excludes the metrics themselves — those are in the
-        Results panel, and showing them twice invites the question of which
-        copy is current. Also excludes anything about the programme's
-        suitability, audience, or educational value: CMAT measures the
-        stimulus and issues no verdict.
-        """
-        panel = getattr(self, "_lib_info", None)
-        if panel is None:
-            return
-        if not kind or not path:
-            panel.set_rows("Nothing selected",
-                           [("Select", "a show or episode on the left")])
-            return
-
-        p = Path(path)
-        if kind == "category":
-            shows = list_category_shows(p)
-            panel.set_rows(p.name, [("Type", "Category"),
-                                    ("Shows", str(len(shows))),
-                                    ("Folder", str(p))])
-            return
-
-        if kind == "show":
-            skey = show_key(self._root_folder, p)
-            eps = list_episodes(p)
-            done = sum(1 for e in eps
-                       if load_cached(self._root_folder, skey, e.stem))
-            panel.set_rows(p.name, [
-                ("Type", "Show"),
-                ("Episodes", str(len(eps))),
-                ("Analyzed", (f"{done} of {len(eps)}",
-                              "analyzed" if done else "none")),
-                ("Added", self._fmt_added(p)),
-                ("Folder", str(p)),
-            ])
-            return
-
-        skey = show_key(self._root_folder, p.parent)
-        cached = load_cached(self._root_folder, skey, p.stem) or {}
-        from analyzer.validation import coding_for_stem
-        coded = coding_for_stem(p.stem, getattr(self, "_coded_map", {}) or {})
-        hand = [n for n, k in (("transitions", "transitions"),
-                               ("events", "events")) if coded.get(k)]
-        rows = [
-            ("Show", p.parent.name),
-            ("File", p.name),
-            ("Length", self._fmt_duration(cached.get("duration_sec", 0))),
-            ("Added", self._fmt_added(p)),
-            ("Automated", ("Analyzed", "analyzed") if cached
-             else ("Not measured", "none")),
-            ("Hand coding", (", ".join(hand).capitalize(), "ready") if hand
-             else ("Not coded", "none")),
-        ]
-        # Provenance, when it exists: which settings produced the numbers.
-        fp = cached.get("measurement_fingerprint")
-        if fp:
-            rows.append(("Measured with", fp))
-        panel.set_rows(p.name, rows)
-
     # -----------------------------------------------------------------------
     # Tree selection
     # -----------------------------------------------------------------------
@@ -1044,11 +969,9 @@ class App(tk.Tk):
             if hasattr(self, "_auto_sel_var"):
                 self._auto_sel_var.set("(nothing selected — pick a show or "
                                        "episode in the Library tab)")
-            self._update_library_infobox(None, None)
             return
         queue_busy = self._analyzing is not None or self._watch_live_active
         kind, path = self._selected_item()
-        self._update_library_infobox(kind, path)
         # Mirror the selection into the Automated coding tab, where the
         # analyze actions now live.
         if hasattr(self, "_auto_sel_var"):
@@ -1496,34 +1419,33 @@ class App(tk.Tk):
 
         m = result.metrics
 
-        # Sensory load — lead with the composite score
-        t.insert(tk.END, "Sensory Load Score\n", "h2")
-        t.insert(tk.END, f"  {m.sensory_load.score:.3f}", "score")
-        t.insert(tk.END, "  (0 = low stimulation  ·  1 = high)")
+        # --- Sensory load ---------------------------------------------------
+        self._section(t, "Sensory load")
+        t.insert(tk.END, f"{m.sensory_load.score:.3f}", "score")
+        t.insert(tk.END, "   0 = low stimulation, 1 = high\n")
         if not m.sensory_load.audio_available:
-            t.insert(tk.END, "  [visual only — no audio]", "dim")
-        t.insert(tk.END, "\n")
+            t.insert(tk.END, "Visual only — no audio track.\n", "dim")
 
-        # Percentile ranking (only when this episode is indexed in DB)
         if self._db_conn and self._current_ep_path:
             pct = get_episode_percentile(self._db_conn, str(self._current_ep_path))
             if pct:
                 def _ordinal(n: int) -> str:
                     sfx = {1: "st", 2: "nd", 3: "rd"}.get(
-                        n % 10 if n % 100 not in (11, 12, 13) else 0, "th"
-                    )
+                        n % 10 if n % 100 not in (11, 12, 13) else 0, "th")
                     return f"{n}{sfx}"
-                line = (f"  {_ordinal(pct['percentile'])} percentile  "
-                        f"({pct['global_total']} episodes indexed)")
+                line = (f"{_ordinal(pct['percentile'])} percentile of "
+                        f"{pct['global_total']} indexed episodes")
                 if pct["show_total"] >= 3:
-                    line += (f"  ·  {_ordinal(pct['show_rank'])} highest "
-                             f"of {pct['show_total']} in {pct['show_name']}")
-                t.insert(tk.END, line + "\n", "pct")
-        t.insert(tk.END, "\n")
+                    line += (f"; {_ordinal(pct['show_rank'])} of "
+                             f"{pct['show_total']} in {pct['show_name']}")
+                t.insert(tk.END, line + ".\n", "pct")
 
+        # Components, with the contribution each actually makes to the score.
+        # The old ASCII bars showed a normalised value but not what drove the
+        # composite; value x weight answers "why is the score what it is".
         cfg = result.config.get("sensory_load_weights", {})
         c = m.sensory_load.components
-        components = [
+        comps = [
             ("Pacing",     c.pacing,     cfg.get("pacing",         0.25)),
             ("Saturation", c.saturation, cfg.get("saturation",     0.05)),
             ("Contrast",   c.contrast,   cfg.get("color_contrast", 0.10)),
@@ -1531,115 +1453,101 @@ class App(tk.Tk):
             ("Flashing",   c.flashing,   cfg.get("flashing",       0.15)),
             ("Audio",      c.audio,      cfg.get("audio",          0.20)),
         ]
-        for label, val, wt in components:
+        rows = []
+        for label, val, wt in comps:
             if label == "Audio" and not m.sensory_load.audio_available:
-                t.insert(tk.END, f"  {'Audio':<12} n/a   (weight {wt:.0%}, no audio track)\n", "dim")
+                rows.append({"component": "Audio", "value": None,
+                             "weight": wt, "contrib": None})
                 continue
-            self._bar(t, val)
-            t.insert(tk.END, f"  {label:<12} {val:.3f}  (weight {wt:.0%})\n")
+            rows.append({"component": label, "value": val, "weight": wt,
+                         "contrib": val * wt})
+        self._embed_component_table(t, rows)
 
-        t.insert(tk.END, "\n")
+        # --- Measured features ----------------------------------------------
+        sl, sp, cs, mo, fl = (m.shot_length, m.scene_pacing,
+                              m.color_saturation, m.motion, m.flashing)
+        self._section(t, "Measured features")
+        self._props(t, [
+            ("Cuts per minute", f"{sp.cuts_per_min:.1f}", ""),
+            ("Mean shot length", f"{sl.mean_sec:.2f} s", ""),
+            ("Median shot length", f"{sl.median_sec:.2f} s", ""),
+            ("Shots per minute", f"{sl.shots_per_min:.1f}", ""),
+            ("Total shots", f"{sl.count:,}", ""),
+            ("Shot-length CV", f"{sp.shot_length_cv:.3f}",
+             "rhythm variability; higher is burstier"),
+            ("Colour saturation", f"{cs.mean:.3f}",
+             f"temporal variance {cs.temporal_var:.4f}"),
+            ("Colour contrast", f"{cs.contrast_mean:.3f}",
+             "spatial spread of brightness"),
+            ("Motion (mean)", f"{mo.mean:.4f}", f"peak {mo.peak:.4f}"),
+            ("Flashing events/min",
+             f"{fl.luminance_delta_events_per_min:.2f}",
+             "whole-frame luminance change"),
+        ])
 
-        # Shot length
-        t.insert(tk.END, "Shot Length\n", "h2")
-        sl = m.shot_length
-        t.insert(tk.END, f"  Mean shot:    {sl.mean_sec:.2f} s\n")
-        t.insert(tk.END, f"  Median shot:  {sl.median_sec:.2f} s\n")
-        t.insert(tk.END, f"  Shots/min:    {sl.shots_per_min:.1f}\n")
-        t.insert(tk.END, f"  Total shots:  {sl.count}\n\n")
-
-        # Scene pacing
-        t.insert(tk.END, "Scene Pacing\n", "h2")
-        sp = m.scene_pacing
-        t.insert(tk.END, f"  Cuts/min:        {sp.cuts_per_min:.1f}\n")
-        t.insert(tk.END,
-                 f"  Shot-length CV:  {sp.shot_length_cv:.3f}  "
-                 "(rhythm variability: higher = burstier)\n\n")
-
-        # Color saturation & contrast
-        t.insert(tk.END, "Color\n", "h2")
-        cs = m.color_saturation
-        self._bar(t, cs.mean)
-        t.insert(tk.END, f"  Saturation mean:   {cs.mean:.3f}\n")
-        t.insert(tk.END, f"  Saturation var:    {cs.temporal_var:.4f}\n")
-        self._bar(t, min(1.0, cs.contrast_mean / 0.35))
-        t.insert(tk.END, f"  Contrast mean:     {cs.contrast_mean:.3f}  "
-                         "(spatial brightness spread)\n\n")
-
-        # Motion
-        t.insert(tk.END, "Motion\n", "h2")
-        mo = m.motion
-        self._bar(t, mo.mean)
-        t.insert(tk.END, f"  Mean: {mo.mean:.4f}\n")
-        t.insert(tk.END, f"  Peak: {mo.peak:.4f}\n\n")
-
-        # Flashing
-        t.insert(tk.END, "Flashing\n", "h2")
-        fl = m.flashing
-        t.insert(tk.END,
-                 f"  Luminance-delta events/min:  "
-                 f"{fl.luminance_delta_events_per_min:.2f}\n\n")
-
-        # Audio
-        t.insert(tk.END, "Audio Loudness\n", "h2")
+        # --- Audio -----------------------------------------------------------
         au = m.audio
+        self._section(t, "Audio")
         if au.available:
-            self._bar(t, min(1.0, au.rms_mean / 0.20))
-            t.insert(tk.END, f"  RMS mean:          {au.rms_mean:.4f}\n")
-            t.insert(tk.END, f"  RMS peak:          {au.rms_peak:.4f}\n")
-            t.insert(tk.END, f"  Temporal variance: {au.rms_temporal_var:.6f}  "
-                             "(volume variation over time)\n")
-            t.insert(tk.END, f"  Dynamic range:     {au.dynamic_range_db:.1f} dB  "
-                             "(peak-to-mean ratio)\n")
+            self._props(t, [
+                ("RMS mean", f"{au.rms_mean:.4f}", ""),
+                ("RMS peak", f"{au.rms_peak:.4f}", ""),
+                ("Temporal variance", f"{au.rms_temporal_var:.6f}",
+                 "volume variation over time"),
+                ("Dynamic range", f"{au.dynamic_range_db:.1f} dB",
+                 "peak-to-mean ratio"),
+            ])
         else:
-            t.insert(tk.END, "  Not available (FFmpeg not found or no audio track)\n", "dim")
+            t.insert(tk.END, "Not available — FFmpeg not found, or the file "
+                             "has no audio track.\n", "dim")
 
-        # Speech
-        t.insert(tk.END, "\nSpeech\n", "h2")
-        sp = m.speech
-        if sp.available:
-            _src = {"srt": "SRT subtitle file", "vtt": "VTT subtitle file",
-                    "whisper": "Whisper AI transcription"}.get(sp.source, sp.source)
-            t.insert(tk.END, f"  Source:            {_src}\n", "dim")
-            t.insert(tk.END, f"  Words per minute:  {sp.words_per_minute:.1f}\n")
-            t.insert(tk.END, f"  Speech density:    {sp.speech_density:.1%}  "
-                             "(fraction of episode with dialogue)\n")
-            t.insert(tk.END, f"  Total words:       {sp.total_words:,}\n")
+        # --- Speech ----------------------------------------------------------
+        spx = m.speech
+        self._section(t, "Speech")
+        if spx.available:
+            src = {"srt": "SRT subtitle file", "vtt": "VTT subtitle file",
+                   "whisper": "Whisper transcription"}.get(spx.source, spx.source)
+            self._props(t, [
+                ("Words per minute", f"{spx.words_per_minute:.1f}", ""),
+                ("Speech density", f"{spx.speech_density:.1%}",
+                 "share of runtime containing dialogue"),
+                ("Total words", f"{spx.total_words:,}", ""),
+                ("Source", src, "English-only metrics"),
+            ])
         else:
-            _src = sp.source
-            if _src == "disabled" or _src == "none":
-                _msg = "enable auto-transcription in Settings, or place an .srt / .vtt file alongside the video"
-            elif _src == "not_installed":
-                _msg = "faster-whisper is not installed — open a terminal and run:  pip install faster-whisper"
-            elif _src.startswith("error:"):
-                _msg = f"transcription failed: {_src[6:]}"
+            src = spx.source
+            if src in ("disabled", "none"):
+                msg = ("no caption file found. Add an .srt/.vtt beside the "
+                       "video, or enable Whisper in Settings.")
+            elif src == "not_installed":
+                msg = "faster-whisper is not installed (pip install faster-whisper)."
+            elif src.startswith("error:"):
+                msg = f"transcription failed: {src[6:]}"
             else:
-                _msg = "no CC file found and auto-transcription is disabled"
-            t.insert(tk.END, f"  Not available — {_msg}\n", "dim")
+                msg = "no caption file, and auto-transcription is off."
+            t.insert(tk.END, f"Not available — {msg}\n", "dim")
 
-        # Fantastical events — human-coded channel, joined from validation/
+        # --- Human coding ----------------------------------------------------
         from analyzer.event_coding import latest_rates_for_stem
-        ep_stem = Path(result.file).stem
-        ev = latest_rates_for_stem(ep_stem)
-        t.insert(tk.END, "\nFantastical Events (human-coded)\n", "h2")
+        ev = latest_rates_for_stem(Path(result.file).stem)
+        self._section(t, "Fantastical events (hand-coded)")
         if ev:
             win = ev.get("window")
-            win_txt = (f"window {win[0]:.0f}–{win[1]:.0f}s"
+            win_txt = (f"{win[0]:.0f}–{win[1]:.0f}s"
                        if isinstance(win, list) and len(win) == 2
                        else "full episode")
-            t.insert(tk.END,
-                     f"  Events per minute:  {ev.get('events_per_min', '—')}\n")
-            t.insert(tk.END,
-                     f"  Events coded:       {ev.get('n_events', '—')}  "
-                     f"({win_txt}, coded {ev.get('date','')})\n")
-            t.insert(tk.END,
-                     "  Human judgment per EVENT_CODEBOOK.md — not a pixel "
-                     "measurement.\n", "dim")
+            self._props(t, [
+                ("Events per minute", ev.get("events_per_min", "—"), ""),
+                ("Events coded", ev.get("n_events", "—"), f"window {win_txt}"),
+                ("Coded", ev.get("date", "—"), "per EVENT_CODEBOOK.md"),
+            ])
+            t.insert(tk.END, "A human judgement, not a pixel measurement.\n",
+                     "dim")
         else:
             t.insert(tk.END,
-                     "  Not coded — fantasy is a semantic judgment coded by "
-                     "hand.\n  Use code_events.py (template → code in VLC → "
-                     "rates) to add it.\n", "dim")
+                     "Not coded. Fantasy is a semantic judgement that no "
+                     "formal-features measure can make; code it under Human "
+                     "coding → Code.\n", "dim")
 
         # Which tool produced each number, and whether it has been graded.
         # Without this a figure from an ungraded component reads exactly like a
@@ -1783,6 +1691,44 @@ class App(tk.Tk):
         self._agree_out.delete("1.0", tk.END)
         self._agree_out.insert(tk.END, "\n".join(lines))
         self._agree_out.config(state=tk.DISABLED)
+
+    def _section(self, t: tk.Text, title: str) -> None:
+        """A MediaWiki-style section heading: title over a full-width rule."""
+        from gui_theme import color as _c
+        t.insert(tk.END, "\n" + title + "\n", "h2")
+        rule = tk.Frame(t, bg=_c("mw_border"), height=1)
+        t.window_create(tk.END, window=rule, padx=6)
+        t.insert(tk.END, "\n")
+        # The rule has no natural width inside a Text widget, so it is tied to
+        # the widget's own width and re-sized whenever that changes.
+        def _fit(_e=None, r=rule) -> None:
+            try:
+                r.configure(width=max(80, t.winfo_width() - 28))
+            except tk.TclError:
+                pass
+        _fit()
+        t.bind("<Configure>", _fit, add="+")
+
+    def _props(self, t: tk.Text, rows) -> None:
+        """Embed a label/value(/note) table."""
+        from gui_tables import PropertyTable
+        table = PropertyTable(t, rows)
+        table.embed_in(t)
+
+    def _embed_component_table(self, t: tk.Text, rows) -> None:
+        """The composite broken into what each component contributes."""
+        from gui_tables import Column, WikiTable
+
+        columns = [
+            Column("component", "Component", width=104, stretch=True),
+            Column("value", "Normalised", width=76, numeric=True),
+            Column("weight", "Weight", width=62, numeric=True, fmt="{:.0%}"),
+            Column("contrib", "Contribution", width=88, numeric=True),
+        ]
+        table = WikiTable(t, columns, height=len(rows), emphasis=False,
+                          scrollbars=False)
+        table.set_rows(rows)
+        table.embed_in(t)
 
     def _embed_aggregate_table(self, t: tk.Text, agg: ShowAggregate) -> None:
         """Show-level summary statistics as a table.
