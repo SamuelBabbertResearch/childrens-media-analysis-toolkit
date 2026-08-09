@@ -405,11 +405,31 @@ class App(tk.Tk):
         left_nb.add(lib_tab, text="Library")
 
         # First-run guidance, shown IN the empty pane rather than only in the
-        # status bar. Removed as soon as a library is loaded.
-        self._first_run = tk.Frame(lib_tab, bg="#fbfbe6", bd=1, relief=tk.SOLID)
-        tk.Label(self._first_run, text="Getting started", bg="#fbfbe6",
-                 font=("TkDefaultFont", 10, "bold"), anchor="w").pack(
-                     fill=tk.X, padx=10, pady=(8, 2))
+        # status bar. Removed as soon as a library is loaded, and dismissible
+        # before then.
+        from gui_theme import color as _bc, dpi_scale as _bds
+        _bs = _bds(self)
+        _ibg, _ibd = _bc("info_bg"), _bc("info_rule")
+        self._first_run = tk.Frame(lib_tab, bg=_ibg, highlightthickness=1,
+                                   highlightbackground=_bc("info_border"))
+
+        # 4px accent rule down the left edge — the MediaWiki ambox convention.
+        _strip = tk.Frame(self._first_run, bg=_ibd,
+                          width=int(round(4 * _bs)))
+        _strip.pack(side=tk.LEFT, fill=tk.Y)
+        _strip.pack_propagate(False)
+
+        _inner = tk.Frame(self._first_run, bg=_ibg)
+        _inner.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        _head = tk.Frame(_inner, bg=_ibg)
+        _head.pack(fill=tk.X, padx=10, pady=(7, 2))
+        tk.Label(_head, text="GETTING STARTED", bg=_ibg, fg=_bc("info_text"),
+                 font=("TkDefaultFont", 9, "bold"), anchor="w").pack(side=tk.LEFT)
+        tk.Button(_head, text="✕", bd=0, bg=_ibg, fg=_bc("text_dim"),
+                  activebackground=_ibg, padx=4, pady=0, takefocus=True,
+                  command=lambda: self._first_run.pack_forget()).pack(
+                      side=tk.RIGHT)
         steps = [
             ("1.", "Choose Folder… — pick the folder that CONTAINS your show "
                    "folders, not a show folder itself."),
@@ -419,36 +439,100 @@ class App(tk.Tk):
             ("3.", "Pick a show or episode below, then use Automated coding → "
                    "Analyze Episode."),
         ]
-        for num, body in steps:
-            row = tk.Frame(self._first_run, bg="#fbfbe6")
+        # Each step keeps its action beside it, so the button that performs a
+        # step is never in a different part of the window from its wording.
+        actions = {0: ("Choose Folder...", self._choose_folder),
+                   1: ("Episode Sampler...", self._open_sampler)}
+        for i, (num, body) in enumerate(steps):
+            row = tk.Frame(_inner, bg=_ibg)
             row.pack(fill=tk.X, padx=10, pady=1)
-            tk.Label(row, text=num, bg="#fbfbe6", width=2, anchor="nw",
-                     font=("TkDefaultFont", 9)).pack(side=tk.LEFT, anchor="n")
-            lbl = tk.Label(row, text=body, bg="#fbfbe6", anchor="w",
+            tk.Label(row, text=num, bg=_ibg, fg=_bc("text"), width=2,
+                     anchor="nw", font=("TkDefaultFont", 9,
+                                        "bold")).pack(side=tk.LEFT, anchor="n")
+            if i in actions:
+                label, cmd = actions[i]
+                tk.Button(row, text=label, command=cmd, padx=6).pack(
+                    side=tk.RIGHT, padx=(8, 0))
+            lbl = tk.Label(row, text=body, bg=_ibg, fg=_bc("text"), anchor="w",
                            justify="left", font=("TkDefaultFont", 9))
             lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
-            # Wrap against the row's real width so the text reflows with the
-            # pane instead of breaking at a fixed column.
             row.bind("<Configure>",
-                     lambda e, w=lbl: w.configure(wraplength=max(220, e.width - 30)))
-        btns = tk.Frame(self._first_run, bg="#fbfbe6")
-        btns.pack(fill=tk.X, padx=10, pady=(8, 10))
-        tk.Button(btns, text="Choose Folder...", command=self._choose_folder,
-                  padx=8).pack(side=tk.LEFT)
-        tk.Button(btns, text="Episode Sampler...", command=self._open_sampler,
-                  padx=8).pack(side=tk.LEFT, padx=(6, 0))
-        self._first_run.pack(fill=tk.X, padx=6, pady=6)
+                     lambda e, w=lbl: w.configure(wraplength=max(200, e.width - 190)))
+        tk.Frame(_inner, bg=_ibg, height=int(round(6 * _bs))).pack()
+        self._first_run.pack(fill=tk.X, padx=6, pady=(6, 4))
 
-        tree_frame = tk.Frame(lib_tab)
+        # Library body: a multi-column tree beside an identification panel,
+        # split so the user can size or collapse the panel.
+        from gui_tables import InfoboxPanel
+        from gui_theme import apply_theme, color as _tc, dpi_scale as _tds
+
+        apply_theme(self)
+        _s = _tds(self)
+        body = tk.PanedWindow(lib_tab, orient=tk.HORIZONTAL,
+                              sashwidth=int(round(5 * _s)), sashrelief=tk.FLAT,
+                              bg=_tc("chrome_bottom"), bd=0, showhandle=False)
+        body.pack(fill=tk.BOTH, expand=True, padx=int(round(4 * _s)),
+                  pady=int(round(4 * _s)))
+
+        tree_wrap = tk.Frame(body, bg=_tc("panel_bg"))
+        body.add(tree_wrap, minsize=int(round(280 * _s)), stretch="always")
+
+        hdr = tk.Frame(tree_wrap, bg=_tc("mw_header_bg"))
+        hdr.pack(fill=tk.X)
+        tk.Label(hdr, text="Shows & Episodes", bg=_tc("mw_header_bg"),
+                 fg=_tc("text"), font=("TkDefaultFont", 9, "bold"),
+                 anchor="w").pack(side=tk.LEFT, padx=6, pady=3)
+        self._lib_count_var = tk.StringVar(value="no library loaded")
+        tk.Label(hdr, textvariable=self._lib_count_var, bg=_tc("mw_header_bg"),
+                 fg=_tc("text_dim"), font=("TkDefaultFont", 8),
+                 anchor="e").pack(side=tk.RIGHT, padx=6)
+
+        tree_frame = tk.Frame(tree_wrap, bg=_tc("panel_bg"))
         tree_frame.pack(fill=tk.BOTH, expand=True)
 
-        self._tree = ttk.Treeview(tree_frame, selectmode="browse")
-        self._tree.heading("#0", text="Shows / Episodes")
+        # "kind" and "path" stay in values so existing selection code keeps
+        # reading values[0]/values[1]; displaycolumns hides them from view.
+        self._tree = ttk.Treeview(
+            tree_frame, selectmode="browse", style="CMAT.Treeview",
+            columns=("kind", "path", "status", "count", "added"),
+            displaycolumns=("status", "count", "added"),
+            show="tree headings")
+        self._tree.heading("#0", text="Name")
+        self._tree.heading("status", text="Status")
+        self._tree.heading("count", text="Episodes / Length")
+        self._tree.heading("added", text="Added")
+        # Narrow enough that the three data columns are visible without
+        # scrolling at the default window size; stretches to take any surplus.
+        self._tree.column("#0", width=int(round(168 * _s)),
+                          minwidth=int(round(120 * _s)), stretch=True)
+        self._tree.column("status", width=int(round(96 * _s)), anchor="w",
+                          stretch=False)
+        self._tree.column("count", width=int(round(86 * _s)), anchor="e",
+                          stretch=False)
+        self._tree.column("added", width=int(round(76 * _s)), anchor="center",
+                          stretch=False)
+
+        # A Treeview cannot draw a pill inside a cell, so status is coloured
+        # text on the row instead — same information, no false precision.
+        self._tree.tag_configure("st_analyzed", foreground=_tc("badge_analyzed_fg"))
+        self._tree.tag_configure("st_coded", foreground=_tc("status_complete"))
+        self._tree.tag_configure("st_ready", foreground=_tc("text_dim"))
+        self._tree.tag_configure("st_show", font=("TkDefaultFont", 9, "bold"))
+
         vsb = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self._tree.yview)
-        self._tree.configure(yscrollcommand=vsb.set)
+        hsb = ttk.Scrollbar(tree_frame, orient=tk.HORIZONTAL, command=self._tree.xview)
+        self._tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        hsb.pack(side=tk.BOTTOM, fill=tk.X)
         self._tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self._tree.bind("<<TreeviewSelect>>", self._on_tree_select)
+
+        # Identification and workflow state only. Measurements stay in the
+        # Results panel — two places showing the same numbers is how a user
+        # ends up unsure which one is current.
+        self._lib_info = InfoboxPanel(body, "Nothing selected")
+        body.add(self._lib_info, minsize=int(round(150 * _s)), stretch="never",
+                 width=int(round(196 * _s)))
 
         # ---- Index tab ----
         idx_tab = tk.Frame(left_nb)
@@ -785,19 +869,27 @@ class App(tk.Tk):
             self._coded_map = coded_episode_map()
         except Exception:
             self._coded_map = {}
+        self._lib_shows = 0
+        self._lib_episodes = 0
         if not self._root_folder:
+            self._lib_count_var.set("no library loaded")
             return
         items = list_top_level(self._root_folder)
         for kind, d in items:
             if kind == "category":
                 cat_node = self._tree.insert(
-                    "", tk.END, text=f"  [{d.name}]",
-                    values=("category", str(d)), open=True,
+                    "", tk.END, text=f" {d.name}",
+                    values=("category", str(d), "", "", ""), open=True,
+                    tags=("st_show",),
                 )
                 for show_dir in list_category_shows(d):
                     self._insert_show_node(cat_node, show_dir)
             else:
                 self._insert_show_node("", d)
+        self._lib_count_var.set(
+            f"{self._lib_shows} show{'s' if self._lib_shows != 1 else ''}, "
+            f"{self._lib_episodes} episode"
+            f"{'s' if self._lib_episodes != 1 else ''}")
         if not items:
             self._write_txt(
                 "No show folders found under:\n"
@@ -812,30 +904,129 @@ class App(tk.Tk):
                 "        episode01.mp4\n"
             )
 
+    @staticmethod
+    def _fmt_duration(seconds: float) -> str:
+        if not seconds:
+            return "—"
+        m, s = divmod(int(round(seconds)), 60)
+        h, m = divmod(m, 60)
+        return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+    @staticmethod
+    def _fmt_added(path: Path) -> str:
+        try:
+            from datetime import datetime
+            return datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d")
+        except Exception:
+            return ""
+
     def _insert_show_node(self, parent_iid: str, show_dir: Path) -> None:
         """Insert a show and its episodes into the library tree."""
         skey = show_key(self._root_folder, show_dir)
         show_node = self._tree.insert(
-            parent_iid, tk.END, text=f"  {show_dir.name}",
-            values=("show", str(show_dir)), open=True,
+            parent_iid, tk.END, text=f" {show_dir.name}",
+            values=("show", str(show_dir), "", "", ""), open=True,
+            tags=("st_show",),
         )
         from analyzer.validation import coding_for_stem
         cmap = getattr(self, "_coded_map", None)
         if cmap is None:
             cmap = {}
-        for ep in list_episodes(show_dir):
+
+        episodes = list_episodes(show_dir)
+        n_analyzed = 0
+        for ep in episodes:
             cached = load_cached(self._root_folder, skey, ep.stem)
             coded = coding_for_stem(ep.stem, cmap)
-            # Mark WHICH measurement exists — automated and hand-coded are
+            # Report WHICH measurement exists — automated and hand-coded are
             # different data and must never be confused for one another.
-            marks = []
+            has_hand = bool(coded.get("transitions") or coded.get("events"))
             if cached:
-                marks.append("auto")
-            if coded.get("transitions") or coded.get("events"):
-                marks.append("hand-coded")
-            label = f"    {ep.name}" + (f"  [{' + '.join(marks)}]" if marks else "")
-            self._tree.insert(show_node, tk.END, text=label,
-                               values=("episode", str(ep)))
+                n_analyzed += 1
+            if cached and has_hand:
+                status, tag = "Analyzed + coded", "st_coded"
+            elif cached:
+                status, tag = "Analyzed", "st_analyzed"
+            elif has_hand:
+                status, tag = "Hand-coded", "st_coded"
+            else:
+                status, tag = "Not measured", "st_ready"
+            length = self._fmt_duration((cached or {}).get("duration_sec", 0))
+            self._tree.insert(show_node, tk.END, text=f" {ep.name}",
+                              values=("episode", str(ep), status, length,
+                                      self._fmt_added(ep)),
+                              tags=(tag,))
+
+        total = len(episodes)
+        summary = (f"{n_analyzed}/{total} analyzed" if total else "no episodes")
+        self._tree.set(show_node, "status", summary)
+        self._tree.set(show_node, "count",
+                       f"{total} ep." if total else "—")
+        self._tree.set(show_node, "added", self._fmt_added(show_dir))
+        self._lib_shows += 1
+        self._lib_episodes += total
+
+    def _update_library_infobox(self, kind: str | None, path: str | None) -> None:
+        """Identify the selected item and say what measurement exists for it.
+
+        Deliberately excludes the metrics themselves — those are in the
+        Results panel, and showing them twice invites the question of which
+        copy is current. Also excludes anything about the programme's
+        suitability, audience, or educational value: CMAT measures the
+        stimulus and issues no verdict.
+        """
+        panel = getattr(self, "_lib_info", None)
+        if panel is None:
+            return
+        if not kind or not path:
+            panel.set_rows("Nothing selected",
+                           [("Select", "a show or episode on the left")])
+            return
+
+        p = Path(path)
+        if kind == "category":
+            shows = list_category_shows(p)
+            panel.set_rows(p.name, [("Type", "Category"),
+                                    ("Shows", str(len(shows))),
+                                    ("Folder", str(p))])
+            return
+
+        if kind == "show":
+            skey = show_key(self._root_folder, p)
+            eps = list_episodes(p)
+            done = sum(1 for e in eps
+                       if load_cached(self._root_folder, skey, e.stem))
+            panel.set_rows(p.name, [
+                ("Type", "Show"),
+                ("Episodes", str(len(eps))),
+                ("Analyzed", (f"{done} of {len(eps)}",
+                              "analyzed" if done else "none")),
+                ("Added", self._fmt_added(p)),
+                ("Folder", str(p)),
+            ])
+            return
+
+        skey = show_key(self._root_folder, p.parent)
+        cached = load_cached(self._root_folder, skey, p.stem) or {}
+        from analyzer.validation import coding_for_stem
+        coded = coding_for_stem(p.stem, getattr(self, "_coded_map", {}) or {})
+        hand = [n for n, k in (("transitions", "transitions"),
+                               ("events", "events")) if coded.get(k)]
+        rows = [
+            ("Show", p.parent.name),
+            ("File", p.name),
+            ("Length", self._fmt_duration(cached.get("duration_sec", 0))),
+            ("Added", self._fmt_added(p)),
+            ("Automated", ("Analyzed", "analyzed") if cached
+             else ("Not measured", "none")),
+            ("Hand coding", (", ".join(hand).capitalize(), "ready") if hand
+             else ("Not coded", "none")),
+        ]
+        # Provenance, when it exists: which settings produced the numbers.
+        fp = cached.get("measurement_fingerprint")
+        if fp:
+            rows.append(("Measured with", fp))
+        panel.set_rows(p.name, rows)
 
     # -----------------------------------------------------------------------
     # Tree selection
@@ -853,9 +1044,11 @@ class App(tk.Tk):
             if hasattr(self, "_auto_sel_var"):
                 self._auto_sel_var.set("(nothing selected — pick a show or "
                                        "episode in the Library tab)")
+            self._update_library_infobox(None, None)
             return
         queue_busy = self._analyzing is not None or self._watch_live_active
         kind, path = self._selected_item()
+        self._update_library_infobox(kind, path)
         # Mirror the selection into the Automated coding tab, where the
         # analyze actions now live.
         if hasattr(self, "_auto_sel_var"):
