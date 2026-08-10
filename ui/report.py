@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from html import escape
 
+from ui import reference_css
 from ui.tokens import COLORS as C
 
 # Qt's rich text engine supports a practical subset of CSS 2.1: it honours
@@ -33,43 +34,41 @@ from ui.tokens import COLORS as C
 # rule of 13px on an h1 was still rendering near 24px. That is not a size the
 # CSS can win, so the elements are avoided entirely.
 #
-# ONE table idiom, .data: column headers on #EAEAEA, right-aligned figures,
-# #F9F9F9 striping. Every table in the reference results pane takes this form,
-# so the report no longer switches to a key/value grid between sections — the
-# switch was mine, not the reference's, and it made two neighbouring tables
-# read as two unrelated kinds of thing.
-STYLE = f"""
+# One table idiom throughout, as the reference results pane has. The report
+# used to switch to a key/value grid between sections; that switch was mine,
+# not the reference's, and it made neighbouring tables read as unrelated things.
+#
+# The reference's OWN rules for these components, lifted from ui/reference/,
+# not transcribed. The markup below therefore uses the reference's class names
+# — data-table, section-title, sub-text — so its CSS applies unchanged.
+_REFERENCE = reference_css.rules((
+    "data-table", "section-title", "sub-text", "info-banner", "info-title",
+    "results-container", "fieldset", "legend",
+))
+
+# Only what the reference CSS cannot express in Qt's rich text engine, plus the
+# handful of things the reference has no equivalent for. Everything here is an
+# addition; nothing overrides a reference value.
+STYLE = _REFERENCE + f"""
 body {{ color: {C['text']}; font-size: 11px; }}
-p  {{ margin: 3px 0; }}
-.title {{ font-size: 13px; font-weight: bold; margin: 0; }}
-.section {{ font-size: 11px; font-weight: bold; color: {C['section_title']};
-            margin: 12px 0 4px 0; border-bottom: 1px solid {C['panel_border']};
-            padding-bottom: 2px; }}
-.sub    {{ color: {C['text_dim']}; font-style: italic; font-size: 10px;
-           margin: 0 0 6px 0; }}
-.score  {{ font-size: 20px; font-weight: bold; color: {C['status_complete']}; }}
+p {{ margin: 3px 0; }}
+
+/* No :nth-child in Qt's rich text engine, so striping is a class per row. */
+tr.alt td {{ background-color: {C['table_alt_row']}; }}
+/* No :first-child either; the label column is marked explicitly. */
+.data-table th.l, .data-table td.l {{ text-align: left; }}
+/* A prose cell in an otherwise numeric table. */
+.data-table td.n {{ color: {C['text_dim']}; font-size: 10px;
+                    text-align: left; font-style: italic; }}
+
+.title {{ font-size: 12px; font-weight: bold; margin: 0; }}
+.score {{ font-size: 20px; font-weight: bold; color: {C['status_complete']}; }}
 .scorenote {{ color: {C['text_dim']}; }}
-.pct    {{ color: {C['accent_dark']}; margin: 2px 0 6px 0; }}
-.dim    {{ color: {C['text_dim']}; }}
-.note   {{ color: {C['text_dim']}; font-style: italic; font-size: 10px; }}
-.banner {{ background: {C['info_bg']}; border: 1px solid {C['info_border']};
-           color: {C['info_text']}; font-size: 10px; padding: 6px 8px; }}
-.warn   {{ background: {C['warn_bg']}; border: 1px solid {C['warn_border']};
-           color: {C['warn_text']}; font-size: 10px; padding: 6px 8px; }}
-
-table.data {{ background: {C['panel_bg']}; margin: 4px 0;
-              border: 1px solid {C['panel_border']}; }}
-table.data th {{ background: {C['table_header']}; color: {C['text']};
-                 border: 1px solid {C['panel_border']}; padding: 2px 6px;
-                 font-weight: bold; text-align: right; }}
-table.data th.l {{ text-align: left; }}
-table.data td {{ border: 1px solid {C['table_cell_line']}; padding: 2px 6px;
-                 text-align: right; }}
-table.data td.l {{ text-align: left; }}
-tr.alt td {{ background: {C['table_alt_row']}; }}
-
-table.data td.n {{ color: {C['text_dim']}; font-size: 10px;
-                   text-align: left; font-style: italic; }}
+.pct {{ color: {C['accent_dark']}; margin: 2px 0 6px 0; }}
+.dim {{ color: {C['text_dim']}; }}
+.note {{ color: {C['text_dim']}; font-style: italic; font-size: 10px; }}
+.warn {{ background: {C['warn_bg']}; border: 1px solid {C['warn_border']};
+         color: {C['warn_text']}; font-size: 10px; padding: 6px 8px; }}
 """
 
 # The reference gives the key column a fixed 140px. Qt's rich text layout wants
@@ -104,7 +103,7 @@ def _table(headers, rows, first_col_width: int | None = None) -> str:
             attrs += w
         return f"<{tag}{attrs}>{_e(text)}</{tag}>"
 
-    out = ['<table class="data" cellspacing="0" cellpadding="0" width="100%">',
+    out = ['<table class="data-table" cellspacing="0" cellpadding="0" width="100%">',
            "<tr>"]
     out += [cell("th", j, "" if h == NOTE else h)
             for j, h in enumerate(headers)]
@@ -139,7 +138,7 @@ def episode_html(result, percentile: dict | None = None,
 
     if result.duration_sec:
         parts.append(
-            f'<p class="sub">Duration {result.duration_sec / 60:.1f} min '
+            f'<p class="sub-text">Duration {result.duration_sec / 60:.1f} min '
             f'({result.duration_sec:.0f} s)</p>')
 
     if result.status == "failed":
@@ -148,7 +147,7 @@ def episode_html(result, percentile: dict | None = None,
 
     # --- sensory load -------------------------------------------------------
     sl = m.sensory_load
-    parts.append('<p class="section">Sensory load</p>')
+    parts.append('<p class="section-title">Sensory load</p>')
     parts.append(f'<p><span class="score">{sl.score:.3f}</span>'
                  f'<span class="scorenote">&nbsp;&nbsp;0 = low stimulation, '
                  f'1 = high</span></p>')
@@ -177,7 +176,7 @@ def episode_html(result, percentile: dict | None = None,
         ("Flashing",   c.flashing,   cfg.get("flashing", 0.15)),
         ("Audio",      c.audio,      cfg.get("audio", 0.20)),
     ]
-    rows = ['<table class="data" cellspacing="0" cellpadding="0" width="100%">'
+    rows = ['<table class="data-table" cellspacing="0" cellpadding="0" width="100%">'
             '<tr><th class="l">Component</th><th>Normalised</th>'
             '<th>Weight</th><th>Contribution</th></tr>']
     for i, (label, val, wt) in enumerate(comps):
@@ -195,7 +194,7 @@ def episode_html(result, percentile: dict | None = None,
     # --- measured features --------------------------------------------------
     shot, pace = m.shot_length, m.scene_pacing
     col, mot, fla = m.color_saturation, m.motion, m.flashing
-    parts.append('<p class="section">Measured features</p>')
+    parts.append('<p class="section-title">Measured features</p>')
     parts.append(_props("Feature", [
         ("Cuts per minute", f"{pace.cuts_per_min:.1f}", ""),
         ("Mean shot length", f"{shot.mean_sec:.2f} s", ""),
@@ -216,7 +215,7 @@ def episode_html(result, percentile: dict | None = None,
 
     # --- audio --------------------------------------------------------------
     au = m.audio
-    parts.append('<p class="section">Audio</p>')
+    parts.append('<p class="section-title">Audio</p>')
     if au.available:
         parts.append(_props("Audio", [
             ("RMS mean", f"{au.rms_mean:.4f}", ""),
@@ -232,7 +231,7 @@ def episode_html(result, percentile: dict | None = None,
 
     # --- speech -------------------------------------------------------------
     sp = m.speech
-    parts.append('<p class="section">Speech</p>')
+    parts.append('<p class="section-title">Speech</p>')
     if sp.available:
         src = {"srt": "SRT subtitle file", "vtt": "VTT subtitle file",
                "whisper": "Whisper transcription"}.get(sp.source, sp.source)
@@ -249,7 +248,7 @@ def episode_html(result, percentile: dict | None = None,
                      'Settings.</p>')
 
     # --- hand coding --------------------------------------------------------
-    parts.append('<p class="section">Fantastical events (hand-coded)</p>')
+    parts.append('<p class="section-title">Fantastical events (hand-coded)</p>')
     if events:
         win = events.get("window")
         win_txt = (f"{win[0]:.0f}–{win[1]:.0f}s"
@@ -270,7 +269,7 @@ def episode_html(result, percentile: dict | None = None,
     # --- provenance ---------------------------------------------------------
     tools = getattr(result, "measurement_tools", None) or {}
     if tools:
-        parts.append('<p class="section">Measured with</p>')
+        parts.append('<p class="section-title">Measured with</p>')
         rows = []
         ungraded = []
         for key, desc in tools.items():

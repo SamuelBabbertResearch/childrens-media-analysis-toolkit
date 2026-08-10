@@ -214,7 +214,7 @@ FONT_PX: dict[str, int] = {
     "small":   10,
     "body":    11,
     "table":   11,
-    "grid":    12,   # rows in the library grid, per the polish directive
+    "grid":    11,   # library grid rows; .tree-row in the reference
     "heading": 12,
     "title":   13,
 }

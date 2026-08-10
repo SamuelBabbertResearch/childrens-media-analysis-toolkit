@@ -302,7 +302,13 @@ QTreeView, QTableView, QListView, QTreeWidget, QTableWidget {{
    gridline-color draws both, which is the doubled rule between cells. */
 QTreeView::item, QTableView::item, QListView::item,
 QTreeWidget::item, QTableWidget::item {{
-    padding: 6px 8px;
+    /* .tree-row in the reference: 19px tall, 0 4px. The 6px 8px asked for in
+       the polish directive roughly doubled the row and halved how many
+       episodes fit on screen, which moved away from the reference rather than
+       towards it. `border: none` from that directive is kept — that one was a
+       real fix, and is what stops the cell rule doubling. */
+    padding: 0 4px;
+    min-height: {m['row_h']}px;
     border: none;
     color: {c['text']};
 }}

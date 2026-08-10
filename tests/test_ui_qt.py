@@ -112,9 +112,23 @@ def test_report_renders_a_document():
     html = report.episode_html(_result())
     assert html.startswith("<html>") and html.endswith("</html>")
     assert "Demo 1x01.mp4" in html
-    # One table idiom throughout, as the reference results pane has.
-    assert 'class="data"' in html
+    # The reference's own class names, so the reference's own CSS applies.
+    assert 'class="data-table"' in html
     assert 'class="kv"' not in html
+
+
+def test_report_uses_the_reference_stylesheet_not_a_copy_of_it():
+    """The reference CSS is loaded, not transcribed.
+
+    Hand-copying values out of ui/reference/ is what repeatedly lost or
+    changed them, so the rules must arrive from the file itself.
+    """
+    from ui import reference_css
+    html = report.episode_html(_result())
+    for rule in (".data-table", ".section-title", ".sub-text"):
+        assert rule in html, f"{rule} missing from the report stylesheet"
+    # A value only the reference file carries.
+    assert "#0F4F96" in reference_css.rules((".section-title",))
 
 
 def test_report_avoids_h1_h6():
