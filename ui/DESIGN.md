@@ -184,17 +184,23 @@ which a hand-drawn row or a `QListView` delegate would have to reimplement.
 
 ### 0.7 Two table idioms, and when each applies
 
-- **`.data-table`** — the numeric table, used for *every* table in a results
-  pane: `#EAEAEA` headers, `#B8B8B8` outer and `#D0D0D0` cell rules,
-  right-aligned figures with a left-aligned first column, `#F9F9F9` striping.
-  Do not switch idioms between sections; neighbouring tables in different
-  styles read as unrelated kinds of thing.
+- **`.wikitable`** — every table in a results pane. This is the one place the
+  mockups are *not* followed: their `.data-table` is a native grid, and the
+  tables are the academic-presentation surface of the tool, so they take
+  MediaWiki's treatment instead. One border weight throughout, `#A2A9B1`,
+  outer and inner alike; a `#F8F9FA` ground rather than white, so the table
+  reads as a block set into the page; a `#EAECF0` header, bluish rather than
+  neutral, with **centred** headings over right-aligned figures and a
+  left-aligned first column; and **no zebra striping** — the tinted ground
+  already separates the table from the page, and banding on top of it is one
+  device too many. Do not switch idioms between sections; neighbouring tables
+  in different styles read as unrelated kinds of thing.
 - **The inspector key/value grid** — a 140px right-aligned bold key on
   `#F0F0F0` with a `#E0E0E0` divider and one `#E5E5E5` hairline per row. For
   properties of a *selected object*, not for figures.
 
-Striping belongs to tables read *across*. A tree is read *down* a hierarchy,
-where banding fights the indentation — the reference tree has none.
+The library tree has no striping either: a tree is read *down* a hierarchy,
+where banding fights the indentation.
 
 ### 0.8 The content rule
 
