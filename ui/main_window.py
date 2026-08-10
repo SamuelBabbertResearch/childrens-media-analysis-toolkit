@@ -46,6 +46,7 @@ from ui.welcome import WelcomeDialog
 from ui.inspector import Inspector
 from ui.report import episode_html
 from ui.automated import AutomatedTab
+from ui.index_tab import IndexTab
 from ui.settings import SettingsDialog
 from ui.tokens import METRICS, color
 
@@ -58,7 +59,6 @@ COL_NAME, COL_STATUS, COL_LENGTH, COL_ADDED = range(4)
 
 UNPORTED = {
     "Pipeline": "The pipeline editor is still on the Tkinter build.",
-    "Index": "The searchable index is still on the Tkinter build.",
     "Human coding": "Coding, validation, and agreement are still on the "
                     "Tkinter build.",
     "Trials": "The trials registry is still on the Tkinter build.",
@@ -351,9 +351,12 @@ class MainWindow(QMainWindow):
         self._automated.library_changed.connect(self._on_analysis_finished)
 
         self._tabs.addTab(self._build_pipeline(), "Pipeline")
-        self._tabs.addTab(self._build_library(), "Library")
+        self._library_page = self._build_library()
+        self._tabs.addTab(self._library_page, "Library")
 
-        self._tabs.addTab(self._placeholder("Index"), "Index")
+        self._index = IndexTab(self)
+        self._index.episode_chosen.connect(self._show_indexed_episode)
+        self._tabs.addTab(self._index, "Index")
         self._tabs.addTab(self._automated, "Automated coding")
         for name in ("Human coding", "Trials"):
             self._tabs.addTab(self._placeholder(name), name)
@@ -816,6 +819,8 @@ class MainWindow(QMainWindow):
 
         self._tree.expandAll()
         self._release_columns()
+        if hasattr(self, "_index"):
+            self._index.refresh()
         self._count.setText(
             f"{shows} show{'s' if shows != 1 else ''}, "
             f"{episodes} episode{'s' if episodes != 1 else ''}")
@@ -882,6 +887,22 @@ class MainWindow(QMainWindow):
     def _on_analysis_finished(self) -> None:
         """Re-read the library so new results show without a manual refresh."""
         self.populate()
+        self._index.refresh()
+
+    def _show_indexed_episode(self, file_path: str) -> None:
+        """Double-clicking an indexed row opens its report in the Library."""
+        path = Path(file_path)
+        if not path.exists():
+            self.statusBar().showMessage(
+                f"{path.name} is indexed but no longer on disk. "
+                f"Use Remove Stale to clear rows like this.", 8000)
+            return
+        cached = load_cached(self._root, show_key(self._root, path.parent),
+                             path.stem)
+        if cached:
+            self._report.setHtml(
+                episode_html(EpisodeResult.from_dict(cached)))
+            self._tabs.setCurrentWidget(self._library_page)
 
     def _on_select(self, *_args) -> None:
         idx = self._tree.selectionModel().currentIndex()

@@ -253,3 +253,34 @@ def test_cancel_signal_survives_the_engine_exception_handler():
     from ui.automated import _Cancelled
     assert issubclass(_Cancelled, BaseException)
     assert not issubclass(_Cancelled, Exception)
+
+
+def test_index_never_shows_a_target_age():
+    """The shows table carries target_age_min/max; the Index must not.
+
+    A target audience age is a claim about the viewer. CMAT reports properties
+    of the video, so those columns are excluded on purpose and the exclusion
+    is pinned here rather than left to whoever edits the column list next.
+    """
+    from ui import index_tab
+    shown = {key for _h, key, _f in
+             index_tab.EPISODE_COLUMNS + index_tab.SHOW_COLUMNS}
+    for forbidden in index_tab.FORBIDDEN_COLUMNS:
+        assert forbidden not in shown
+
+
+def test_index_sorts_only_by_columns_the_database_sanctions():
+    """A sort key the database rejects silently falls back to its default."""
+    from analyzer.db import _EP_SORT_COLS, _SHOW_SORT_COLS
+    from ui import index_tab
+    for _h, key, _f in index_tab.EPISODE_COLUMNS:
+        assert key in _EP_SORT_COLS, key
+    for _h, key, _f in index_tab.SHOW_COLUMNS:
+        assert key in _SHOW_SORT_COLS or key == "updated_at", key
+
+
+def test_outlier_fences_need_enough_values():
+    """Below eight values a quartile is too thin to call anything unusual."""
+    from ui.index_tab import _fences
+    assert _fences([1, 2, 3, 4, 5, 6, 7]) is None
+    assert _fences([1, 2, 3, 4, 5, 6, 7, 100]) is not None
