@@ -110,8 +110,8 @@ QToolBar {{
                 stop:0 {c['toolbar_top']}, stop:1 {c['toolbar_bottom']});
     border: none;
     border-bottom: 1px solid {c['panel_border']};
-    spacing: 5px;
-    padding: 3px 8px;
+    spacing: 6px;
+    padding: 4px 8px;
 }}
 /* Per-tab controls, one step lighter than the main toolbar so the hierarchy
    reads: window chrome, then tab strip, then this. */
@@ -124,23 +124,30 @@ QFrame[subbar="true"] {{
 QStatusBar {{
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                 stop:0 {c['statusbar_top']}, stop:1 {c['statusbar_bottom']});
-    border-top: 1px solid {c['chrome_line']};
-    color: {c['text']};
+    border-top: 1px solid {c['statusbar_line']};
+    color: {c['statusbar_fg']};
     font-size: {pt['small']}px;
+    padding: 3px 8px;
     min-height: {m['header_h']}px;
 }}
 QStatusBar::item {{ border: none; }}
 
 /* ------------------------------------------------------------ buttons -- */
-/* The Aqua-era bevel, declarative: a vertical gradient, a hairline border,
-   and a lighter top edge. In Tk this needed a hand-drawn canvas widget. */
+/* The Aqua-era bevel, declarative: a vertical gradient behind a hairline
+   border. In Tk this needed a hand-drawn canvas widget.
+
+   The reference draws the top highlight as an inset white box-shadow, which Qt
+   has no equivalent for. It is left off rather than faked with a white
+   border-top-color, which lightens the whole edge and reads as a button
+   missing its top rather than a lit one. */
 QPushButton {{
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                 stop:0 {c['control_top']}, stop:1 {c['control_bottom']});
     border: 1px solid {c['control_border']};
-    border-top-color: {c['control_gloss']};
     border-radius: {m['radius']}px;
-    padding: 0 10px;
+    color: {c['control_fg']};
+    font-weight: 500;
+    padding: 0 8px;
     min-height: {m['control_h']}px;
     max-height: {m['control_h']}px;
 }}
@@ -188,9 +195,9 @@ QPushButton[primary="true"]:disabled {{
 QMenuBar {{
     background: {c['menu_bg']};
     border-bottom: 1px solid {c['menu_line']};
-    padding: 1px 4px;
+    padding: 2px 8px;
 }}
-QMenuBar::item {{ padding: 2px 8px; border-radius: 2px; }}
+QMenuBar::item {{ padding: 1px 4px; margin: 0 6px 0 0; border-radius: 2px; }}
 QMenuBar::item:selected {{
     background: {c['accent']};
     color: {c['text_on_accent']};
@@ -220,6 +227,8 @@ QTabWidget::pane {{
 QTabBar {{
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                 stop:0 {c['tabstrip_top']}, stop:1 {c['tabstrip_bottom']});
+    padding-left: 6px;
+    padding-top: 3px;
 }}
 QTabBar::tab {{
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -249,9 +258,9 @@ QTabBar::tab:selected {{
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit {{
     background: {c['panel_bg']};
     border: 1px solid {c['control_border']};
-    border-top-color: #7d8086;
+    border-top-color: {c['control_border_dark']};
     border-radius: {m['radius_tight']}px;
-    padding: 0 5px;
+    padding: 0 4px;
     min-height: {m['control_h']}px;
     max-height: {m['control_h']}px;
     selection-background-color: {c['accent']};
@@ -267,7 +276,7 @@ QComboBox QAbstractItemView {{
     selection-color: {c['text_on_accent']};
 }}
 
-/* ------------------------------------------------- wikitable-style views */
+/* -------------------------------------------------------------- views -- */
 QTreeView, QTableView, QListView {{
     background: {c['mw_bg']};
     alternate-background-color: {c['table_alt_row']};
@@ -317,13 +326,14 @@ QFrame[panel="true"] {{
 QLabel[panelHeader="true"] {{
     background: {c['panel_header']};
     border-bottom: 1px solid {c['panel_border']};
-    padding: 2px 6px;
+    color: {c['control_fg']};
+    padding: 3px 6px;
     font-weight: bold;
 }}
 /* Monospace, inset, so a long path reads as a value rather than prose. */
 QLabel[pathDisplay="true"] {{
     font-family: "{mono}";
-    font-size: {pt['small']}pt;
+    font-size: {pt['small']}px;
     color: {c['path_text']};
     background: {c['panel_bg']};
     border: 1px solid {c['control_border']};
@@ -363,26 +373,24 @@ QGroupBox::title {{
     font-weight: bold;
     color: {c['text_dim']};
 }}
-QSplitter::handle {{ background: {c['chrome_bottom']}; }}
+QSplitter::handle {{ background: {c['window_bg']}; width: 6px; height: 6px; }}
 QSplitter::handle:hover {{ background: {c['accent_glow']}; }}
 
 QTextBrowser {{
     background: {c['panel_bg']};
-    border: 1px solid {c['mw_border']};
+    border: none;
 }}
 
 /* --------------------------------------------------------- ambox note -- */
 QFrame[ambox="info"] {{
     background: {c['info_bg']};
     border: 1px solid {c['info_border']};
-    border-left: 4px solid {c['info_rule']};
-    border-radius: 3px;
+    border-radius: {m['radius_tight']}px;
 }}
 QFrame[ambox="warn"] {{
     background: {c['warn_bg']};
     border: 1px solid {c['warn_border']};
-    border-left: 4px solid {c['warn_rule']};
-    border-radius: 3px;
+    border-radius: {m['radius_tight']}px;
 }}
 """
 

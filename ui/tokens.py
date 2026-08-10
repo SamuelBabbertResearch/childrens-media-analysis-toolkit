@@ -32,7 +32,7 @@ COLORS: dict[str, str] = {
     "hairline":     "#c8cbd0",
     "grid_dot":     "#d7dade",
     "tab_bg":       "#e1e1e1",
-    "tab_fg":       "#4a4d52",
+    "tab_fg":       "#444444",
     "tab_active":   "#eaebed",
 
     # --- type --------------------------------------------------------------
@@ -51,20 +51,21 @@ COLORS: dict[str, str] = {
     "accent_fill_bottom": "#dbe8f8",
 
     # --- controls ----------------------------------------------------------
-    "control_top":             "#fdfdfe",
-    "control_bottom":          "#e4e6ea",
-    "control_border":          "#9ea1a7",
+    "control_top":             "#ffffff",
+    "control_bottom":          "#e2e2e2",
+    "control_border":          "#999999",
     # Darker top edge only — how a sunken control is drawn when the toolkit
     # has no inset shadow.
     "control_border_dark":     "#666666",
     "control_gloss":           "#ffffff",
+    "control_fg":              "#222222",
     "control_shadow":          "#c2c5ca",
     "control_disabled_top":    "#f2f3f4",
     "control_disabled_bottom": "#e9eaec",
     "control_hover_top":       "#ffffff",
     "control_hover_bottom":    "#eaecf0",
-    "control_pressed_top":     "#dfe1e6",
-    "control_pressed_bottom":  "#f0f1f3",
+    "control_pressed_top":     "#d0d0d0",
+    "control_pressed_bottom":  "#e6e6e6",
 
     # --- MediaWiki data presentation ---------------------------------------
     "mw_bg":           "#ffffff",
@@ -94,6 +95,8 @@ COLORS: dict[str, str] = {
     # --- status bar ---------------------------------------------------------
     "statusbar_top":    "#e2e2e2",
     "statusbar_bottom": "#cccccc",
+    "statusbar_line":   "#a6a6a6",
+    "statusbar_fg":     "#333333",
 
     # --- graph canvas -------------------------------------------------------
     "canvas_bg":   "#eaeaea",
@@ -216,7 +219,7 @@ METRICS: dict[str, int] = {
     "row_h":       19,   # tree and table rows
     "header_h":    20,   # view header sections
     "titlebar_h":  24,
-    "tab_pad_x":   12,
+    "tab_pad_x":   10,
     "tab_pad_y":   3,
     "radius":      3,
     "radius_tight": 2,

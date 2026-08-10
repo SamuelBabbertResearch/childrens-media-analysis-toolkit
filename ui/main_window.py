@@ -271,7 +271,11 @@ class MainWindow(QMainWindow):
             ["Name", "Status", "Episodes / Length", "Added"])
         self._tree = QTreeView()
         self._tree.setModel(self._model)
-        self._tree.setAlternatingRowColors(True)
+        # Plain white with a hover tint, as the reference tree is. Striping is
+        # reserved for the numeric tables in the report, where rows are read
+        # across; here rows are read down a hierarchy and the banding fights
+        # the indentation.
+        self._tree.setAlternatingRowColors(False)
         self._tree.setUniformRowHeights(True)
         self._tree.setIndentation(METRICS["row_h"] - 2)
         self._tree.setSelectionMode(QAbstractItemView.SingleSelection)
