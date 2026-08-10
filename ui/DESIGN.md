@@ -29,7 +29,15 @@ invisible until the two were put side by side.
 |---|---|
 | `library.css` | window chrome, toolbar, tabs, tree, results tables |
 | `pipeline.css` | node canvas, node cards, ports, wires, inspector, zoom pill |
-| `welcome.css` | modal frame, option cards, dialog buttons |
+| `dialogs.css` | dialog frame, list views, fieldsets, action bars |
+
+The three agree on every value they share: `#ECECEC` ground, `#7A7A7A` window
+rim, `#B8B8B8` panel border, `#2B73DE` selection, `#999999` control border,
+20px buttons, 11px text, the `#429CE3 → #1066C7` accent on `#0F4F96`. **That
+agreement is the design.** A fourth mockup once disagreed on all of them — its
+own window colour, 22px buttons, a second blue, a bespoke 28px header — and
+building from it produced something that matched no other screen. If a mockup
+departs from the values above, treat the departure as the thing to question.
 
 `ui/reference_css.py` loads them, resolves `var()` against `:root`, and hands
 back a named component's rules:
@@ -37,7 +45,8 @@ back a named component's rules:
 ```python
 from ui import reference_css
 reference_css.rules(("data-table", "section-title"))      # library.css
-reference_css.variables("welcome")["--btn-border"]        # a single token
+reference_css.rules(("list-item",), "dialogs")            # another file
+reference_css.variables("dialogs")["--select-bg"]         # a single token
 ```
 
 To re-extract after a mockup changes, use the snippet in the commit that
@@ -69,10 +78,9 @@ stated or the interface drifts. All of them live in `ui/tokens.py`:
 | `FONT_PX["body"]` | 11 | `body` |
 | `METRICS["row_h"]` | 19 | `.tree-row` |
 | `METRICS["control_h"]` | 20 | `.btn` |
-| `METRICS["modal_control_h"]` | 22 | `.btn` inside `.modal-window` |
+| `METRICS["dialog_input_h"]` | 19 | `input` inside `.dialog-content` |
 | `METRICS["header_h"]` | 20 | `.data-table th` |
-| `METRICS["titlebar_h"]` | 24 | `.titlebar` |
-| `METRICS["modal_header_h"]` | 28 | `.modal-header` |
+| `METRICS["titlebar_h"]` | 24 | `.titlebar`, windows *and* dialogs |
 
 Sizes are **device-independent pixels**. Qt 6 scales the whole interface by
 the display's device-pixel ratio, so `11px` is 11px at 100% and 16.5 physical
@@ -116,17 +124,38 @@ for `Qt.FramelessWindowHint`: it strips `WS_THICKFRAME`/`WS_CAPTION` and takes
 Aero Snap, edge resizing, the drop shadow, the maximise animation, Win+Arrow
 and the system menu with it.
 
-For a new dialog, do not rebuild this. Call:
+**A dialog is a small window, not a differently-styled object.** It uses the
+same 24px strip, the same round controls, the same `#ECECEC` ground and the
+same one accent. A dialog that introduces its own palette is a bug.
+
+For a new dialog, do not rebuild any of this:
 
 ```python
 from ui.modal import ModalDialogFrame
-body = ModalDialogFrame.install(self, "Dialog Title")   # returns the layout
+
+body = ModalDialogFrame.install(self, "Settings — Presets & Weights",
+                                lights=("close",))   # or all three
+body.addWidget(...)                                  # .dialog-content
+row = ModalDialogFrame.add_action_bar(self)          # .dialog-action-bar
 ```
 
-It supplies the 28px metallic header, the close mark, rounded corners, and
-falls back to the native title bar if the hook cannot attach.
+`install` supplies the strip, the controls, rounded corners and the 10px
+content gutter, and falls back to the native title bar if the hook cannot
+attach. `WindowTitleBar` is the same class the main window uses — one
+implementation, not two.
 
-### 0.6 Two table idioms, and when each applies
+### 0.6 Choosing between a list and a set of cards
+
+A list of options is **one inset box with hairline-divided rows**, the chosen
+row filled solid `#2B73DE` with white text and `#E0ECFF` secondary text — the
+native list selection. It is not a stack of separately-bordered cards; that
+was the rejected mockup's idea and it reads as a web page.
+
+Build rows from radio buttons in one `QButtonGroup` when the prose varies in
+height. That gives real keyboard selection — arrow keys move between rows —
+which a hand-drawn row or a `QListView` delegate would have to reimplement.
+
+### 0.7 Two table idioms, and when each applies
 
 - **`.data-table`** — the numeric table, used for *every* table in a results
   pane: `#EAEAEA` headers, `#B8B8B8` outer and `#D0D0D0` cell rules,
@@ -140,7 +169,7 @@ falls back to the native title bar if the hook cannot attach.
 Striping belongs to tables read *across*. A tree is read *down* a hierarchy,
 where banding fights the indentation — the reference tree has none.
 
-### 0.7 The content rule
+### 0.8 The content rule
 
 The mockups are the **styling** specification and nothing else. Words,
 columns, figures and states come from the engine. Never adopt a mockup's
@@ -168,12 +197,12 @@ framework and is shared by both front-ends. **Do not write a literal colour into
 a widget or a stylesheet** — add or reuse a token. Two sources of truth is how
 two different blues both came to mean "selected".
 
-One accent, `accent` / `aqua_*`. The reference files disagreed — `welcome.css`
-asked for `#37A2E8 → #0066CC` on `#003A70`, the other two for
-`#429CE3 → #1066C7` on `#0F4F96`. The latter is used everywhere including
-dialogs: the period gel button was *luminous*, a bright top falling to a mid
-blue over a dark-but-not-black rim, and `#003A70` is nearly navy, which makes
-a button read as stamped out rather than lit.
+One accent, `accent` / `aqua_*`: `#429CE3 → #1066C7` on `#0F4F96`, used
+everywhere including dialogs. All three reference files specify it. A fourth
+mockup asked for `#37A2E8 → #0066CC` on `#003A70` and was set aside — the
+period gel button was *luminous*, a bright top falling to a mid blue over a
+dark-but-not-black rim, and `#003A70` is nearly navy, which makes a button
+read as stamped out rather than lit.
 
 ### Values that map to an existing token
 

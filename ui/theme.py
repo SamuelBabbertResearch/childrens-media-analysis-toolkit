@@ -401,64 +401,46 @@ QTextBrowser {{
     border: none;
 }}
 
-/* ------------------------------------------- starting-layout wizard -- */
-/* Values from ui/reference/welcome.css: .option-card, .card-title,
-   .card-desc, .card-icon, .wizard-title, .wizard-subtitle, .modal-footer. */
+/* ------------------------------------------------------------ dialogs -- */
+/* Values from ui/reference/dialogs.css: .dialog-content, .dialog-action-bar,
+   .list-view, .list-item, .wizard-title, fieldset, legend. A dialog adds no
+   palette of its own — it is a small window. */
+QWidget[dialogContent="true"] {{ background: {c['dialog_content_bg']}; }}
+QWidget[actionBar="true"] {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['action_bar_top']}, stop:1 {c['action_bar_bottom']});
+    border-top: 1px solid {c['dialog_seam']};
+}}
 QLabel[wizardTitle="true"] {{
-    font-size: 14px; font-weight: bold; color: {c['card_title_fg']};
+    font-size: {pt['title']}px; font-weight: bold; color: #000000;
 }}
-QLabel[wizardSubtitle="true"] {{ color: {c['text_dim']}; }}
-QFrame[card="true"] {{
-    background: {c['card_bg']};
-    border: 1px solid {c['card_border']};
-    border-radius: 5px;
+QLabel[wizardSubtitle="true"] {{
+    font-size: {pt['small']}px; color: {c['text_dim']};
 }}
-QFrame[card="true"][selected="true"] {{
-    background: {c['card_sel_bg']};
-    border: 2px solid {c['card_sel_border']};
+/* .list-view — an inset box, its top edge darker in place of the shadow. */
+QScrollArea[listView="true"] {{
+    background: {c['panel_bg']};
+    border: 1px solid {c['panel_border']};
+    border-top-color: {c['list_sunken_edge']};
+    border-radius: {m['radius_tight']}px;
 }}
-QFrame[card="true"] QLabel {{ background: transparent; border: none; }}
-QLabel[cardTitle="true"] {{
-    font-size: {pt['heading']}px; font-weight: bold;
-    color: {c['card_title_fg']};
+QWidget[listHost="true"] {{ background: {c['panel_bg']}; }}
+QWidget[listItem="true"] {{ background: {c['panel_bg']}; }}
+QWidget[listItem="true"][selected="true"] {{ background: {c['accent']}; }}
+QLabel[listItemTitle="true"] {{
+    font-size: {pt['body']}px; font-weight: bold; color: {c['text']};
 }}
-QLabel[cardDesc="true"] {{
-    font-size: {pt['small']}px; color: {c['card_desc_fg']};
+QLabel[listItemTitle="true"][selected="true"] {{ color: {c['text_on_accent']}; }}
+QLabel[listItemDesc="true"] {{
+    font-size: {pt['small']}px; color: {c['text_dim']};
 }}
-QWidget[nameRow="true"] {{ border-top: 1px solid {c['card_border']}; }}
-QWidget[modalFooter="true"] {{
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 {c['modal_foot_top']}, stop:1 {c['modal_foot_bottom']});
-    border-top: 1px solid {c['metal_border']};
+QLabel[listItemDesc="true"][selected="true"] {{
+    color: {c['text_on_accent_dim']};
 }}
-/* The modal frame. welcome.css gives a dialog its own window colour and
-   button size, which are scoped here; its accent is NOT used — see the note
-   in tokens.py. One accent, one meaning. */
-QDialog {{ background: {c['modal_bg']}; }}
-QWidget[modalBody="true"] {{ background: {c['modal_bg']}; }}
-QWidget[modalBody="true"] QPushButton,
-QWidget[modalFooter="true"] QPushButton {{
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 {c['modal_btn_top']}, stop:1 {c['modal_btn_bottom']});
-    border: 1px solid {c['modal_btn_border']};
-    border-radius: {m['radius']}px;
-    padding: 0 12px;
-    min-height: {m['modal_control_h']}px;
-    max-height: {m['modal_control_h']}px;
-}}
-QWidget[modalFooter="true"] QPushButton[primary="true"] {{
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 {c['aqua_top']}, stop:1 {c['aqua_bottom']});
-    border: 1px solid {c['aqua_border']};
-    color: {c['text_on_accent']};
-    font-weight: bold;
-}}
-QWidget[modalBody="true"] QLineEdit {{
-    border: 1px solid {c['modal_btn_border']};
-    border-radius: {m['radius']}px;
-    min-height: {m['modal_control_h']}px;
-    max-height: {m['modal_control_h']}px;
-    padding: 0 6px;
+/* Inputs are a pixel shorter inside a dialog than on the toolbar. */
+QWidget[dialogContent="true"] QLineEdit {{
+    min-height: {m['dialog_input_h']}px;
+    max-height: {m['dialog_input_h']}px;
 }}
 
 /* ------------------------------------------------- pipeline workbench -- */

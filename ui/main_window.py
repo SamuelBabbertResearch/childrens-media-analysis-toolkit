@@ -15,9 +15,9 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QRect, Qt, QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import (
-    QAction, QColor, QFont, QIcon, QKeySequence, QLinearGradient,
+    QAction, QFont, QIcon, QKeySequence,
     QPainter, QPixmap, QShortcut, QStandardItem, QStandardItemModel,
 )
 from PySide6.QtWidgets import (
@@ -40,6 +40,7 @@ from analyzer.pipeline_graph import (
     NODE_TYPES, default_doc, delete_doc, duplicate_doc, list_docs,
     node_type, save_doc, unique_name,
 )
+from ui.modal import WindowTitleBar
 from ui.pipeline_view import Canvas, ZoomPill
 from ui.welcome import WelcomeDialog
 from ui.inspector import Inspector
@@ -176,109 +177,6 @@ class SubToolBar(QFrame):
         self.row.setSpacing(6)
 
 
-class TitleBar(QWidget):
-    """The reference's own title strip: document name left, three lights right.
-
-    The lights are drawn rather than made buttons so they can sit on the exact
-    10px circle the reference specifies without a control's padding around
-    them; each is still a real click target through `mousePressEvent`.
-
-    Windows conventions are preserved, not replaced. The strip reports
-    HTCAPTION to Windows (see ui/native_frame.py), so dragging, snapping,
-    double-click-to-maximise and the right-click system menu all still come
-    from the system. The lights sit in the reference's order — close, minimise,
-    zoom, left to right — which is the opposite of the Windows order; they are
-    labelled by tooltip and reachable from the system menu and the usual
-    keyboard shortcuts either way.
-    """
-
-    LIGHT_D = 10
-    LIGHT_GAP = 6
-    PAD_X = 8
-
-    def __init__(self, window) -> None:
-        super().__init__()
-        self._window = window
-        self.setFixedHeight(METRICS["titlebar_h"])
-        self.setMouseTracking(True)
-        self._hover = -1
-        self.setToolTip("")
-
-    # -- geometry ---------------------------------------------------------
-    def _light_rects(self) -> list[QRect]:
-        d, gap = self.LIGHT_D, self.LIGHT_GAP
-        y = (self.height() - d) // 2
-        out = []
-        x = self.width() - self.PAD_X - d
-        for _ in range(3):
-            out.append(QRect(x, y, d, d))
-            x -= d + gap
-        return out[::-1]  # close, minimise, zoom — left to right
-
-    def _light_at(self, pos) -> int:
-        for i, r in enumerate(self._light_rects()):
-            if r.adjusted(-2, -2, 2, 2).contains(pos):
-                return i
-        return -1
-
-    def is_caption(self, x: int, y: int) -> bool:
-        """False over a light, so the control takes the click, not the drag."""
-        return self._light_at(QPoint(x, y)) < 0
-
-    # -- painting ---------------------------------------------------------
-    def paintEvent(self, event) -> None:
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-
-        grad = QLinearGradient(0, 0, 0, self.height())
-        grad.setColorAt(0.0, QColor(color("titlebar_top")))
-        grad.setColorAt(1.0, QColor(color("titlebar_bottom")))
-        p.fillRect(self.rect(), grad)
-        p.setPen(QColor(color("titlebar_line")))
-        p.drawLine(0, self.height() - 1, self.width(), self.height() - 1)
-
-        p.setFont(theme.font("body", bold=True))
-        p.setPen(QColor(color("titlebar_fg")))
-        lights_left = self._light_rects()[0].left() - 12
-        p.drawText(QRect(self.PAD_X, 0, lights_left - self.PAD_X,
-                         self.height()),
-                   Qt.AlignVCenter | Qt.AlignLeft, self._window.windowTitle())
-
-        fills = ("light_close", "light_min", "light_max")
-        for i, rect in enumerate(self._light_rects()):
-            col = QColor(color(fills[i]))
-            if self._hover == i:
-                col = col.lighter(112)
-            p.setBrush(col)
-            p.setPen(QColor(0, 0, 0, 64))
-            p.drawEllipse(rect)
-
-    # -- interaction ------------------------------------------------------
-    def mouseMoveEvent(self, event) -> None:
-        hit = self._light_at(event.position().toPoint())
-        if hit != self._hover:
-            self._hover = hit
-            self.setToolTip(("Close", "Minimise", "Zoom")[hit] if hit >= 0
-                            else "")
-            self.update()
-
-    def leaveEvent(self, event) -> None:
-        self._hover = -1
-        self.update()
-
-    def mousePressEvent(self, event) -> None:
-        hit = self._light_at(event.position().toPoint())
-        if hit == 0:
-            self._window.close()
-        elif hit == 1:
-            self._window.showMinimized()
-        elif hit == 2:
-            if self._window.isMaximized():
-                self._window.showNormal()
-            else:
-                self._window.showMaximized()
-
-
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -330,7 +228,7 @@ class MainWindow(QMainWindow):
         keeps its ordinary title bar, which is a worse match for the reference
         and a much better outcome than a window that cannot be moved.
         """
-        self._title_bar = TitleBar(self)
+        self._title_bar = WindowTitleBar(self)
         self._menubar = QMenuBar()
         attached = native_frame.install(
             self, METRICS["titlebar_h"], self._title_bar.is_caption)

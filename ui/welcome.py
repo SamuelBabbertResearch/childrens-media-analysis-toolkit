@@ -1,32 +1,33 @@
 """
 ui/welcome.py — the starting-layout wizard, shown when CMAT opens.
 
-Follows ui/reference/welcome.css: a 620px modal with a metallic header (see
-ui/modal.py), a scrolling list of option cards, a name field, and a footer
-carrying the "show this at startup" toggle beside the buttons.
+Follows ui/reference/dialogs.css modal 1: a 580px dialog in the ordinary window
+chrome (ui/modal.py), a header pair, one inset list box of layouts, a name
+field, and an action bar carrying the "show this at startup" toggle beside the
+buttons.
 
-The reference draws a glyph on each card; they are left off at the user's
-request. The reference's footer also has a Back button, which is dropped:
-this is the first screen, so there is nothing behind it, and a dead control
-is worse than an honest one. Skip takes its place.
+The layouts are the real templates from analyzer.pipeline_graph.TEMPLATES, with
+the summary and detail text the registry already carries. The reference draws
+four; there are seven, including Mixed methods, Validation study and Blank
+canvas. Showing four would make the wizard a worse map of the tool than the
+tool is.
 
-The cards are the real templates from analyzer.pipeline_graph.TEMPLATES, and
-their titles and descriptions are the ones the registry already carries. The
-reference shows four; there are seven, including Mixed methods, Validation
-study, and Blank canvas. Showing four and quietly dropping three would make
-the wizard a worse map of the tool than the tool is.
+The reference's action bar has a Back button, which is dropped: this is the
+first screen, so there is nothing behind it, and a dead control is worse than
+an honest one. Skip takes its place.
 
-The wizard is a starting point, not a commitment: every template is an
-ordinary document that can be rewired afterwards, which is what the subtitle
-says and what the Pipeline tab then allows.
+The list is built from radio buttons in one group rather than a QListView with
+a delegate: the rows carry wrapped prose of very different heights, and the
+radios give real keyboard selection — arrow keys move between them — for free,
+which a hand-drawn row would have to reimplement.
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QScrollArea, QVBoxLayout, QWidget,
+    QButtonGroup, QCheckBox, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
+    QPushButton, QRadioButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
 from analyzer.pipeline_graph import TEMPLATES, unique_name
@@ -34,134 +35,152 @@ from analyzer.prefs import get_pref, set_pref
 from ui.modal import ModalDialogFrame
 from ui.tokens import color
 
-MODAL_W = 620         # .layout-modal width
-CARD_LIST_H = 380     # .card-list max-height
+DIALOG_W = 580        # .layout-dialog width
+LIST_MAX_H = 320      # .list-view max-height
 
-# The reference draws a glyph beside each card; they are deliberately not used.
-# Kept as the record of which templates a card exists for, which is what the
-# test checks — add a template, add it here.
+# The record of which templates have a row. Add a template, add it here; a
+# test fails otherwise, so a new layout cannot be silently left out.
 TEMPLATE_KEYS = ("full", "automated", "handcoding", "language", "mixed",
                  "validation", "blank")
 
 
-class OptionCard(QFrame):
-    """One template, as the reference's .option-card."""
+class LayoutRow(QWidget):
+    """One layout, as the reference's `.list-item`."""
 
-    clicked = Signal(str)
+    picked = Signal(str)
 
-    def __init__(self, template) -> None:
+    def __init__(self, template, group: QButtonGroup) -> None:
         super().__init__()
         self.key = template.key
-        self.setProperty("card", "true")
+        self.setProperty("listItem", "true")
         self.setProperty("selected", "false")
+        self.setAttribute(Qt.WA_StyledBackground, True)
         self.setCursor(Qt.PointingHandCursor)
 
-        # .option-card padding: 10px 12px
+        # .list-item: padding 6px 8px, gap 8px, align-items flex-start
         row = QHBoxLayout(self)
-        row.setContentsMargins(12, 10, 12, 10)
-        row.setSpacing(10)
+        row.setContentsMargins(8, 6, 8, 6)
+        row.setSpacing(8)
+
+        self.radio = QRadioButton()
+        group.addButton(self.radio)
+        self.radio.toggled.connect(
+            lambda on: self.picked.emit(self.key) if on else None)
+        row.addWidget(self.radio, 0, Qt.AlignTop)
 
         text = QVBoxLayout()
-        text.setSpacing(4)
-        title = QLabel(template.name)
-        title.setProperty("cardTitle", "true")
-        text.addWidget(title)
-        # Summary then detail, both straight from the registry.
-        body = QLabel(f"{template.summary}. {template.detail}")
-        body.setProperty("cardDesc", "true")
-        body.setWordWrap(True)
-        text.addWidget(body)
+        text.setSpacing(2)
+        self._title = QLabel(template.name)
+        self._title.setProperty("listItemTitle", "true")
+        text.addWidget(self._title)
+        self._desc = QLabel(f"{template.summary}. {template.detail}")
+        self._desc.setProperty("listItemDesc", "true")
+        self._desc.setWordWrap(True)
+        text.addWidget(self._desc)
         row.addLayout(text, 1)
 
     def set_selected(self, on: bool) -> None:
-        self.setProperty("selected", "true" if on else "false")
-        # A property change needs an explicit repolish to take effect.
-        self.style().unpolish(self)
-        self.style().polish(self)
+        for w in (self, self._title, self._desc):
+            w.setProperty("selected", "true" if on else "false")
+            # A property change needs an explicit repolish to take effect.
+            w.style().unpolish(w)
+            w.style().polish(w)
+        if on and not self.radio.isChecked():
+            self.radio.setChecked(True)
 
     def mousePressEvent(self, event) -> None:
-        self.clicked.emit(self.key)
+        self.radio.setChecked(True)
 
 
 class WelcomeDialog(QDialog):
-    """Choose a starting layout. Returns the built PipelineDoc, or None."""
+    """Choose a starting layout. Leaves `doc` set to the built PipelineDoc."""
 
     def __init__(self, existing_names: list[str], parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Welcome to CMAT")
         self.setModal(True)
-        self.setFixedWidth(MODAL_W)
+        self.setFixedWidth(DIALOG_W)
         self._existing = existing_names
         self.doc = None
 
-        outer = ModalDialogFrame.install(self, "Welcome to CMAT")
+        body = ModalDialogFrame.install(self, "Welcome to CMAT")
 
-        heading = QLabel("Choose a starting layout")
-        heading.setProperty("wizardTitle", "true")
-        outer.addWidget(heading)
+        header = QWidget()
+        hv = QVBoxLayout(header)
+        hv.setContentsMargins(0, 0, 0, 0)
+        hv.setSpacing(0)
+        title = QLabel("Choose a starting layout")
+        title.setProperty("wizardTitle", "true")
+        hv.addWidget(title)
         sub = QLabel("A starting point, not a restriction — add, remove, and "
                      "rewire stages at any time.")
         sub.setProperty("wizardSubtitle", "true")
         sub.setWordWrap(True)
-        outer.addWidget(sub)
+        hv.addWidget(sub)
+        body.addWidget(header)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setMaximumHeight(CARD_LIST_H)
+        # .list-view: one inset box, rows divided by a hairline.
+        listbox = QScrollArea()
+        listbox.setProperty("listView", "true")
+        listbox.setWidgetResizable(True)
+        listbox.setMaximumHeight(LIST_MAX_H)
         host = QWidget()
-        cards = QVBoxLayout(host)
-        cards.setContentsMargins(0, 0, 4, 0)
-        cards.setSpacing(8)
+        host.setProperty("listHost", "true")
+        host.setAttribute(Qt.WA_StyledBackground, True)
+        rows = QVBoxLayout(host)
+        rows.setContentsMargins(0, 0, 0, 0)
+        rows.setSpacing(0)
 
-        self._cards: dict[str, OptionCard] = {}
-        for template in TEMPLATES:
-            card = OptionCard(template)
-            card.clicked.connect(self._select)
-            cards.addWidget(card)
-            self._cards[template.key] = card
-        cards.addStretch(1)
-        scroll.setWidget(host)
-        outer.addWidget(scroll, 1)
+        self._group = QButtonGroup(self)
+        self._rows: dict[str, LayoutRow] = {}
+        for i, template in enumerate(TEMPLATES):
+            row = LayoutRow(template, self._group)
+            row.picked.connect(self._select)
+            rows.addWidget(row)
+            self._rows[template.key] = row
+            if i < len(TEMPLATES) - 1:
+                rows.addWidget(self._divider())
+        rows.addStretch(1)
+        listbox.setWidget(host)
+        body.addWidget(listbox, 1)
 
         name_row = QWidget()
-        name_row.setProperty("nameRow", "true")
         nr = QHBoxLayout(name_row)
-        nr.setContentsMargins(0, 8, 0, 0)
-        nr.setSpacing(8)
+        nr.setContentsMargins(0, 2, 0, 0)
+        nr.setSpacing(6)
         nr.addWidget(QLabel("Pipeline name:"))
         self._name = QLineEdit()
         nr.addWidget(self._name, 1)
-        outer.addWidget(name_row)
+        body.addWidget(name_row)
 
-        footer = QWidget()
-        footer.setProperty("modalFooter", "true")
-        fr = QHBoxLayout(footer)
-        fr.setContentsMargins(12, 8, 12, 8)
-        fr.setSpacing(6)
+        action = ModalDialogFrame.add_action_bar(self)
         self._show_again = QCheckBox("Show this when CMAT starts")
         self._show_again.setChecked(bool(get_pref("show_welcome_on_start",
                                                   True)))
-        fr.addWidget(self._show_again)
-        fr.addStretch(1)
+        action.addWidget(self._show_again)
+        action.addStretch(1)
         skip = QPushButton("Skip")
         skip.clicked.connect(self.reject)
-        fr.addWidget(skip)
+        action.addWidget(skip)
         self._create = QPushButton("Create Pipeline")
         self._create.setProperty("primary", "true")
         self._create.setDefault(True)
         self._create.clicked.connect(self._accept)
-        fr.addWidget(self._create)
-        # The footer spans the modal, outside the body's 12px gutter.
-        self._modal_outer.addWidget(footer)
+        action.addWidget(self._create)
 
-        self._select(TEMPLATES[0].key)
+        self._rows[TEMPLATES[0].key].set_selected(True)
+
+    @staticmethod
+    def _divider() -> QFrame:
+        line = QFrame()
+        line.setFixedHeight(1)
+        line.setStyleSheet(f"background:{color('list_divider')};border:none;")
+        return line
 
     # -- behaviour --------------------------------------------------------
     def _select(self, key: str) -> None:
         self._selected = key
-        for card_key, card in self._cards.items():
-            card.set_selected(card_key == key)
+        for row_key, row in self._rows.items():
+            row.set_selected(row_key == key)
         template = next(t for t in TEMPLATES if t.key == key)
         # The suggested name follows the chosen layout and stays unique.
         self._name.setText(unique_name(self._existing, template.name))

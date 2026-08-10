@@ -129,32 +129,15 @@ COLORS: dict[str, str] = {
     "note_border":   "#e0e0e0",
     "rule_soft":     "#d9d9d9",
 
-    # --- starting-layout wizard (ui/reference/welcome.css) ------------------
-    "card_bg":          "#ffffff",
-    "card_border":      "#cccccc",
-    "card_sel_bg":      "#ebf4ff",
-    "card_sel_border":  "#2b72d6",
-    "card_title_fg":    "#111111",
-    "card_desc_fg":     "#444444",
-    "modal_foot_top":    "#e6e6e6",
-    "modal_foot_bottom": "#d8d8d8",
-    # The modal frame (.modal-window / .modal-header in welcome.css).
-    "modal_bg":        "#f0f0f0",
-    "modal_border":    "#555555",
-    "metal_top":       "#ededed",
-    "metal_bottom":    "#d8d8d8",
-    "metal_border":    "#999999",
-    "modal_title_fg":  "#333333",
-    "modal_close_fg":  "#666666",
-    "modal_btn_top":    "#ffffff",
-    "modal_btn_bottom": "#d8d8d8",
-    "modal_btn_border": "#8e8e8e",
-    # The reference files disagreed on the accent: welcome.css asked for
-    # #37A2E8 -> #0066CC on #003A70, the other two for #429CE3 -> #1066C7 on
-    # #0F4F96. Settled on the latter, which is what "aqua_*" above already is.
-    # The period gel button was LUMINOUS — a bright top falling to a mid blue
-    # over a dark-but-not-black rim. #003A70 is nearly navy and makes a button
-    # read as stamped out rather than lit. Dialogs now use the one accent.
+    # --- dialogs (ui/reference/dialogs.css) ---------------------------------
+    # A dialog is a small window, not a differently-styled object: it uses the
+    # window chrome, the window colour and the one accent. An earlier mockup
+    # gave dialogs their own #F0F0F0 ground, 22px buttons and a second blue;
+    # that file was the odd one out of the three and is superseded.
+    "dialog_content_bg": "#ececec",
+    "fieldset_bg":       "#ffffff",
+    "legend_fg":         "#333333",
+    "total_ok_fg":       "#1b7a2b",
 
     # --- views --------------------------------------------------------------
     "row_hover":      "#f0f4f9",
@@ -252,8 +235,7 @@ METRICS: dict[str, int] = {
     "row_h":       19,   # tree and table rows
     "header_h":    20,   # view header sections
     "titlebar_h":  24,
-    "modal_control_h": 22,   # .btn height inside a modal
-    "modal_header_h":  28,   # .modal-header height
+    "dialog_input_h":  19,   # input/select height in a dialog
     "tab_pad_x":   10,
     "tab_pad_y":   3,
     "radius":      3,
