@@ -240,12 +240,16 @@ FONT_PT: dict[str, int] = {
     "title":   13,
 }
 
-# First available wins. Lucida Grande is Mac-only, so on Windows the real pick
-# is Lucida Sans Unicode — a genuine Lucida face, closest to the OS X
-# reference, but wide and softly hinted at small sizes. Put "Segoe UI" first
-# for a crisper, more modern face at the cost of the period character.
-UI_FAMILY_PREFERENCE = ("Lucida Grande", "Lucida Sans Unicode",
-                        "Segoe UI", "Tahoma")
+# First available wins, and this order is the reference stack resolved for
+# Windows. The reference asks for
+#     -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto,
+#     Helvetica, Arial
+# in which every face ahead of Segoe UI is a macOS system font, so on Windows
+# it renders in Segoe UI. Naming a Lucida first was a mistake: it is the
+# closer period reference, but it is wide and softly hinted at 11px, and it
+# changed the texture of every string in the application away from the
+# reference rather than towards it.
+UI_FAMILY_PREFERENCE = ("Segoe UI", "Roboto", "Helvetica", "Arial", "Tahoma")
 
 # Fixed-pitch, for content needing column-exact CHARACTERS: coding-sheet
 # timestamps, raw provenance. NOT for table numbers — every face above renders

@@ -17,8 +17,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QPoint, QRect, Qt, QTimer
 from PySide6.QtGui import (
-    QAction, QColor, QLinearGradient, QPainter, QStandardItem,
-    QStandardItemModel,
+    QAction, QColor, QFont, QIcon, QLinearGradient, QPainter, QPixmap,
+    QStandardItem, QStandardItemModel,
 )
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
@@ -37,6 +37,10 @@ from analyzer.show_index import (
 from ui import native_frame, theme
 from ui.report import episode_html
 from ui.tokens import METRICS, color
+
+# The reference marks folders and episodes with these two glyphs.
+FOLDER = "📁"
+FILE = "📄"
 
 # Column order for the library grid.
 COL_NAME, COL_STATUS, COL_LENGTH, COL_ADDED = range(4)
@@ -64,6 +68,32 @@ def _fmt_added(path: Path) -> str:
         return datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d")
     except OSError:
         return ""
+
+
+_ICON_CACHE: dict[tuple[str, int], "QIcon"] = {}
+
+
+def _glyph_icon(char: str, px: int = 13) -> QIcon:
+    """The reference marks folders and files with a glyph; this is that glyph.
+
+    Rendered to a pixmap rather than prefixed to the item text, so the model's
+    text stays the name alone and sorting, filtering and accessible names are
+    not polluted with a decoration.
+    """
+    key = (char, px)
+    if key not in _ICON_CACHE:
+        size = px + 3
+        pm = QPixmap(size, size)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing)
+        f = QFont("Segoe UI Emoji")
+        f.setPixelSize(px)
+        p.setFont(f)
+        p.drawText(pm.rect(), Qt.AlignCenter, char)
+        p.end()
+        _ICON_CACHE[key] = QIcon(pm)
+    return _ICON_CACHE[key]
 
 
 class Ambox(QFrame):
@@ -480,7 +510,7 @@ class MainWindow(QMainWindow):
         for kind, path in list_top_level(self._root):
             if kind == "category":
                 node = self._row(path.name, "", "", _fmt_added(path),
-                                 bold=True)
+                                 bold=True, icon=FOLDER)
                 self._model.appendRow(node)
                 for show_dir in list_category_shows(path):
                     s, e = self._add_show(node[0], show_dir)
@@ -498,7 +528,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"{shows} shows, {episodes} episodes in {self._root}")
 
-    def _row(self, name, status, length, added, bold=False, payload=None):
+    def _row(self, name, status, length, added, bold=False, payload=None,
+             icon=None):
         cells = [QStandardItem(str(v)) for v in (name, status, length, added)]
         for cell in cells:
             cell.setEditable(False)
@@ -506,6 +537,8 @@ class MainWindow(QMainWindow):
                 f = cell.font()
                 f.setBold(True)
                 cell.setFont(f)
+        if icon:
+            cells[0].setIcon(_glyph_icon(icon))
         if payload is not None:
             cells[0].setData(str(payload), Qt.UserRole)
         return cells
@@ -522,7 +555,7 @@ class MainWindow(QMainWindow):
             status = "Analyzed" if cached else "Not measured"
             row = self._row(ep.name, status,
                             _fmt_duration((cached or {}).get("duration_sec", 0)),
-                            _fmt_added(ep), payload=ep)
+                            _fmt_added(ep), payload=ep, icon=FILE)
             row[COL_STATUS].setForeground(
                 Qt.GlobalColor.darkBlue if cached else Qt.GlobalColor.darkGray)
             rows.append(row)
@@ -530,7 +563,7 @@ class MainWindow(QMainWindow):
         head = self._row(show_dir.name,
                          f"{analyzed}/{len(eps)} analyzed" if eps else "empty",
                          f"{len(eps)} ep." if eps else "—",
-                         _fmt_added(show_dir), bold=True)
+                         _fmt_added(show_dir), bold=True, icon=FOLDER)
         for r in rows:
             head[0].appendRow(r)
         if parent is None:

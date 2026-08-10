@@ -112,8 +112,9 @@ def test_report_renders_a_document():
     html = report.episode_html(_result())
     assert html.startswith("<html>") and html.endswith("</html>")
     assert "Demo 1x01.mp4" in html
-    # The two table idioms of the reference layouts: numeric and key/value.
-    assert 'class="data"' in html and 'class="kv"' in html
+    # One table idiom throughout, as the reference results pane has.
+    assert 'class="data"' in html
+    assert 'class="kv"' not in html
 
 
 def test_report_avoids_h1_h6():

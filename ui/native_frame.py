@@ -48,6 +48,12 @@ SM_CXSIZEFRAME = 32
 SM_CYSIZEFRAME = 33
 SM_CXPADDEDBORDER = 92
 
+# Windows 11 rounds window corners through DWM. Doing it this way rather than
+# with a QRegion mask keeps the rounding antialiased and keeps the drop shadow,
+# both of which a mask destroys.
+DWMWA_WINDOW_CORNER_PREFERENCE = 33
+DWMWCP_ROUND = 2
+
 # How far in from the edge counts as a resize grip, in device-independent px.
 RESIZE_MARGIN = 5
 
@@ -166,4 +172,28 @@ def install(window, caption_height: int, is_caption=None) -> bool:
             SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER)
     except Exception:
         pass
+
+    round_corners(window)
     return True
+
+
+def round_corners(window) -> bool:
+    """Ask DWM for the rounded corners the reference window has.
+
+    Windows 11 only; on Windows 10 the attribute is simply not recognised and
+    the call fails harmlessly, leaving square corners. Preferred over masking
+    the window with a rounded QRegion, which gives hard aliased edges and
+    throws away the drop shadow.
+    """
+    if not IS_WINDOWS:
+        return False
+    try:
+        import ctypes
+
+        pref = ctypes.c_int(DWMWCP_ROUND)
+        result = ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            int(window.winId()), DWMWA_WINDOW_CORNER_PREFERENCE,
+            ctypes.byref(pref), ctypes.sizeof(pref))
+        return result == 0
+    except Exception:
+        return False

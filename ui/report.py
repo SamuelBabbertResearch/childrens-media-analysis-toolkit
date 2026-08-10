@@ -33,10 +33,11 @@ from ui.tokens import COLORS as C
 # rule of 13px on an h1 was still rendering near 24px. That is not a size the
 # CSS can win, so the elements are avoided entirely.
 #
-# Two table idioms, deliberately distinct:
-#   .data      numeric — column headers, right-aligned figures, striped rows
-#   .kv        key/value — right-aligned bold key on a grey ground, one hairline
-#              between rows and no outer grid
+# ONE table idiom, .data: column headers on #EAEAEA, right-aligned figures,
+# #F9F9F9 striping. Every table in the reference results pane takes this form,
+# so the report no longer switches to a key/value grid between sections — the
+# switch was mine, not the reference's, and it made two neighbouring tables
+# read as two unrelated kinds of thing.
 STYLE = f"""
 body {{ color: {C['text']}; font-size: 11px; }}
 p  {{ margin: 3px 0; }}
@@ -67,37 +68,59 @@ table.data td {{ border: 1px solid {C['table_cell_line']}; padding: 2px 6px;
 table.data td.l {{ text-align: left; }}
 tr.alt td {{ background: {C['table_alt_row']}; }}
 
-table.kv {{ background: {C['panel_bg']}; margin: 4px 0;
-            border: 1px solid {C['panel_border']}; }}
-table.kv td {{ padding: 4px 8px; border-bottom: 1px solid {C['kv_row_line']};
-               color: {C['kv_val_fg']}; }}
-table.kv td.key {{ background: {C['kv_key_bg']}; color: {C['kv_key_fg']};
-                   font-weight: bold; text-align: right;
-                   border-right: 1px solid {C['kv_key_line']}; }}
-table.kv td.n {{ color: {C['text_dim']}; font-size: 10px; }}
+table.data td.n {{ color: {C['text_dim']}; font-size: 10px;
+                   text-align: left; font-style: italic; }}
 """
 
 # The reference gives the key column a fixed 140px. Qt's rich text layout wants
 # it as a column width on the cell, not a stylesheet rule.
 _KEY_W = 140
 
+# Marks a column of prose rather than figures: left aligned, muted, and
+# with a blank header, since "Note" as a heading is pure noise.
+NOTE = object()
+
 
 def _e(v) -> str:
     return escape(str(v), quote=False)
 
 
-def _props(rows) -> str:
-    """A key/value table, in the inspector idiom of the reference layouts."""
-    out = ['<table class="kv" cellspacing="0" cellpadding="0" width="100%">']
-    for row in rows:
-        label, value = row[0], row[1]
-        note = row[2] if len(row) > 2 else ""
-        note_cell = f'<td class="n">{_e(note)}</td>' if note else "<td></td>"
-        out.append(
-            f'<tr><td class="key" width="{_KEY_W}">{_e(label)}</td>'
-            f'<td>{_e(value)}</td>{note_cell}</tr>')
+def _table(headers, rows, first_col_width: int | None = None) -> str:
+    """The reference results table: column headers, right-aligned, striped.
+
+    Every table in the reference results pane takes this one form, so the
+    report uses it throughout rather than switching idioms between sections.
+    The first column is the label and stays left-aligned; the rest are figures.
+    A column headed NOTE holds prose rather than a figure, so it keeps the left
+    alignment and takes the muted note styling.
+    """
+    note_cols = {i for i, h in enumerate(headers) if h == NOTE}
+    w = f' width="{first_col_width}"' if first_col_width else ""
+
+    def cell(tag: str, j: int, text) -> str:
+        cls = "l" if j == 0 else ("n" if j in note_cols else "")
+        attrs = f' class="{cls}"' if cls else ""
+        if j == 0 and w:
+            attrs += w
+        return f"<{tag}{attrs}>{_e(text)}</{tag}>"
+
+    out = ['<table class="data" cellspacing="0" cellpadding="0" width="100%">',
+           "<tr>"]
+    out += [cell("th", j, "" if h == NOTE else h)
+            for j, h in enumerate(headers)]
+    out.append("</tr>")
+    for i, row in enumerate(rows):
+        out.append('<tr class="alt">' if i % 2 else "<tr>")
+        out += [cell("td", j, v) for j, v in enumerate(row)]
+        out.append("</tr>")
     out.append("</table>")
     return "".join(out)
+
+
+def _props(label: str, rows) -> str:
+    """A measurement table: label, value, and a note explaining the value."""
+    return _table((label, "Value", NOTE), rows,
+                  first_col_width=_KEY_W)
 
 
 def _ordinal(n: int) -> str:
@@ -173,7 +196,7 @@ def episode_html(result, percentile: dict | None = None,
     shot, pace = m.shot_length, m.scene_pacing
     col, mot, fla = m.color_saturation, m.motion, m.flashing
     parts.append('<p class="section">Measured features</p>')
-    parts.append(_props([
+    parts.append(_props("Feature", [
         ("Cuts per minute", f"{pace.cuts_per_min:.1f}", ""),
         ("Mean shot length", f"{shot.mean_sec:.2f} s", ""),
         ("Median shot length", f"{shot.median_sec:.2f} s", ""),
@@ -195,7 +218,7 @@ def episode_html(result, percentile: dict | None = None,
     au = m.audio
     parts.append('<p class="section">Audio</p>')
     if au.available:
-        parts.append(_props([
+        parts.append(_props("Audio", [
             ("RMS mean", f"{au.rms_mean:.4f}", ""),
             ("RMS peak", f"{au.rms_peak:.4f}", ""),
             ("Temporal variance", f"{au.rms_temporal_var:.6f}",
@@ -213,7 +236,7 @@ def episode_html(result, percentile: dict | None = None,
     if sp.available:
         src = {"srt": "SRT subtitle file", "vtt": "VTT subtitle file",
                "whisper": "Whisper transcription"}.get(sp.source, sp.source)
-        parts.append(_props([
+        parts.append(_props("Speech", [
             ("Words per minute", f"{sp.words_per_minute:.1f}", ""),
             ("Speech density", f"{sp.speech_density:.1%}",
              "share of runtime containing dialogue"),
@@ -232,7 +255,7 @@ def episode_html(result, percentile: dict | None = None,
         win_txt = (f"{win[0]:.0f}–{win[1]:.0f}s"
                    if isinstance(win, (list, tuple)) and len(win) == 2
                    else "full episode")
-        parts.append(_props([
+        parts.append(_props("Hand coding", [
             ("Events per minute", events.get("events_per_min", "—"), ""),
             ("Events coded", events.get("n_events", "—"), f"window {win_txt}"),
             ("Coded", events.get("date", "—"), "per EVENT_CODEBOOK.md"),
@@ -257,7 +280,7 @@ def episode_html(result, percentile: dict | None = None,
             rows.append((label, desc, ""))
             if "[unvalidated]" in desc or "[experimental]" in desc:
                 ungraded.append(label)
-        parts.append(_props(rows))
+        parts.append(_props("Measurement", rows))
         if ungraded:
             parts.append(
                 f'<p class="warn">Not graded against hand coding: '
