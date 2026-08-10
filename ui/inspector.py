@@ -12,7 +12,7 @@ place of one it does not have.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
 )
@@ -25,6 +25,8 @@ PANEL_H = 240        # .inspector-panel height
 
 
 class Inspector(QWidget):
+    link_requested = Signal()
+
     def __init__(self) -> None:
         super().__init__()
         self.setFixedHeight(PANEL_H)
@@ -48,6 +50,7 @@ class Inspector(QWidget):
         hrow.addStretch(1)
         self._action = QPushButton("Link to Sample…")
         self._action.setProperty("primary", "true")
+        self._action.clicked.connect(self.link_requested)
         hrow.addWidget(self._action)
         head.setStyleSheet(
             f"border-bottom:1px solid {color('rule_soft')};")

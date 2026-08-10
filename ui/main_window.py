@@ -17,13 +17,13 @@ from pathlib import Path
 
 from PySide6.QtCore import QPoint, QRect, Qt, QTimer
 from PySide6.QtGui import (
-    QAction, QColor, QFont, QIcon, QLinearGradient, QPainter, QPixmap,
-    QStandardItem, QStandardItemModel,
+    QAction, QColor, QFont, QIcon, QKeySequence, QLinearGradient,
+    QPainter, QPixmap, QShortcut, QStandardItem, QStandardItemModel,
 )
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
-    QLabel, QMainWindow, QMenuBar, QMessageBox, QPushButton, QSplitter,
-    QTabWidget,
+    QInputDialog, QLabel, QMainWindow, QMenu, QMenuBar, QMessageBox,
+    QPushButton, QSplitter, QTabWidget,
     QTextBrowser, QToolBar, QTreeView, QVBoxLayout, QWidget,
 )
 
@@ -35,7 +35,11 @@ from analyzer.show_index import (
     list_category_shows, list_episodes, list_shows, list_top_level, show_key,
 )
 from ui import native_frame, theme
-from analyzer.pipeline_graph import default_doc, list_docs
+from analyzer.pipeline import build_pipelines
+from analyzer.pipeline_graph import (
+    NODE_TYPES, default_doc, delete_doc, duplicate_doc, list_docs,
+    node_type, save_doc, unique_name,
+)
 from ui.pipeline_view import Canvas, ZoomPill
 from ui.inspector import Inspector
 from ui.report import episode_html
@@ -412,8 +416,32 @@ class MainWindow(QMainWindow):
         self._pipe_pick = QComboBox()
         self._pipe_pick.setMinimumWidth(160)
         bar.row.addWidget(self._pipe_pick)
+        self._btn_manage = QPushButton("Manage ▾")
+        self._btn_manage.setMenu(self._manage_menu())
+        bar.row.addWidget(self._btn_manage)
+
+        self._btn_add = QPushButton("Add Stage ▾")
+        self._btn_add.setMenu(self._add_stage_menu())
+        bar.row.addWidget(self._btn_add)
+
+        self._btn_del = QPushButton("Delete")
+        self._btn_del.setEnabled(False)
+        self._btn_del.clicked.connect(self._delete_selected)
+        bar.row.addWidget(self._btn_del)
+
         self._btn_fit = QPushButton("Fit View")
         bar.row.addWidget(self._btn_fit)
+
+        self._btn_undo = QPushButton("Undo")
+        self._btn_undo.setEnabled(False)
+        self._btn_undo.clicked.connect(self._undo)
+        bar.row.addWidget(self._btn_undo)
+
+        self._btn_redo = QPushButton("Redo")
+        self._btn_redo.setEnabled(False)
+        self._btn_redo.clicked.connect(self._redo)
+        bar.row.addWidget(self._btn_redo)
+
         bar.row.addStretch(1)
         self._pipe_count = QLabel("")
         self._pipe_count.setProperty("role", "dim")
@@ -427,14 +455,242 @@ class MainWindow(QMainWindow):
         self._inspector = Inspector()
         lay.addWidget(self._inspector)
 
-        self._btn_fit.clicked.connect(self._zoom._do_fit)
-        self._canvas.selection_changed.connect(self._inspector.show_node)
+        self._btn_fit.clicked.connect(self._zoom.fit)
+        self._canvas.selection_changed.connect(self._on_node_selected)
+        self._canvas.connect_requested.connect(self._connect_nodes)
+        self._canvas.doc_changed.connect(self._save_current)
         self._pipe_pick.currentIndexChanged.connect(self._load_pipeline)
-        QTimer.singleShot(0, self._discover_pipelines)
+        self._inspector.link_requested.connect(self._link_to_sample)
+
+        self._undo_stack: list[dict] = []
+        self._redo_stack: list[dict] = []
+
+        # Keyboard alongside the on-screen controls, using the platform
+        # sequences so Ctrl+Z / Ctrl+Y / Ctrl+- are whatever Windows says.
+        for keys, slot in (
+                (QKeySequence.ZoomIn, lambda: self._zoom.step(1.15)),
+                (QKeySequence.ZoomOut, lambda: self._zoom.step(1 / 1.15)),
+                (QKeySequence("Ctrl+0"), self._zoom.fit),
+                (QKeySequence.Undo, self._undo),
+                (QKeySequence.Redo, self._redo),
+                (QKeySequence.Delete, self._delete_selected)):
+            QShortcut(keys, page, activated=slot)
+        # ZoomIn is Ctrl++, which needs a shift on most layouts; Ctrl+= too.
+        QShortcut(QKeySequence("Ctrl+="), page,
+                  activated=lambda: self._zoom.step(1.15))
+
         return page
 
+    # -- pipeline menus --
+
+    def _manage_menu(self) -> QMenu:
+        menu = QMenu(self)
+        menu.addAction("New Pipeline…", self._new_pipeline)
+        menu.addAction("Rename…", self._rename_pipeline)
+        menu.addAction("Duplicate", self._duplicate_pipeline)
+        menu.addSeparator()
+        menu.addAction("Link to Episode Sample…", self._link_to_sample)
+        menu.addSeparator()
+        menu.addAction("Delete Pipeline…", self._delete_pipeline)
+        return menu
+
+    def _add_stage_menu(self) -> QMenu:
+        """One entry per registered node type: a stage is a registry entry."""
+        menu = QMenu(self)
+        for key, kind in NODE_TYPES.items():
+            menu.addAction(kind.name,
+                           lambda checked=False, k=key: self._add_stage(k))
+        return menu
+
+    # -- pipeline edits --
+
+    def _doc(self):
+        idx = self._pipe_pick.currentIndex()
+        docs = getattr(self, "_docs", None)
+        return docs[idx] if docs and 0 <= idx < len(docs) else None
+
+    def _push_undo(self) -> None:
+        """Snapshot before a change; the model round-trips through dicts."""
+        doc = self._doc()
+        if doc is None:
+            return
+        self._undo_stack.append(doc.snapshot())
+        del self._undo_stack[:-50]
+        self._redo_stack.clear()
+        self._sync_history()
+
+    def _sync_history(self) -> None:
+        self._btn_undo.setEnabled(bool(self._undo_stack))
+        self._btn_redo.setEnabled(bool(self._redo_stack))
+
+    def _undo(self) -> None:
+        doc = self._doc()
+        if doc is None or not self._undo_stack:
+            return
+        self._redo_stack.append(doc.snapshot())
+        doc.restore(self._undo_stack.pop())
+        self._refresh_canvas()
+        self._save_current()
+        self._sync_history()
+
+    def _redo(self) -> None:
+        doc = self._doc()
+        if doc is None or not self._redo_stack:
+            return
+        self._undo_stack.append(doc.snapshot())
+        doc.restore(self._redo_stack.pop())
+        self._refresh_canvas()
+        self._save_current()
+        self._sync_history()
+
+    def _add_stage(self, type_key: str) -> None:
+        doc = self._doc()
+        if doc is None:
+            return
+        self._push_undo()
+        # Placed clear of what is already there rather than on top of it.
+        _, y0, x1, _ = doc.bounds()
+        doc.add_node(type_key, x1 + 40, y0)
+        self._refresh_canvas()
+        self._save_current()
+
+    def _delete_selected(self) -> None:
+        doc = self._doc()
+        node = self._canvas.selected_node()
+        if doc is None or node is None:
+            return
+        self._push_undo()
+        doc.remove_node(node.id)
+        self._refresh_canvas()
+        self._save_current()
+
+    def _connect_nodes(self, src: str, dst: str) -> None:
+        doc = self._doc()
+        if doc is None:
+            return
+        self._push_undo()
+        if doc.connect(src, dst) is None:
+            # Refused: a self-link, a duplicate, or it would close a loop.
+            self._undo_stack.pop()
+            self._sync_history()
+            self.statusBar().showMessage(
+                "Those stages were not connected: it would repeat a link or "
+                "close a loop.", 6000)
+            return
+        self._refresh_canvas()
+        self._save_current()
+
+    def _on_node_selected(self, node) -> None:
+        self._btn_del.setEnabled(node is not None)
+        self._inspector.show_node(node)
+
+    # -- pipeline documents --
+
+    def _new_pipeline(self) -> None:
+        doc = default_doc(unique_name([d.name for d in self._docs]))
+        save_doc(doc, self._root)
+        self._docs.append(doc)
+        self._pipe_pick.addItem(doc.name)
+        self._pipe_pick.setCurrentIndex(len(self._docs) - 1)
+
+    def _rename_pipeline(self) -> None:
+        doc = self._doc()
+        if doc is None:
+            return
+        name, ok = QInputDialog.getText(self, "Rename Pipeline", "Name:",
+                                        text=doc.name)
+        if ok and name.strip():
+            doc.name = name.strip()
+            save_doc(doc, self._root)
+            self._pipe_pick.setItemText(self._pipe_pick.currentIndex(),
+                                        doc.name)
+            self._inspector.show_doc(doc)
+
+    def _duplicate_pipeline(self) -> None:
+        doc = self._doc()
+        if doc is None:
+            return
+        copy = duplicate_doc(
+            doc, unique_name([d.name for d in self._docs], doc.name))
+        save_doc(copy, self._root)
+        self._docs.append(copy)
+        self._pipe_pick.addItem(copy.name)
+        self._pipe_pick.setCurrentIndex(len(self._docs) - 1)
+
+    def _delete_pipeline(self) -> None:
+        doc = self._doc()
+        if doc is None:
+            return
+        answer = QMessageBox.question(
+            self, "Delete Pipeline",
+            f"Delete the pipeline {doc.name!r}?\n\n"
+            f"Episodes, cached analysis and hand coding are not touched — "
+            f"only this diagram.")
+        if answer != QMessageBox.Yes:
+            return
+        index = self._pipe_pick.currentIndex()
+        delete_doc(doc)
+        del self._docs[index]
+        self._pipe_pick.removeItem(index)
+        if not self._docs:
+            self._new_pipeline()
+
+    def _link_to_sample(self) -> None:
+        """Bind the pipeline to a show, so stages can report derived status."""
+        doc = self._doc()
+        if doc is None:
+            return
+        if not self._root:
+            QMessageBox.information(
+                self, "Link to Episode Sample",
+                "Choose a root folder first — the sample is a show "
+                "inside it.")
+            return
+        keys = sorted({show_key(self._root, path)
+                       for kind, path in list_top_level(self._root)
+                       for path in ([path] if kind == "show"
+                                    else list_category_shows(path))})
+        if not keys:
+            QMessageBox.information(self, "Link to Episode Sample",
+                                    "No shows were found under the root "
+                                    "folder.")
+            return
+        key, ok = QInputDialog.getItem(
+            self, "Link to Episode Sample", "Show:", keys, 0, False)
+        if ok and key:
+            doc.source_key = key
+            save_doc(doc, self._root)
+            self._refresh_canvas()
+
+    def _save_current(self) -> None:
+        doc = self._doc()
+        if doc is not None:
+            save_doc(doc, self._root)
+
+    def _refresh_canvas(self) -> None:
+        doc = self._doc()
+        if doc is None:
+            return
+        # Derived status is read once per refresh; it walks the cache, so
+        # doing it per node would re-scan the library for every box drawn.
+        self._derived = {}
+        if doc.source_key:
+            try:
+                self._derived = {p.key: p
+                                 for p in build_pipelines(self._root)}
+            except Exception:
+                self._derived = {}
+        self._canvas.load(doc, self._stage_status)
+        self._zoom.refresh()
+        plural_n = "s" if len(doc.nodes) != 1 else ""
+        plural_l = "s" if len(doc.connections) != 1 else ""
+        self._pipe_count.setText(
+            f"{len(doc.nodes)} node{plural_n} · "
+            f"{len(doc.connections)} link{plural_l}")
+        self._inspector.show_doc(doc)
+
     def _discover_pipelines(self) -> None:
-        """Load the user's pipelines, or offer the default shape if none."""
+        """Load this root's pipelines, or offer the default shape if none."""
         self._docs = list_docs(self._root) or [default_doc()]
         self._pipe_pick.blockSignals(True)
         self._pipe_pick.clear()
@@ -445,21 +701,29 @@ class MainWindow(QMainWindow):
     def _load_pipeline(self, index: int) -> None:
         if not getattr(self, "_docs", None) or index < 0:
             return
-        doc = self._docs[index]
-        self._canvas.load(doc, self._stage_status)
-        self._zoom.refresh()
-        self._pipe_count.setText(
-            f"{len(doc.nodes)} node{'s' if len(doc.nodes) != 1 else ''} · "
-            f"{len(doc.connections)} link"
-            f"{'s' if len(doc.connections) != 1 else ''}")
-        self._inspector.show_doc(doc)
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+        self._sync_history()
+        self._refresh_canvas()
 
     def _stage_status(self, node) -> str:
-        """The node's real state. Unbound pipelines say so rather than guess."""
-        doc = self._docs[self._pipe_pick.currentIndex()]
-        if not doc.source_key:
+        """The node's real state, derived from what is on disk.
+
+        An unlinked pipeline says so rather than showing a plausible figure: a
+        stage cannot report progress until it knows which episodes it is
+        progressing through.
+        """
+        doc = self._doc()
+        if doc is None or not doc.source_key:
             return "— no data source"
-        return "— linked"
+        kind = node_type(node.type)
+        if not kind.stage_key:
+            return ""
+        pipeline = getattr(self, "_derived", {}).get(doc.source_key)
+        if pipeline is None:
+            return "— no derived status"
+        stage = pipeline.stage(kind.stage_key)
+        return f"— {stage.status_label}" if stage is not None else ""
 
     def _placeholder(self, name: str) -> QWidget:
         page = QWidget()
@@ -565,6 +829,11 @@ class MainWindow(QMainWindow):
         self._root_label.setText(str(folder))
         self._hint.setVisible(False)
         self.populate()
+        # Pipelines live under the root (<root>/.analysis/pipelines), so the
+        # list has to be rebuilt when the root changes. Without this the tab
+        # keeps whatever was found before a root was known — which is the
+        # fallback location, not the project's own pipelines.
+        self._discover_pipelines()
 
     def populate(self) -> None:
         self._model.removeRows(0, self._model.rowCount())

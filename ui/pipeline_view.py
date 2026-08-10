@@ -37,6 +37,8 @@ PORT_D = 8            # .port width/height
 GRID = 16             # .canvas-container background-size
 WIRE_W = 1.5          # .connector-svg path stroke-width
 HEADER_RULE = 4       # .node-header padding-bottom
+PILL_MARGIN_X = 12    # .zoom-toolbar right
+PILL_MARGIN_Y = 10    # .zoom-toolbar bottom
 
 # NodeType.icon names a KIND of stage; these are the reference's glyphs for
 # each. Unknown kinds fall back to a neutral mark rather than a stray letter.
@@ -100,6 +102,16 @@ class NodeItem(QGraphicsItem):
     def boundingRect(self) -> QRectF:
         pad = PORT_D
         return QRectF(-pad, -2, NODE_W + pad * 2, self._height() + 4)
+
+    def port_at(self, pos: QPointF) -> str | None:
+        """"out", "in", or None for a point in ITEM coordinates."""
+        mid = self._height() / 2
+        r = PORT_D
+        if self._type.outputs and                 (pos - QPointF(NODE_W + r / 2 + 1, mid)).manhattanLength() < r * 1.6:
+            return "out"
+        if self._type.inputs and                 (pos - QPointF(-r / 2 - 1, mid)).manhattanLength() < r * 1.6:
+            return "in"
+        return None
 
     def ports(self) -> tuple[QPointF, QPointF]:
         """Scene positions of the left and right ports."""
@@ -203,6 +215,8 @@ class Canvas(QGraphicsView):
     """The graph canvas: 16px grid, drag to pan, scroll to zoom."""
 
     selection_changed = Signal(object)
+    connect_requested = Signal(str, str)     # src node id, dst node id
+    doc_changed = Signal()
 
     ZOOM_MIN, ZOOM_MAX = 0.25, 2.5
 
@@ -220,7 +234,8 @@ class Canvas(QGraphicsView):
         self._items: dict[str, NodeItem] = {}
         self._wires: list[tuple[WireItem, str, str]] = []
         self._scene.selectionChanged.connect(self._emit_selection)
-        self._scene.node_moved.connect(self._reroute)
+        self._scene.node_moved.connect(self._on_node_moved)
+        self._linking: tuple[NodeItem, WireItem] | None = None
 
     # -- background -------------------------------------------------------
     def drawBackground(self, painter: QPainter, rect: QRectF) -> None:
@@ -261,6 +276,22 @@ class Canvas(QGraphicsView):
             b = self._items[dst].ports()[0]
             wire.route(a, b)
 
+    def _on_node_moved(self) -> None:
+        self._reroute()
+        self.doc_changed.emit()
+
+    def selected_node(self):
+        items = [i for i in self._scene.selectedItems()
+                 if isinstance(i, NodeItem)]
+        return items[0].node if items else None
+
+    def _node_item_at(self, view_pos):
+        """The NodeItem under a view point, ignoring wires."""
+        for item in self.items(view_pos):
+            if isinstance(item, NodeItem):
+                return item
+        return None
+
     def _emit_selection(self) -> None:
         items = [i for i in self._scene.selectedItems()
                  if isinstance(i, NodeItem)]
@@ -290,17 +321,59 @@ class Canvas(QGraphicsView):
         elif scale > self.ZOOM_MAX:
             self.scale(self.ZOOM_MAX / scale, self.ZOOM_MAX / scale)
 
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._place_overlays()
+
+    def _place_overlays(self) -> None:
+        for child in self.children():
+            if isinstance(child, ZoomPill):
+                size = child.sizeHint()
+                child.resize(size)
+                child.move(self.width() - size.width() - PILL_MARGIN_X,
+                           self.height() - size.height() - PILL_MARGIN_Y)
+
     def wheelEvent(self, event) -> None:
         self.zoom_by(1.15 if event.angleDelta().y() > 0 else 1 / 1.15)
         event.accept()
 
     def mousePressEvent(self, event) -> None:
-        # Empty canvas drags the view; a node drags itself.
-        if event.button() == Qt.LeftButton and not self.itemAt(event.pos()):
-            self.setDragMode(QGraphicsView.ScrollHandDrag)
+        if event.button() == Qt.LeftButton:
+            item = self._node_item_at(event.pos())
+            if item is not None:
+                local = item.mapFromScene(self.mapToScene(event.pos()))
+                if item.port_at(local) == "out":
+                    # Starting a wire, not moving the node.
+                    ghost = WireItem()
+                    ghost.setPen(QPen(QColor(color("accent")), WIRE_W,
+                                      Qt.DashLine))
+                    self._scene.addItem(ghost)
+                    self._linking = (item, ghost)
+                    event.accept()
+                    return
+            elif not self.itemAt(event.pos()):
+                # Empty canvas drags the view; a node drags itself.
+                self.setDragMode(QGraphicsView.ScrollHandDrag)
         super().mousePressEvent(event)
 
+    def mouseMoveEvent(self, event) -> None:
+        if self._linking is not None:
+            src, ghost = self._linking
+            ghost.route(src.ports()[1], self.mapToScene(event.pos()))
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
     def mouseReleaseEvent(self, event) -> None:
+        if self._linking is not None:
+            src, ghost = self._linking
+            self._linking = None
+            self._scene.removeItem(ghost)
+            target = self._node_item_at(event.pos())
+            if target is not None and target is not src:
+                self.connect_requested.emit(src.node.id, target.node.id)
+            event.accept()
+            return
         super().mouseReleaseEvent(event)
         self.setDragMode(QGraphicsView.RubberBandDrag)
 
@@ -332,15 +405,18 @@ class ZoomPill(QWidget):
         row.addWidget(self._in)
         row.addWidget(self._fit)
 
-        self._out.clicked.connect(lambda: self._step(1 / 1.15))
-        self._in.clicked.connect(lambda: self._step(1.15))
-        self._fit.clicked.connect(self._do_fit)
+        canvas._place_overlays()
 
-    def _step(self, factor: float) -> None:
+        self._out.clicked.connect(lambda: self.step(1 / 1.15))
+        self._in.clicked.connect(lambda: self.step(1.15))
+        self._fit.clicked.connect(self.fit)
+
+    def step(self, factor: float) -> None:
+        """Zoom by *factor* about the view centre, clamped to the range."""
         self._canvas.zoom_by(factor)
         self.refresh()
 
-    def _do_fit(self) -> None:
+    def fit(self) -> None:
         self._canvas.fit()
         self.refresh()
 
