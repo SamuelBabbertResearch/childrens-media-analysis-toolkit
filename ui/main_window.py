@@ -5,9 +5,9 @@ The first screen ported for real. Reads the same library, the same cache, and
 the same preferences as the Tk front-end, so both can be run against one
 project and compared directly.
 
-Tabs that have not been ported yet say so plainly rather than showing an empty
-frame — during a migration an unported screen and a broken screen must not look
-alike.
+All six tabs are ported. The Episode Sampler is the one action still only on
+the Tk build; its button is disabled and says so, because during a migration
+an unavailable control and a broken one must not look alike.
 """
 
 from __future__ import annotations
@@ -59,9 +59,10 @@ FILE = "📄"
 # Column order for the library grid.
 COL_NAME, COL_STATUS, COL_LENGTH, COL_ADDED = range(4)
 
-UNPORTED = {
-    "Pipeline": "The pipeline editor is still on the Tkinter build.",
-}
+# Every tab is ported. Kept because _placeholder still reads it, and because
+# a screen added ahead of its implementation should say so rather than open
+# empty — an unported screen and a broken screen must not look alike.
+UNPORTED: dict[str, str] = {}
 
 
 def _fmt_duration(seconds: float) -> str:

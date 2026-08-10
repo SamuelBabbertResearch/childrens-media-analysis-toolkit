@@ -114,7 +114,7 @@ Tk modules are deleted only as each screen reaches parity.
 
 ```
 python gui.py       Tkinter build — still the complete application
-python cmat_qt.py   Qt build      — Library + analysis report ported so far
+python cmat_qt.py   Qt build      — all six tabs ported; Episode Sampler pending
 ```
 
 | File | Role |
@@ -208,7 +208,10 @@ absolute path) and `pipelines/` (personal project data).
   Automated coding (Analyze / Language / Validation), Human coding (Code /
   Validate tool / Agreement), Trials, Episode Sampler, Measurement Settings,
   coding editor with embedded VLC.
-- **Qt** (`ui/`) — Library grid and analysis report.
+- **Qt** (`ui/`) — Pipeline workbench, Library, Index, Automated coding,
+  Human coding (VLC embedded), Trials, Settings, starting-layout wizard.
+  Not yet ported: Episode Sampler, and Human coding's Validate-tool and
+  Agreement screens.
 
 ### Command line
 
