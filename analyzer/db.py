@@ -18,6 +18,65 @@ from .schema import EpisodeResult, ShowAggregate
 # Connection
 # ---------------------------------------------------------------------------
 
+def canonical_path(file_path: str | Path) -> str:
+    """The one spelling of an episode path the index stores.
+
+    file_path is the primary key of the episodes table, so the same episode
+    reached through a relative root and an absolute one used to produce TWO
+    rows — which double-counted it in every show aggregate read from the
+    index, and which "Remove Stale" could not clear because both spellings
+    still resolved to a file that exists.
+
+    Resolving here rather than in the callers means no caller has to remember.
+    An unresolvable path is returned unchanged rather than raising: an index
+    row is not worth losing over a path that cannot be canonicalised.
+    """
+    try:
+        return str(Path(file_path).resolve())
+    except (OSError, ValueError):
+        return str(file_path)
+
+
+def _merge_duplicate_paths(conn: sqlite3.Connection) -> int:
+    """Fold rows written under a non-canonical path into their twin.
+
+    Runs once per connection and is a no-op after the first pass. Notes and
+    hand-entered metadata are carried across rather than dropped: they are the
+    only fields in this table a person typed.
+    """
+    rows = conn.execute(
+        "SELECT file_path, notes, air_date, season_num, episode_num, "
+        "analyzed_at FROM episodes").fetchall()
+    merged = 0
+    for row in rows:
+        stored = row["file_path"]
+        target = canonical_path(stored)
+        if target == stored:
+            continue
+        twin = conn.execute(
+            "SELECT file_path, notes, air_date, season_num, episode_num "
+            "FROM episodes WHERE file_path = ?", (target,)).fetchone()
+        if twin is None:
+            if Path(target).exists():
+                conn.execute(
+                    "UPDATE episodes SET file_path = ? WHERE file_path = ?",
+                    (target, stored))
+                merged += 1
+            continue
+        # Both spellings present: keep the canonical row, but do not lose
+        # anything a person typed into the other one.
+        for field in ("notes", "air_date", "season_num", "episode_num"):
+            if not twin[field] and row[field]:
+                conn.execute(
+                    f"UPDATE episodes SET {field} = ? WHERE file_path = ?",
+                    (row[field], target))
+        conn.execute("DELETE FROM episodes WHERE file_path = ?", (stored,))
+        merged += 1
+    if merged:
+        conn.commit()
+    return merged
+
+
 def get_db(root: Path) -> sqlite3.Connection:
     """Open (creating if needed) the index DB for a root folder."""
     db_path = root / ".analysis" / "index.db"
@@ -25,6 +84,7 @@ def get_db(root: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     _init_db(conn)
+    _merge_duplicate_paths(conn)
     return conn
 
 
@@ -172,6 +232,7 @@ def upsert_episode(
     show_key: str | None = None,
 ) -> None:
     """Insert or replace a single episode row."""
+    file_path = canonical_path(file_path)
     m = result.metrics
     stable_show_key = show_key or show_name
     conn.execute("""
@@ -355,6 +416,7 @@ def remove_stale_episodes(conn: sqlite3.Connection) -> int:
 
 def get_note(conn: sqlite3.Connection, file_path: str) -> str:
     """Return the saved note for an episode, or '' if none."""
+    file_path = canonical_path(file_path)
     row = conn.execute(
         "SELECT notes FROM episodes WHERE file_path = ?", (file_path,)
     ).fetchone()
@@ -365,6 +427,7 @@ def get_note(conn: sqlite3.Connection, file_path: str) -> str:
 
 def save_note(conn: sqlite3.Connection, file_path: str, note: str) -> None:
     """Persist a note for an episode (no-op if file_path not yet in DB)."""
+    file_path = canonical_path(file_path)
     conn.execute(
         "UPDATE episodes SET notes = ? WHERE file_path = ?",
         (note, file_path),
@@ -378,6 +441,7 @@ def save_note(conn: sqlite3.Connection, file_path: str, note: str) -> None:
 
 def get_episode_metadata(conn: sqlite3.Connection, file_path: str) -> dict:
     """Return air_date, season_num, episode_num for an episode, or empty strings/None."""
+    file_path = canonical_path(file_path)
     row = conn.execute(
         "SELECT air_date, season_num, episode_num FROM episodes WHERE file_path = ?",
         (file_path,),
@@ -399,6 +463,7 @@ def upsert_episode_metadata(
     episode_num: int | None,
 ) -> None:
     """Save longitudinal metadata fields for an episode row."""
+    file_path = canonical_path(file_path)
     conn.execute(
         """UPDATE episodes
            SET air_date = ?, season_num = ?, episode_num = ?
@@ -426,6 +491,7 @@ def get_show_metadata(conn: sqlite3.Connection, show_name: str) -> dict:
 
 def auto_set_season(conn: sqlite3.Connection, file_path: str, season_num: int) -> None:
     """Set season_num only if the row doesn't already have one (won't overwrite manual entry)."""
+    file_path = canonical_path(file_path)
     conn.execute(
         "UPDATE episodes SET season_num = ? WHERE file_path = ? AND season_num IS NULL",
         (season_num, file_path),
@@ -466,6 +532,7 @@ def get_episode_percentile(conn: sqlite3.Connection, file_path: str) -> dict:
       show_total   — episodes from this show in the DB
       show_name    — show the episode belongs to
     """
+    file_path = canonical_path(file_path)
     row = conn.execute(
         "SELECT show_key, show_name, sensory_load_score FROM episodes WHERE file_path = ?",
         (file_path,),
