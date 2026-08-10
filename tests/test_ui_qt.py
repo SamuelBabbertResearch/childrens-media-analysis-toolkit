@@ -211,3 +211,32 @@ def test_welcome_builds_a_real_document():
     doc = full.build("Test study")
     assert doc.name == "Test study"
     assert doc.nodes and doc.connections
+
+
+def test_settings_labels_cover_every_configured_metric():
+    """A metric added to the engine must not silently lose its label.
+
+    The dialog builds its rows from config.json, so an unlabelled key still
+    appears — but as a raw identifier. This keeps the labels honest.
+    """
+    from analyzer.config_loader import load_config
+    from ui import settings
+    cfg = load_config()
+    for key in cfg.get("sensory_load_weights", {}):
+        assert key in settings.WEIGHT_LABEL, key
+    for key in cfg.get("normalization_reference_ranges", {}):
+        assert key in settings.CEILING_LABEL, key
+
+
+def test_settings_is_scoring_only():
+    """Nothing in the dialog may change how a measurement is taken.
+
+    Scoring settings re-score from cache; measurement settings make cached
+    results stale. Mixing them would break the promise Apply & Re-score makes.
+    """
+    import inspect
+    from ui import settings
+    src = inspect.getsource(settings)
+    for measurement_key in ("cut_detection_threshold", "sample_fps",
+                            "flashing_luminance_threshold", "measurements"):
+        assert measurement_key not in src, measurement_key

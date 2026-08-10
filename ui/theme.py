@@ -439,6 +439,31 @@ QLabel[listItemDesc="true"] {{
 QLabel[listItemDesc="true"][selected="true"] {{
     color: {c['text_on_accent_dim']};
 }}
+/* fieldset / legend, and the callout box. */
+QWidget[dialogContent="true"] QGroupBox {{
+    border: 1px solid {c['panel_border']};
+    border-radius: {m['radius']}px;
+    background: {c['fieldset_bg']};
+    margin-top: 7px;
+    padding-top: 4px;
+}}
+QWidget[dialogContent="true"] QGroupBox::title {{
+    subcontrol-origin: margin;
+    left: 7px;
+    padding: 0 3px;
+    font-size: {pt['small']}px;
+    font-weight: bold;
+    color: {c['legend_fg']};
+}}
+QLabel[callout="warn"] {{
+    background: {c['warn_bg']};
+    border: 1px solid {c['warn_border']};
+    border-radius: {m['radius_tight']}px;
+    color: {c['warn_text']};
+    font-size: {pt['small']}px;
+    padding: 6px 8px;
+}}
+
 /* Inputs are a pixel shorter inside a dialog than on the toolbar. */
 QWidget[dialogContent="true"] QLineEdit {{
     min-height: {m['dialog_input_h']}px;

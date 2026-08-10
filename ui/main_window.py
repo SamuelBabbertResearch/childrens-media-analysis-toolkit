@@ -45,6 +45,7 @@ from ui.pipeline_view import Canvas, ZoomPill
 from ui.welcome import WelcomeDialog
 from ui.inspector import Inspector
 from ui.report import episode_html
+from ui.settings import SettingsDialog
 from ui.tokens import METRICS, color
 
 # The reference marks folders and episodes with these two glyphs.
@@ -253,6 +254,9 @@ class MainWindow(QMainWindow):
         act_open = QAction("Choose Root Folder…", self)
         act_open.triggered.connect(self.choose_root)
         file_menu.addAction(act_open)
+        act_settings = QAction("Settings…", self)
+        act_settings.triggered.connect(self.open_settings)
+        file_menu.addAction(act_settings)
         act_new = QAction("New Pipeline from Layout…", self)
         act_new.triggered.connect(self.show_welcome)
         file_menu.addAction(act_new)
@@ -272,6 +276,23 @@ class MainWindow(QMainWindow):
             "It reports measurements of the stimulus. It does not rate "
             "appropriateness, target age, or educational value."))
         help_menu.addAction(act_about)
+
+    def open_settings(self) -> None:
+        """Scoring settings. Accepting re-scores from cache; nothing is stale.
+
+        The edited config is held in memory rather than written to
+        config.json: that file is versioned and shared, and a preference set
+        while looking at one project should not silently change it for
+        everyone. Save as Preset is the deliberate way to keep values.
+        """
+        dialog = SettingsDialog(self._cfg, self)
+        if dialog.exec() != QDialog.Accepted or not dialog.rescore:
+            return
+        self._cfg = dialog.config
+        self.populate()
+        self.statusBar().showMessage(
+            "Re-scored from cache with the new weights. No episode needs "
+            "re-analysing — these are scoring settings.", 8000)
 
     def _build_status_bar(self) -> None:
         """Message on the left, state on the right."""
@@ -308,7 +329,14 @@ class MainWindow(QMainWindow):
                               ["General / All Ages"])
         tb.addWidget(self._preset)
 
-        for label in ("Episode Sampler...", "Settings..."):
+        sampler = QPushButton("Episode Sampler...")
+        sampler.setEnabled(False)
+        sampler.setToolTip("Still on the Tkinter build — run python gui.py")
+        tb.addWidget(sampler)
+        settings = QPushButton("Settings...")
+        settings.clicked.connect(self.open_settings)
+        tb.addWidget(settings)
+        for label in ():
             b = QPushButton(label)
             b.clicked.connect(lambda _=False, n=label: self._not_yet(n))
             tb.addWidget(b)
