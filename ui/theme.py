@@ -431,9 +431,9 @@ QWidget[modalFooter="true"] {{
                 stop:0 {c['modal_foot_top']}, stop:1 {c['modal_foot_bottom']});
     border-top: 1px solid {c['metal_border']};
 }}
-/* The modal frame. welcome.css gives a dialog its own window colour, button
-   size and accent, all different from the application chrome, so they are
-   scoped here rather than changing the app. */
+/* The modal frame. welcome.css gives a dialog its own window colour and
+   button size, which are scoped here; its accent is NOT used — see the note
+   in tokens.py. One accent, one meaning. */
 QDialog {{ background: {c['modal_bg']}; }}
 QWidget[modalBody="true"] {{ background: {c['modal_bg']}; }}
 QWidget[modalBody="true"] QPushButton,
@@ -448,8 +448,8 @@ QWidget[modalFooter="true"] QPushButton {{
 }}
 QWidget[modalFooter="true"] QPushButton[primary="true"] {{
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 {c['modal_aqua_top']}, stop:1 {c['modal_aqua_bottom']});
-    border: 1px solid {c['modal_aqua_border']};
+                stop:0 {c['aqua_top']}, stop:1 {c['aqua_bottom']});
+    border: 1px solid {c['aqua_border']};
     color: {c['text_on_accent']};
     font-weight: bold;
 }}

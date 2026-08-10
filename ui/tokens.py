@@ -149,12 +149,12 @@ COLORS: dict[str, str] = {
     "modal_btn_top":    "#ffffff",
     "modal_btn_bottom": "#d8d8d8",
     "modal_btn_border": "#8e8e8e",
-    # welcome.css specifies a DIFFERENT aqua from the other two reference
-    # files (#429CE3/#1066C7/#0F4F96). Scoped to modals so the disagreement
-    # stays visible rather than silently overriding the application accent.
-    "modal_aqua_top":    "#37a2e8",
-    "modal_aqua_bottom": "#0066cc",
-    "modal_aqua_border": "#003a70",
+    # The reference files disagreed on the accent: welcome.css asked for
+    # #37A2E8 -> #0066CC on #003A70, the other two for #429CE3 -> #1066C7 on
+    # #0F4F96. Settled on the latter, which is what "aqua_*" above already is.
+    # The period gel button was LUMINOUS — a bright top falling to a mid blue
+    # over a dark-but-not-black rim. #003A70 is nearly navy and makes a button
+    # read as stamped out rather than lit. Dialogs now use the one accent.
 
     # --- views --------------------------------------------------------------
     "row_hover":      "#f0f4f9",

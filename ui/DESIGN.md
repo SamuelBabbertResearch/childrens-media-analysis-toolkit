@@ -11,6 +11,148 @@ gaps are called out where they occur.
 
 ---
 
+## 0. How to build a screen in this style
+
+Read this section before porting anything. The screens already built —
+Library, the analysis report, the Pipeline workbench, the starting-layout
+wizard — were all produced by this recipe, and the places where earlier work
+went wrong were all places where a step was skipped.
+
+### 0.1 The reference stylesheets are the source, not a thing to copy from
+
+`ui/reference/*.css` is extracted **verbatim** from the supplied HTML mockups
+and committed. Do not hand-copy values out of it. Re-deriving the CSS by eye
+each time is what repeatedly lost or changed values, and the losses were
+invisible until the two were put side by side.
+
+| File | Covers |
+|---|---|
+| `library.css` | window chrome, toolbar, tabs, tree, results tables |
+| `pipeline.css` | node canvas, node cards, ports, wires, inspector, zoom pill |
+| `welcome.css` | modal frame, option cards, dialog buttons |
+
+`ui/reference_css.py` loads them, resolves `var()` against `:root`, and hands
+back a named component's rules:
+
+```python
+from ui import reference_css
+reference_css.rules(("data-table", "section-title"))      # library.css
+reference_css.variables("welcome")["--btn-border"]        # a single token
+```
+
+To re-extract after a mockup changes, use the snippet in the commit that
+created `ui/reference/`; the header of each file says not to hand-edit.
+
+### 0.2 Which of the three ways to render applies
+
+Choosing wrongly is the biggest single time sink, so decide first.
+
+1. **Real HTML/CSS in a `QTextBrowser`** — anything document-shaped: the
+   analysis report, exports, long prose. Here the reference CSS is used
+   *directly*: emit the reference's own class names (`data-table`,
+   `section-title`, `sub-text`) and its stylesheet applies unchanged. This is
+   the strongest reason the Qt migration was worth doing. See `ui/report.py`.
+2. **Qt Style Sheets** — ordinary widget chrome. QSS is *not* CSS; it must be
+   translated, never pasted. See §0.4.
+3. **Drawn with `QPainter`** — anything QSS cannot describe at all: the node
+   graph, the title bar, the modal header. Name the reference's values as
+   constants at the top of the module so they can still be diffed against the
+   CSS. See `ui/pipeline_view.py`.
+
+### 0.3 Density is a specification, not a default
+
+Qt's own metrics are 20–50% airier than this design. Every box metric must be
+stated or the interface drifts. All of them live in `ui/tokens.py`:
+
+| Token | Value | Reference rule |
+|---|---|---|
+| `FONT_PX["body"]` | 11 | `body` |
+| `METRICS["row_h"]` | 19 | `.tree-row` |
+| `METRICS["control_h"]` | 20 | `.btn` |
+| `METRICS["modal_control_h"]` | 22 | `.btn` inside `.modal-window` |
+| `METRICS["header_h"]` | 20 | `.data-table th` |
+| `METRICS["titlebar_h"]` | 24 | `.titlebar` |
+| `METRICS["modal_header_h"]` | 28 | `.modal-header` |
+
+Sizes are **device-independent pixels**. Qt 6 scales the whole interface by
+the display's device-pixel ratio, so `11px` is 11px at 100% and 16.5 physical
+at 150%. This reverses the Tk rule: there a pixel was physical, which is why
+`FONT_PT` still exists and is marked Tk-only.
+
+### 0.4 Qt behaviours that have already cost time
+
+Each of these looked like a styling failure and was not.
+
+- **QSS selectors do not match up an inheritance chain.** A rule written for
+  `QTreeWidget` does *not* apply to a `QTreeView`. Style the class you
+  actually instantiate.
+- **`QTextDocument` overrides heading sizes.** Qt's HTML importer applies its
+  own font-size *adjustment* to `h1`–`h6` which survives the stylesheet — a
+  13px rule on an `h1` still rendered near 24px. Use classed paragraphs
+  (`<p class="section-title">`). A test enforces this.
+- **A bare `QWidget` ignores a stylesheet background** unless
+  `setAttribute(Qt.WA_StyledBackground, True)` is set. `QFrame` does not need
+  it. This is why the inspector and the zoom pill first rendered untinted.
+- **No `:nth-child`, `:first-child`, or `border-collapse`** in the rich text
+  engine. Emit striping as an explicit class per row, mark the label column
+  explicitly, and use `cellspacing="0"`.
+- **Never border an item *and* set `gridline-color`** — both draw, giving the
+  doubled rule between cells. Items take `border: none`.
+- **A view inside a `Panel` must not draw its own frame**, or its border sits
+  a pixel inside the panel's. Set the `inPanel` property.
+- **Do not pin `max-height` on a header section.** It cannot then grow to fit
+  its text, which is a clipped heading.
+- **`ResizeToContents` pins a column** after sizing it. Hand columns back as
+  `Interactive` once sized, or long names elide with no way to widen them.
+- Qt has no `box-shadow`, `text-shadow`, `inset`, or `line-height`. For a
+  shadow on a real widget use `QGraphicsDropShadowEffect`; on a canvas item,
+  paint it.
+
+### 0.5 The frame is drawn, and it keeps the native window
+
+Both the main window and every dialog draw their own title strip while keeping
+their real Win32 frame styles — see §1 and `ui/native_frame.py`. Never reach
+for `Qt.FramelessWindowHint`: it strips `WS_THICKFRAME`/`WS_CAPTION` and takes
+Aero Snap, edge resizing, the drop shadow, the maximise animation, Win+Arrow
+and the system menu with it.
+
+For a new dialog, do not rebuild this. Call:
+
+```python
+from ui.modal import ModalDialogFrame
+body = ModalDialogFrame.install(self, "Dialog Title")   # returns the layout
+```
+
+It supplies the 28px metallic header, the close mark, rounded corners, and
+falls back to the native title bar if the hook cannot attach.
+
+### 0.6 Two table idioms, and when each applies
+
+- **`.data-table`** — the numeric table, used for *every* table in a results
+  pane: `#EAEAEA` headers, `#B8B8B8` outer and `#D0D0D0` cell rules,
+  right-aligned figures with a left-aligned first column, `#F9F9F9` striping.
+  Do not switch idioms between sections; neighbouring tables in different
+  styles read as unrelated kinds of thing.
+- **The inspector key/value grid** — a 140px right-aligned bold key on
+  `#F0F0F0` with a `#E0E0E0` divider and one `#E5E5E5` hairline per row. For
+  properties of a *selected object*, not for figures.
+
+Striping belongs to tables read *across*. A tree is read *down* a hierarchy,
+where banding fights the indentation — the reference tree has none.
+
+### 0.7 The content rule
+
+The mockups are the **styling** specification and nothing else. Words,
+columns, figures and states come from the engine. Never adopt a mockup's
+invented label, metric, or number; if a mockup shows a field the software has
+no data for, the field does not get built. Where the registry has more than
+the mockup illustrates — seven pipeline templates against four cards — build
+all of them, and add a test so a new entry cannot be forgotten.
+
+`§7` outranks everything above.
+
+---
+
 ## Terminology
 
 Call this a **Classic Desktop UI**, or a **Mavericks-inspired layout** when a
@@ -25,6 +167,13 @@ Every value below resolves to a token in `ui/tokens.py`, which imports no GUI
 framework and is shared by both front-ends. **Do not write a literal colour into
 a widget or a stylesheet** — add or reuse a token. Two sources of truth is how
 two different blues both came to mean "selected".
+
+One accent, `accent` / `aqua_*`. The reference files disagreed — `welcome.css`
+asked for `#37A2E8 → #0066CC` on `#003A70`, the other two for
+`#429CE3 → #1066C7` on `#0F4F96`. The latter is used everywhere including
+dialogs: the period gel button was *luminous*, a bright top falling to a mid
+blue over a dark-but-not-black rim, and `#003A70` is nearly navy, which makes
+a button read as stamped out rather than lit.
 
 ### Values that map to an existing token
 

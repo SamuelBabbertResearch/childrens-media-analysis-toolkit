@@ -119,7 +119,11 @@ python cmat_qt.py   Qt build      — Library + analysis report ported so far
 
 | File | Role |
 |---|---|
-| **`ui/DESIGN.md`** | **the visual specification — read before building any screen** |
+| **`ui/DESIGN.md`** | **the visual specification — §0 is the recipe for building a screen; read before porting anything** |
+| `ui/reference/*.css` | the supplied mockups' stylesheets, extracted verbatim. The source of the design, not a copy of it |
+| `ui/reference_css.py` | loads those, resolves `var()`, returns a component's rules |
+| `ui/modal.py` | the drawn modal frame; every dialog uses it |
+| `ui/native_frame.py` | suppresses the Win32 frame's *drawing* while keeping snap, resize and the system menu |
 | `ui/tokens.py` | design tokens; **no framework imports** — shared by both builds |
 | `ui/theme.py` | fonts, Qt stylesheet |
 | `ui/report.py` | analysis results as HTML; no Qt import, so it is testable headless and reusable for PDF export and the static site |

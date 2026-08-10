@@ -94,7 +94,7 @@ class WelcomeDialog(QDialog):
         self._existing = existing_names
         self.doc = None
 
-        outer = ModalDialogFrame.install(self, "🪶 Welcome to CMAT")
+        outer = ModalDialogFrame.install(self, "Welcome to CMAT")
 
         heading = QLabel("Choose a starting layout")
         heading.setProperty("wizardTitle", "true")
