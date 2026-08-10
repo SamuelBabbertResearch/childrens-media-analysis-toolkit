@@ -418,7 +418,6 @@ QFrame[card="true"][selected="true"] {{
     border: 2px solid {c['card_sel_border']};
 }}
 QFrame[card="true"] QLabel {{ background: transparent; border: none; }}
-QLabel[cardIcon="true"] {{ font-size: 18px; color: {c['card_sel_border']}; }}
 QLabel[cardTitle="true"] {{
     font-size: {pt['heading']}px; font-weight: bold;
     color: {c['card_title_fg']};
@@ -430,7 +429,36 @@ QWidget[nameRow="true"] {{ border-top: 1px solid {c['card_border']}; }}
 QWidget[modalFooter="true"] {{
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                 stop:0 {c['modal_foot_top']}, stop:1 {c['modal_foot_bottom']});
-    border-top: 1px solid {c['control_border']};
+    border-top: 1px solid {c['metal_border']};
+}}
+/* The modal frame. welcome.css gives a dialog its own window colour, button
+   size and accent, all different from the application chrome, so they are
+   scoped here rather than changing the app. */
+QDialog {{ background: {c['modal_bg']}; }}
+QWidget[modalBody="true"] {{ background: {c['modal_bg']}; }}
+QWidget[modalBody="true"] QPushButton,
+QWidget[modalFooter="true"] QPushButton {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['modal_btn_top']}, stop:1 {c['modal_btn_bottom']});
+    border: 1px solid {c['modal_btn_border']};
+    border-radius: {m['radius']}px;
+    padding: 0 12px;
+    min-height: {m['modal_control_h']}px;
+    max-height: {m['modal_control_h']}px;
+}}
+QWidget[modalFooter="true"] QPushButton[primary="true"] {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['modal_aqua_top']}, stop:1 {c['modal_aqua_bottom']});
+    border: 1px solid {c['modal_aqua_border']};
+    color: {c['text_on_accent']};
+    font-weight: bold;
+}}
+QWidget[modalBody="true"] QLineEdit {{
+    border: 1px solid {c['modal_btn_border']};
+    border-radius: {m['radius']}px;
+    min-height: {m['modal_control_h']}px;
+    max-height: {m['modal_control_h']}px;
+    padding: 0 6px;
 }}
 
 /* ------------------------------------------------- pipeline workbench -- */

@@ -1,9 +1,14 @@
 """
 ui/welcome.py — the starting-layout wizard, shown when CMAT opens.
 
-Follows ui/reference/welcome.css: a 620px modal with a metallic header, a
-scrolling list of option cards, a name field, and a footer carrying the
-"show this at startup" toggle beside Back and Create Pipeline.
+Follows ui/reference/welcome.css: a 620px modal with a metallic header (see
+ui/modal.py), a scrolling list of option cards, a name field, and a footer
+carrying the "show this at startup" toggle beside the buttons.
+
+The reference draws a glyph on each card; they are left off at the user's
+request. The reference's footer also has a Back button, which is dropped:
+this is the first screen, so there is nothing behind it, and a dead control
+is worse than an honest one. Skip takes its place.
 
 The cards are the real templates from analyzer.pipeline_graph.TEMPLATES, and
 their titles and descriptions are the ones the registry already carries. The
@@ -26,22 +31,17 @@ from PySide6.QtWidgets import (
 
 from analyzer.pipeline_graph import TEMPLATES, unique_name
 from analyzer.prefs import get_pref, set_pref
+from ui.modal import ModalDialogFrame
 from ui.tokens import color
 
 MODAL_W = 620         # .layout-modal width
 CARD_LIST_H = 380     # .card-list max-height
 
-# The reference gives each card a glyph. Templates carry no icon of their own,
-# so the mapping lives here rather than being invented into the data model.
-TEMPLATE_GLYPH = {
-    "full":       "☑",
-    "automated":  "▤",
-    "handcoding": "✎",
-    "language":   "¶",
-    "mixed":      "▧",
-    "validation": "✓",
-    "blank":      "□",
-}
+# The reference draws a glyph beside each card; they are deliberately not used.
+# Kept as the record of which templates a card exists for, which is what the
+# test checks — add a template, add it here.
+TEMPLATE_KEYS = ("full", "automated", "handcoding", "language", "mixed",
+                 "validation", "blank")
 
 
 class OptionCard(QFrame):
@@ -56,15 +56,10 @@ class OptionCard(QFrame):
         self.setProperty("selected", "false")
         self.setCursor(Qt.PointingHandCursor)
 
+        # .option-card padding: 10px 12px
         row = QHBoxLayout(self)
         row.setContentsMargins(12, 10, 12, 10)
         row.setSpacing(10)
-
-        icon = QLabel(TEMPLATE_GLYPH.get(template.key, "□"))
-        icon.setProperty("cardIcon", "true")
-        icon.setFixedWidth(24)
-        icon.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
-        row.addWidget(icon)
 
         text = QVBoxLayout()
         text.setSpacing(4)
@@ -99,9 +94,7 @@ class WelcomeDialog(QDialog):
         self._existing = existing_names
         self.doc = None
 
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(12, 12, 12, 12)
-        outer.setSpacing(10)
+        outer = ModalDialogFrame.install(self, "🪶 Welcome to CMAT")
 
         heading = QLabel("Choose a starting layout")
         heading.setProperty("wizardTitle", "true")
@@ -159,7 +152,8 @@ class WelcomeDialog(QDialog):
         self._create.setDefault(True)
         self._create.clicked.connect(self._accept)
         fr.addWidget(self._create)
-        outer.addWidget(footer)
+        # The footer spans the modal, outside the body's 12px gutter.
+        self._modal_outer.addWidget(footer)
 
         self._select(TEMPLATES[0].key)
 

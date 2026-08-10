@@ -201,7 +201,7 @@ def test_welcome_offers_every_template_not_just_the_illustrated_four():
     from ui import welcome
     assert len(TEMPLATES) > 4
     for template in TEMPLATES:
-        assert template.key in welcome.TEMPLATE_GLYPH, template.key
+        assert template.key in welcome.TEMPLATE_KEYS, template.key
 
 
 def test_welcome_builds_a_real_document():

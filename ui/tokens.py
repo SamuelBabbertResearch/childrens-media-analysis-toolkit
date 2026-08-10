@@ -138,6 +138,23 @@ COLORS: dict[str, str] = {
     "card_desc_fg":     "#444444",
     "modal_foot_top":    "#e6e6e6",
     "modal_foot_bottom": "#d8d8d8",
+    # The modal frame (.modal-window / .modal-header in welcome.css).
+    "modal_bg":        "#f0f0f0",
+    "modal_border":    "#555555",
+    "metal_top":       "#ededed",
+    "metal_bottom":    "#d8d8d8",
+    "metal_border":    "#999999",
+    "modal_title_fg":  "#333333",
+    "modal_close_fg":  "#666666",
+    "modal_btn_top":    "#ffffff",
+    "modal_btn_bottom": "#d8d8d8",
+    "modal_btn_border": "#8e8e8e",
+    # welcome.css specifies a DIFFERENT aqua from the other two reference
+    # files (#429CE3/#1066C7/#0F4F96). Scoped to modals so the disagreement
+    # stays visible rather than silently overriding the application accent.
+    "modal_aqua_top":    "#37a2e8",
+    "modal_aqua_bottom": "#0066cc",
+    "modal_aqua_border": "#003a70",
 
     # --- views --------------------------------------------------------------
     "row_hover":      "#f0f4f9",
@@ -235,6 +252,8 @@ METRICS: dict[str, int] = {
     "row_h":       19,   # tree and table rows
     "header_h":    20,   # view header sections
     "titlebar_h":  24,
+    "modal_control_h": 22,   # .btn height inside a modal
+    "modal_header_h":  28,   # .modal-header height
     "tab_pad_x":   10,
     "tab_pad_y":   3,
     "radius":      3,
