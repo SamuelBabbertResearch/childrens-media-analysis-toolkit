@@ -35,6 +35,9 @@ from analyzer.show_index import (
     list_category_shows, list_episodes, list_shows, list_top_level, show_key,
 )
 from ui import native_frame, theme
+from analyzer.pipeline_graph import default_doc, list_docs
+from ui.pipeline_view import Canvas, ZoomPill
+from ui.inspector import Inspector
 from ui.report import episode_html
 from ui.tokens import METRICS, color
 
@@ -387,15 +390,76 @@ class MainWindow(QMainWindow):
         self._tabs = QTabWidget()
         self.setCentralWidget(self._tabs)
 
-        for name in ("Pipeline",):
-            self._tabs.addTab(self._placeholder(name), name)
-
+        self._tabs.addTab(self._build_pipeline(), "Pipeline")
         self._tabs.addTab(self._build_library(), "Library")
 
         for name in ("Index", "Automated coding", "Human coding", "Trials"):
             self._tabs.addTab(self._placeholder(name), name)
 
         self._tabs.setCurrentIndex(1)
+
+    # ---- pipeline ----
+
+    def _build_pipeline(self) -> QWidget:
+        """The pipeline workbench: sub-toolbar, node canvas, inspector."""
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+
+        bar = SubToolBar()
+        bar.row.addWidget(QLabel("Pipeline:"))
+        self._pipe_pick = QComboBox()
+        self._pipe_pick.setMinimumWidth(160)
+        bar.row.addWidget(self._pipe_pick)
+        self._btn_fit = QPushButton("Fit View")
+        bar.row.addWidget(self._btn_fit)
+        bar.row.addStretch(1)
+        self._pipe_count = QLabel("")
+        self._pipe_count.setProperty("role", "dim")
+        bar.row.addWidget(self._pipe_count)
+        lay.addWidget(bar)
+
+        self._canvas = Canvas()
+        self._zoom = ZoomPill(self._canvas)
+        lay.addWidget(self._canvas, 1)
+
+        self._inspector = Inspector()
+        lay.addWidget(self._inspector)
+
+        self._btn_fit.clicked.connect(self._zoom._do_fit)
+        self._canvas.selection_changed.connect(self._inspector.show_node)
+        self._pipe_pick.currentIndexChanged.connect(self._load_pipeline)
+        QTimer.singleShot(0, self._discover_pipelines)
+        return page
+
+    def _discover_pipelines(self) -> None:
+        """Load the user's pipelines, or offer the default shape if none."""
+        self._docs = list_docs(self._root) or [default_doc()]
+        self._pipe_pick.blockSignals(True)
+        self._pipe_pick.clear()
+        self._pipe_pick.addItems([d.name for d in self._docs])
+        self._pipe_pick.blockSignals(False)
+        self._load_pipeline(0)
+
+    def _load_pipeline(self, index: int) -> None:
+        if not getattr(self, "_docs", None) or index < 0:
+            return
+        doc = self._docs[index]
+        self._canvas.load(doc, self._stage_status)
+        self._zoom.refresh()
+        self._pipe_count.setText(
+            f"{len(doc.nodes)} node{'s' if len(doc.nodes) != 1 else ''} · "
+            f"{len(doc.connections)} link"
+            f"{'s' if len(doc.connections) != 1 else ''}")
+        self._inspector.show_doc(doc)
+
+    def _stage_status(self, node) -> str:
+        """The node's real state. Unbound pipelines say so rather than guess."""
+        doc = self._docs[self._pipe_pick.currentIndex()]
+        if not doc.source_key:
+            return "— no data source"
+        return "— linked"
 
     def _placeholder(self, name: str) -> QWidget:
         page = QWidget()

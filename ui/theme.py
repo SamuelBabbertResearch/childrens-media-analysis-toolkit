@@ -401,6 +401,69 @@ QTextBrowser {{
     border: none;
 }}
 
+/* ------------------------------------------------- pipeline workbench -- */
+/* Values from ui/reference/pipeline.css: .inspector-panel, .inspector-title,
+   .inspector-subtitle, .info-banner, .inspector-table, .zoom-toolbar. */
+QWidget#inspectorPanel {{
+    background: {c['panel_bg']};
+    border-top: 1px solid {c['panel_border']};
+}}
+QLabel#inspectorTitle {{ font-size: {pt['title']}px; font-weight: bold;
+                         color: #000000; }}
+QLabel#inspectorSubtitle {{ font-size: {pt['small']}px;
+                            color: {c['text_dim']}; }}
+QLabel#inspectorBanner {{
+    background: {c['info_bg']};
+    border: 1px solid {c['info_border']};
+    border-radius: {m['radius_tight']}px;
+    color: {c['info_text']};
+    font-size: {pt['small']}px;
+    padding: 6px 8px;
+}}
+QFrame#inspectorTable {{
+    background: {c['panel_bg']};
+    border: 1px solid {c['panel_border']};
+}}
+QLabel[kvKey="true"] {{
+    background: {c['kv_key_bg']};
+    color: {c['kv_key_fg']};
+    font-weight: bold;
+    border-right: 1px solid {c['kv_key_line']};
+    border-bottom: 1px solid {c['kv_row_line']};
+    padding: 4px 8px;
+}}
+QLabel[kvVal="true"] {{
+    background: {c['panel_bg']};
+    color: {c['kv_val_fg']};
+    border-bottom: 1px solid {c['kv_row_line']};
+    padding: 4px 8px;
+}}
+/* The floating zoom pill sits over the canvas. */
+QWidget#zoomPill {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #ffffff, stop:1 #e5e5e5);
+    border: 1px solid {c['control_border']};
+    border-radius: {m['radius']}px;
+}}
+QPushButton[zoom="true"] {{
+    background: transparent;
+    border: none;
+    border-radius: {m['radius_tight']}px;
+    font-weight: bold;
+    color: {c['statusbar_fg']};
+    padding: 2px 8px;
+    min-height: 0;
+    max-height: 20px;
+}}
+QPushButton[zoom="true"]:hover {{ background: rgba(0, 0, 0, 20); }}
+QLabel#zoomDisplay {{
+    color: {c['text_dim']};
+    font-size: {pt['tiny']}px;
+    border-left: 1px solid {c['menu_line']};
+    border-right: 1px solid {c['menu_line']};
+    padding: 0 6px;
+}}
+
 /* --------------------------------------------------------- ambox note -- */
 QFrame[ambox="info"] {{
     background: {c['info_bg']};
