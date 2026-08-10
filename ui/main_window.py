@@ -446,6 +446,8 @@ class MainWindow(QMainWindow):
         self._tree.setSelectionMode(QAbstractItemView.SingleSelection)
         self._tree.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._tree.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self._tree.setProperty("inPanel", "true")
+        self._tree.setTextElideMode(Qt.ElideRight)
         hv = self._tree.header()
         hv.setSectionResizeMode(COL_NAME, QHeaderView.Stretch)
         for col in (COL_STATUS, COL_LENGTH, COL_ADDED):
@@ -522,11 +524,25 @@ class MainWindow(QMainWindow):
                 episodes += e
 
         self._tree.expandAll()
+        self._release_columns()
         self._count.setText(
             f"{shows} show{'s' if shows != 1 else ''}, "
             f"{episodes} episode{'s' if episodes != 1 else ''}")
         self.statusBar().showMessage(
             f"{shows} shows, {episodes} episodes in {self._root}")
+
+    def _release_columns(self) -> None:
+        """Let the user resize the trailing columns after their first sizing.
+
+        ResizeToContents gives good initial widths but pins them there, so the
+        stretched Name column keeps whatever is left and a long episode name
+        stays elided with no way to widen it.
+        """
+        hv = self._tree.header()
+        for col in (COL_STATUS, COL_LENGTH, COL_ADDED):
+            width = hv.sectionSize(col)
+            hv.setSectionResizeMode(col, QHeaderView.Interactive)
+            hv.resizeSection(col, width)
 
     def _row(self, name, status, length, added, bold=False, payload=None,
              icon=None):

@@ -134,6 +134,7 @@ COLORS: dict[str, str] = {
     "table_header":   "#eaeaea",
     "table_alt_row":  "#f9f9f9",
     "table_cell_line": "#d0d0d0",
+    "table_gridline":  "#d8d8d8",
 
     # --- path display -------------------------------------------------------
     "path_text": "#003a70",
@@ -213,6 +214,7 @@ FONT_PX: dict[str, int] = {
     "small":   10,
     "body":    11,
     "table":   11,
+    "grid":    12,   # rows in the library grid, per the polish directive
     "heading": 12,
     "title":   13,
 }

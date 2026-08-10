@@ -284,45 +284,52 @@ QComboBox QAbstractItemView {{
 }}
 
 /* -------------------------------------------------------------- views -- */
-QTreeView, QTableView, QListView {{
-    background: {c['mw_bg']};
-    alternate-background-color: {c['table_alt_row']};
-    /* Sunken frame: Qt ignores inset box-shadow, but a darker top edge
-       against three lighter ones reads the same way. */
-    border: 1px solid {c['panel_border']};
-    border-top-color: {c['list_sunken_edge']};
-    gridline-color: {c['table_cell_line']};
+/* The selectors are the VIEW classes, not QTreeWidget/QTableWidget. Qt
+   stylesheet selectors do not match up an inheritance chain: a rule written
+   for QTreeWidget applies to that subclass only and would silently miss the
+   QTreeView this application actually uses. QTreeWidget is included so a rule
+   holds if one is ever added, but QTreeView is the one doing the work. */
+QTreeView, QTableView, QListView, QTreeWidget, QTableWidget {{
+    background-color: {c['mw_bg']};
+    gridline-color: {c['table_gridline']};
+    border: 1px solid {c['mw_border']};
+    selection-background-color: {c['accent']};
+    selection-color: {c['text_on_accent']};
     outline: none;
+    font-size: {pt['grid']}px;
 }}
-QTreeView::item, QTableView::item, QListView::item {{
-    padding: 1px 4px;
-    min-height: {m['row_h']}px;
+/* One grid line per edge. Bordering the item as well as setting
+   gridline-color draws both, which is the doubled rule between cells. */
+QTreeView::item, QTableView::item, QListView::item,
+QTreeWidget::item, QTableWidget::item {{
+    padding: 6px 8px;
+    border: none;
+    color: {c['text']};
 }}
+/* A view already inside a Panel must not draw its own frame: the panel's
+   border and the view's would sit one pixel apart, which is the doubled
+   outline the grid rules above exist to remove. */
+QTreeView[inPanel="true"], QTableView[inPanel="true"],
+QListView[inPanel="true"] {{ border: none; }}
 QTreeView::item:hover, QTableView::item:hover {{
     background: {c['row_hover']};
 }}
-/* Choosing an item uses the solid accent; a table of FIGURES uses the light
-   wash instead, so the numbers keep their contrast. See ui/DESIGN.md §3. */
-QListView::item:selected {{
-    background: {c['accent']};
+QTreeView::item:selected, QTableView::item:selected,
+QListView::item:selected, QTreeWidget::item:selected,
+QTableWidget::item:selected {{
+    background-color: {c['accent']};
     color: {c['text_on_accent']};
 }}
-QTreeView::item:selected, QTableView::item:selected {{
-    background: {c['row_selected_bg']};
-    color: {c['text']};
-}}
+/* No min/max height: the padding sets the row, and pinning a maximum is what
+   clips a descender or a second line once the type grows. */
 QHeaderView::section {{
-    background: {c['table_header']};
+    background-color: {c['mw_header_bg']};
     color: {c['text']};
-    border: none;
-    border-right: 1px solid {c['panel_border']};
-    border-bottom: 1px solid {c['panel_border']};
-    padding: 0 6px;
-    min-height: {m['header_h']}px;
-    max-height: {m['header_h']}px;
     font-weight: bold;
+    border: 1px solid {c['mw_border']};
+    padding: 4px 8px;
 }}
-QHeaderView::section:hover {{ background: {c['panel_header']}; }}
+QHeaderView::section:hover {{ background-color: {c['panel_header']}; }}
 
 /* ------------------------------------------------------------- panels -- */
 QFrame[panel="true"] {{
