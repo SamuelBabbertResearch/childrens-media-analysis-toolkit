@@ -27,59 +27,39 @@ from ui.tokens import COLORS as C
 # borders, background-color, padding, font properties and table attributes,
 # but not flexbox, custom properties, border-collapse, box-shadow, or the
 # structural pseudo-classes. So: cellspacing=0 instead of border-collapse, and
-# the label column is marked with a class rather than reached by :first-child.
+# the striping is emitted as an explicit class per row rather than nth-child.
 #
 # Headings are classed paragraphs rather than h1/h2. Qt's HTML importer gives
 # h1-h6 a font-size ADJUSTMENT of its own, which survives the stylesheet: a
 # rule of 13px on an h1 was still rendering near 24px. That is not a size the
 # CSS can win, so the elements are avoided entirely.
 #
-# One table idiom throughout. The report used to switch to a key/value grid
-# between sections; that switch made neighbouring tables read as unrelated
-# things.
+# One table idiom throughout, as the reference results pane has. The report
+# used to switch to a key/value grid between sections; that switch was mine,
+# not the reference's, and it made neighbouring tables read as unrelated things.
 #
 # The reference's OWN rules for these components, lifted from ui/reference/,
-# not transcribed, so the markup uses the reference's class names and its CSS
-# applies unchanged.
-#
-# The TABLE is the exception, and deliberately. The mockup's .data-table is a
-# native grid — white ground, two border weights, zebra striping. The tables
-# here are the academic-presentation surface of the tool, so they follow
-# MediaWiki's .wikitable instead, which differs in four specific ways:
-#
-#   * one border weight throughout, #A2A9B1, outer and inner alike;
-#   * a #F8F9FA ground rather than white, so the table reads as a block set
-#     into the page rather than as part of it;
-#   * a #EAECF0 header, bluish rather than neutral grey, with CENTRED headings;
-#   * no zebra striping — the tinted ground already separates the table from
-#     the page, and banding on top of it is one device too many.
+# not transcribed. The markup below therefore uses the reference's class names
+# — data-table, section-title, sub-text — so its CSS applies unchanged.
 _REFERENCE = reference_css.rules((
-    "section-title", "sub-text", "info-banner", "info-title",
+    "data-table", "section-title", "sub-text", "info-banner", "info-title",
     "results-container", "fieldset", "legend",
 ))
 
+# Only what the reference CSS cannot express in Qt's rich text engine, plus the
+# handful of things the reference has no equivalent for. Everything here is an
+# addition; nothing overrides a reference value.
 STYLE = _REFERENCE + f"""
 body {{ color: {C['text']}; font-size: 11px; }}
 p {{ margin: 3px 0; }}
 
-table.wikitable {{ background-color: {C['mw_subtle_bg']};
-                   color: {C['text']};
-                   border: 1px solid {C['mw_border']};
-                   margin: 6px 0 8px 0; }}
-table.wikitable th {{ background-color: {C['mw_header_bg']};
-                      border: 1px solid {C['mw_border']};
-                      padding: 3px 6px; font-weight: bold;
-                      text-align: center; }}
-table.wikitable td {{ border: 1px solid {C['mw_border']};
-                      padding: 3px 6px; text-align: right; }}
-/* Qt's rich text engine has no :first-child, so the label column is marked. */
-table.wikitable th.l, table.wikitable td.l {{ text-align: left; }}
+/* No :nth-child in Qt's rich text engine, so striping is a class per row. */
+tr.alt td {{ background-color: {C['table_alt_row']}; }}
+/* No :first-child either; the label column is marked explicitly. */
+.data-table th.l, .data-table td.l {{ text-align: left; }}
 /* A prose cell in an otherwise numeric table. */
-table.wikitable td.n {{ color: {C['text_dim']}; font-size: 10px;
-                        text-align: left; font-style: italic; }}
-/* The MediaWiki caption: above the table, naming what it holds. */
-table.wikitable caption {{ font-weight: bold; text-align: left;
-                           padding: 0 0 2px 0; }}
+.data-table td.n {{ color: {C['text_dim']}; font-size: 10px;
+                    text-align: left; font-style: italic; }}
 
 .title {{ font-size: 12px; font-weight: bold; margin: 0; }}
 .score {{ font-size: 20px; font-weight: bold; color: {C['status_complete']}; }}
@@ -105,12 +85,13 @@ def _e(v) -> str:
 
 
 def _table(headers, rows, first_col_width: int | None = None) -> str:
-    """A MediaWiki-style table: centred headers over right-aligned figures.
+    """The reference results table: column headers, right-aligned, striped.
 
-    Every table in the report takes this one form. The first column is the
-    label and stays left-aligned; the rest are figures. A column headed NOTE
-    holds prose rather than a figure, so it keeps the left alignment and takes
-    the muted note styling.
+    Every table in the reference results pane takes this one form, so the
+    report uses it throughout rather than switching idioms between sections.
+    The first column is the label and stays left-aligned; the rest are figures.
+    A column headed NOTE holds prose rather than a figure, so it keeps the left
+    alignment and takes the muted note styling.
     """
     note_cols = {i for i, h in enumerate(headers) if h == NOTE}
     w = f' width="{first_col_width}"' if first_col_width else ""
@@ -122,13 +103,13 @@ def _table(headers, rows, first_col_width: int | None = None) -> str:
             attrs += w
         return f"<{tag}{attrs}>{_e(text)}</{tag}>"
 
-    out = ['<table class="wikitable" cellspacing="0" cellpadding="0" width="100%">',
+    out = ['<table class="data-table" cellspacing="0" cellpadding="0" width="100%">',
            "<tr>"]
     out += [cell("th", j, "" if h == NOTE else h)
             for j, h in enumerate(headers)]
     out.append("</tr>")
-    for row in rows:
-        out.append("<tr>")
+    for i, row in enumerate(rows):
+        out.append('<tr class="alt">' if i % 2 else "<tr>")
         out += [cell("td", j, v) for j, v in enumerate(row)]
         out.append("</tr>")
     out.append("</table>")
@@ -195,14 +176,20 @@ def episode_html(result, percentile: dict | None = None,
         ("Flashing",   c.flashing,   cfg.get("flashing", 0.15)),
         ("Audio",      c.audio,      cfg.get("audio", 0.20)),
     ]
-    body = []
-    for label, val, wt in comps:
+    rows = ['<table class="data-table" cellspacing="0" cellpadding="0" width="100%">'
+            '<tr><th class="l">Component</th><th>Normalised</th>'
+            '<th>Weight</th><th>Contribution</th></tr>']
+    for i, (label, val, wt) in enumerate(comps):
+        # Striping is emitted per row: Qt's rich text engine has no nth-child.
+        tr = '<tr class="alt">' if i % 2 else "<tr>"
         if label == "Audio" and not sl.audio_available:
-            body.append(("Audio", "n/a", f"{wt:.0%}", "—"))
-        else:
-            body.append((label, f"{val:.3f}", f"{wt:.0%}", f"{val * wt:.3f}"))
-    parts.append(_table(
-        ("Component", "Normalised", "Weight", "Contribution"), body))
+            rows.append(f'{tr}<td class="l">Audio</td><td class="dim">n/a</td>'
+                        f'<td>{wt:.0%}</td><td class="dim">—</td></tr>')
+            continue
+        rows.append(f'{tr}<td class="l">{label}</td><td>{val:.3f}</td>'
+                    f'<td>{wt:.0%}</td><td>{val * wt:.3f}</td></tr>')
+    rows.append("</table>")
+    parts.append("".join(rows))
 
     # --- measured features --------------------------------------------------
     shot, pace = m.shot_length, m.scene_pacing
