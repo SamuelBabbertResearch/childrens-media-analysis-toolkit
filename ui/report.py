@@ -7,9 +7,10 @@ meant embedding widget-based tables one at a time and tying 1px frames to the
 widget width to fake a section rule. Here it is a document: MediaWiki table
 markup and a stylesheet, rendered by QTextBrowser.
 
-Pure presentation — takes an EpisodeResult or ShowAggregate and returns a
-string. No Qt imports, so it is testable without a display and could be reused
-for the PDF export and the static site.
+Pure presentation — `episode_html` takes an EpisodeResult, `show_html` takes a
+ShowAggregate and the episodes behind it, and both return a string. No Qt
+imports, so they are testable without a display and could back the PDF export
+and the static site.
 
 Guardrail: nothing here reports appropriateness, target age, or educational
 value. Unusual values are marked with a glyph and an explicit legend naming the
@@ -291,3 +292,110 @@ def episode_html(result, percentile: dict | None = None,
 
 def _document(body: str) -> str:
     return f"<html><head><style>{STYLE}</style></head><body>{body}</body></html>"
+
+
+# (heading, ShowAggregate attribute, decimal places). The order is the order
+# the reference results pane lists them in; the fields are whatever
+# ShowAggregate actually carries, so a metric added to the aggregate shows up
+# here by being added to this one tuple.
+AGGREGATE_ROWS = (
+    ("Sensory load", "sensory_load_score", 3),
+    ("Cuts / min", "cuts_per_min", 2),
+    ("Shot length mean (s)", "shot_length_mean_sec", 2),
+    ("Colour saturation", "color_saturation_mean", 3),
+    ("Colour contrast", "color_contrast_mean", 3),
+    ("Motion", "motion_mean", 4),
+    ("Flashing events / min", "flashing_events_per_min", 2),
+    ("Audio RMS", "audio_rms_mean", 4),
+)
+
+EPISODE_ROWS = (
+    ("Cut/m", lambda m: m.scene_pacing.cuts_per_min, 1),
+    ("Sat", lambda m: m.color_saturation.mean, 3),
+    ("Mot", lambda m: m.motion.mean, 4),
+    ("Flash", lambda m: m.flashing.luminance_delta_events_per_min, 2),
+    ("Audio", lambda m: m.audio.rms_mean if m.audio.available else None, 4),
+    ("Load", lambda m: m.sensory_load.score, 3),
+)
+
+
+def _num(value, places: int) -> str:
+    return "—" if value is None else f"{value:.{places}f}"
+
+
+def show_html(aggregate, results, show_name: str = "") -> str:
+    """Render a show's aggregate and its per-episode breakdown.
+
+    Each episode counts once regardless of its length. That is a choice, not
+    an oversight: a show's profile is the profile of the episodes a viewer
+    meets, and weighting by duration would let one feature-length episode
+    speak for a season of eleven-minute ones. It is stated on screen rather
+    than left for someone to infer from a number that looks odd.
+    """
+    name = show_name or getattr(aggregate, "show_name", "") or "Show"
+    total = getattr(aggregate, "episode_count", 0)
+    measured = sum(1 for r in results if r.status == "ok")
+    # An episode that was never analysed is NOT a failure. Only a cached
+    # result carrying status "failed" is one, and conflating the two reports
+    # work that has not been done as work that went wrong.
+    failed = sum(1 for r in results if r.status != "ok")
+    not_run = max(0, total - len(results))
+
+    parts = [f'<p class="title">{_e(name)}</p>']
+    line = f"{measured} of {total} episode{'s' if total != 1 else ''} measured"
+    if failed:
+        line += f"; {failed} failed"
+    if not_run:
+        line += f"; {not_run} not analysed yet"
+    parts.append(f'<p class="sub-text">{_e(line)}</p>')
+
+    if measured == 0:
+        parts.append(
+            '<p class="dim">Nothing measured yet. Select this show and run '
+            'the automated pass from Automated coding.</p>')
+        return _document("".join(parts))
+
+    parts.append('<p class="section-title">Across episodes</p>')
+    parts.append('<p class="sub-text">Each episode weighted equally, '
+                 'whatever its length.</p>')
+    rows = []
+    for heading, attribute, places in AGGREGATE_ROWS:
+        stats = getattr(aggregate, attribute, None)
+        if stats is None:
+            continue
+        rows.append((heading,
+                     _num(getattr(stats, "mean", None), places),
+                     _num(getattr(stats, "median", None), places),
+                     _num(getattr(stats, "std", None), places),
+                     _num(getattr(stats, "min", None), places),
+                     _num(getattr(stats, "max", None), places)))
+    parts.append(_table(("Metric", "Mean", "Median", "Std", "Min", "Max"),
+                        rows))
+
+    ok = [r for r in results if r.status == "ok"]
+    if ok:
+        parts.append('<p class="section-title">Per episode</p>')
+        body = []
+        for result in sorted(ok, key=lambda r: r.file):
+            metrics = result.metrics
+            body.append((result.file,
+                         *[_num(fn(metrics), places)
+                           for _h, fn, places in EPISODE_ROWS]))
+        parts.append(_table(("Episode", *[h for h, _f, _p in EPISODE_ROWS]),
+                            body))
+
+    if failed:
+        parts.append(
+            f'<p class="warn">{failed} episode'
+            f'{"s" if failed != 1 else ""} failed to measure and '
+            f'{"are" if failed != 1 else "is"} excluded from every figure '
+            f'above. Select the show in Automated coding to see why.</p>')
+    if not_run:
+        parts.append(
+            f'<p class="note">{not_run} episode'
+            f'{"s" if not_run != 1 else ""} in this show '
+            f'{"have" if not_run != 1 else "has"} not been analysed, so '
+            f'{"they are" if not_run != 1 else "it is"} not in the figures '
+            f'above. Run the show from Automated coding to include '
+            f'{"them" if not_run != 1 else "it"}.</p>')
+    return _document("".join(parts))

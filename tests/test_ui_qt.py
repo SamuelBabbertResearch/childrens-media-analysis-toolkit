@@ -308,3 +308,58 @@ def test_coding_offers_exactly_the_registered_vocabulary():
     assert set(handcoding.RELEVANCE) == set(ec._RELEVANCE)
     assert set(handcoding.REPEAT) == set(ec._REPEAT)
     assert {t for t, _ in ec.EVENT_TYPES} == set(ec._EVENT_TYPE_SET)
+
+
+def _ok(name: str, load: float = 0.2):
+    r = EpisodeResult(file=name, duration_sec=600.0)
+    r.metrics.sensory_load.score = load
+    return r
+
+
+def test_show_report_distinguishes_not_analysed_from_failed():
+    """An episode never analysed is not a failure.
+
+    `results` holds only what is cached, so anything missing from it simply
+    has not been run. Reporting that as a failure describes work that has not
+    been done as work that went wrong.
+    """
+    from analyzer.aggregate import compute_show_aggregate
+    from ui.report import show_html
+    failed = EpisodeResult(file="b.mp4", status="failed", error="moov atom")
+    results = [_ok("a.mp4"), failed]
+    aggregate = compute_show_aggregate("Demo", results)
+    aggregate.episode_count = 5          # five on disk, two attempted
+    html = show_html(aggregate, results, "Demo")
+    assert "1 of 5 episodes measured" in html
+    assert "1 failed" in html
+    assert "3 not analysed yet" in html
+
+
+def test_show_report_says_so_when_nothing_is_measured():
+    from analyzer.aggregate import compute_show_aggregate
+    from ui.report import show_html
+    aggregate = compute_show_aggregate("Demo", [])
+    aggregate.episode_count = 4
+    html = show_html(aggregate, [], "Demo")
+    assert "Nothing measured yet" in html
+    assert "Mean" not in html.split("<body>")[1]
+
+
+def test_show_report_states_the_weighting():
+    """Equal weighting per episode is a choice, so it is stated, not implied."""
+    from analyzer.aggregate import compute_show_aggregate
+    from ui.report import show_html
+    results = [_ok("a.mp4", 0.2), _ok("b.mp4", 0.4)]
+    aggregate = compute_show_aggregate("Demo", results)
+    aggregate.episode_count = 2
+    html = show_html(aggregate, results, "Demo")
+    assert "weighted equally" in html
+
+
+def test_chart_plots_components_not_the_composite_alone():
+    """A bar of the composite alone hides how two equal scores were reached."""
+    from ui import chart
+    from analyzer.config_loader import load_config
+    weights = load_config().get("sensory_load_weights", {})
+    for _label, _attr, weight_key in chart.COMPONENTS:
+        assert weight_key in weights, weight_key

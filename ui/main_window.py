@@ -44,7 +44,8 @@ from ui.modal import ConfirmDialog, WindowTitleBar
 from ui.pipeline_view import Canvas, ZoomPill
 from ui.welcome import WelcomeDialog
 from ui.inspector import Inspector
-from ui.report import episode_html
+from analyzer.aggregate import compute_show_aggregate
+from ui.report import episode_html, show_html
 from ui.automated import AutomatedTab
 from ui.handcoding import HandCodingTab
 from ui.index_tab import IndexTab
@@ -766,6 +767,10 @@ class MainWindow(QMainWindow):
         self._btn_chart = QPushButton("Show Chart")
         self._btn_chart.setProperty("primary", "true")
         self._btn_chart.setEnabled(False)
+        self._btn_chart.setToolTip(
+            "Show how each episode's sensory load is made up.")
+        self._btn_chart.clicked.connect(self._open_chart)
+        self._chart_source = None
         right.add_header_widget(self._btn_chart)
 
         self._report = QTextBrowser()
@@ -928,10 +933,9 @@ class MainWindow(QMainWindow):
         item = self._model.itemFromIndex(idx.siblingAtColumn(COL_NAME))
         payload = item.data(Qt.UserRole)
         if not payload:
-            self._automated.set_target(self._show_dir_for(item))
-            self._report.setHtml(
-                "<p style='color:#54595d'>Select an episode to see its "
-                "analysis, or run the whole show from Automated coding.</p>")
+            show_dir = self._show_dir_for(item)
+            self._automated.set_target(show_dir)
+            self._show_report(show_dir, item.text())
             return
         ep = Path(payload)
         self._automated.set_target(ep)
@@ -945,6 +949,8 @@ class MainWindow(QMainWindow):
                 "appears here when it finishes.</p>")
             return
         result = EpisodeResult.from_dict(cached)
+        self._chart_source = None
+        self._btn_chart.setEnabled(False)
         events = None
         try:
             from analyzer.event_coding import latest_rates_for_stem
@@ -952,6 +958,53 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         self._report.setHtml(episode_html(result, events=events))
+
+    def _open_chart(self) -> None:
+        """The chart for the selected show. matplotlib is imported here, not
+        at module scope: it costs about a second to load and the Library
+        should not pay that to show a table."""
+        if not self._chart_source:
+            return
+        show_name, results = self._chart_source
+        try:
+            from ui.chart import ChartDialog
+        except ImportError as exc:
+            QMessageBox.information(
+                self, "Chart unavailable",
+                f"matplotlib is needed for the chart: {exc}\n\n"
+                f"Install it with:  pip install matplotlib")
+            return
+        dialog = ChartDialog(show_name, results, self._cfg, self)
+        dialog.show()
+        # Held so it is not collected the moment this method returns.
+        self._chart_window = dialog
+
+    def _show_report(self, show_dir, label: str) -> None:
+        """The aggregate for a show row, from whatever is cached for it."""
+        self._chart_source = None
+        self._btn_chart.setEnabled(False)
+        if show_dir is None:
+            self._report.setHtml(
+                f"<p style='color:{color('text_dim')}'>{label} groups shows "
+                f"rather than episodes. Open one of the shows inside it.</p>")
+            return
+        skey = show_key(self._root, show_dir)
+        results = []
+        for episode in list_episodes(show_dir):
+            cached = load_cached(self._root, skey, episode.stem)
+            if cached:
+                results.append(EpisodeResult.from_dict(cached))
+        aggregate = compute_show_aggregate(show_dir.name, results)
+        # How many episodes the show HAS, so the report can distinguish the
+        # three states that matter: measured, failed, and not analysed yet.
+        # `results` holds only what is cached, so anything missing from it has
+        # simply not been run — reporting that as a failure would describe
+        # work that has not been done as work that went wrong.
+        aggregate.episode_count = len(list_episodes(show_dir))
+        self._report.setHtml(show_html(aggregate, results, show_dir.name))
+        if results:
+            self._chart_source = (show_dir.name, results)
+            self._btn_chart.setEnabled(True)
 
     def _show_dir_for(self, item):
         """The folder a non-episode row stands for, if it is a show.
