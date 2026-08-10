@@ -362,6 +362,25 @@ QLabel[pathDisplay="true"] {{
     padding: 1px 6px;
 }}
 
+/* --------------------------------------------------------- progress -- */
+/* A QProgressBar draws nothing without a ::chunk rule once the application
+   carries a stylesheet: the bar renders as an empty trough at any value. */
+QProgressBar {{
+    background: {c['panel_bg']};
+    border: 1px solid {c['control_border']};
+    border-top-color: {c['control_border_dark']};
+    border-radius: {m['radius_tight']}px;
+    min-height: 12px;
+    max-height: 12px;
+    text-align: center;
+}}
+QProgressBar::chunk {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['aqua_top']}, stop:1 {c['aqua_bottom']});
+    border-radius: {m['radius_tight'] - 1}px;
+    margin: 1px;
+}}
+
 /* ---------------------------------------------------------- scrollbars -- */
 /* The period scrollbar was a slim track, not a modern 12-15px gutter. */
 QScrollBar:vertical   {{ background: transparent; width: 9px;

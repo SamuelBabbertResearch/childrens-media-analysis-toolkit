@@ -45,6 +45,7 @@ from ui.pipeline_view import Canvas, ZoomPill
 from ui.welcome import WelcomeDialog
 from ui.inspector import Inspector
 from ui.report import episode_html
+from ui.automated import AutomatedTab
 from ui.settings import SettingsDialog
 from ui.tokens import METRICS, color
 
@@ -58,7 +59,6 @@ COL_NAME, COL_STATUS, COL_LENGTH, COL_ADDED = range(4)
 UNPORTED = {
     "Pipeline": "The pipeline editor is still on the Tkinter build.",
     "Index": "The searchable index is still on the Tkinter build.",
-    "Automated coding": "Analysis actions are still on the Tkinter build.",
     "Human coding": "Coding, validation, and agreement are still on the "
                     "Tkinter build.",
     "Trials": "The trials registry is still on the Tkinter build.",
@@ -345,10 +345,17 @@ class MainWindow(QMainWindow):
         self._tabs = QTabWidget()
         self.setCentralWidget(self._tabs)
 
+        # Built first: the Library's selection handler sets its target, so it
+        # must exist before that signal can fire.
+        self._automated = AutomatedTab(self)
+        self._automated.library_changed.connect(self._on_analysis_finished)
+
         self._tabs.addTab(self._build_pipeline(), "Pipeline")
         self._tabs.addTab(self._build_library(), "Library")
 
-        for name in ("Index", "Automated coding", "Human coding", "Trials"):
+        self._tabs.addTab(self._placeholder("Index"), "Index")
+        self._tabs.addTab(self._automated, "Automated coding")
+        for name in ("Human coding", "Trials"):
             self._tabs.addTab(self._placeholder(name), name)
 
         self._tabs.setCurrentIndex(1)
@@ -872,26 +879,31 @@ class MainWindow(QMainWindow):
             parent.appendRow(head)
         return 1, len(eps)
 
+    def _on_analysis_finished(self) -> None:
+        """Re-read the library so new results show without a manual refresh."""
+        self.populate()
+
     def _on_select(self, *_args) -> None:
         idx = self._tree.selectionModel().currentIndex()
         if not idx.isValid():
             return
-        payload = self._model.itemFromIndex(idx.siblingAtColumn(COL_NAME)).data(
-            Qt.UserRole)
+        item = self._model.itemFromIndex(idx.siblingAtColumn(COL_NAME))
+        payload = item.data(Qt.UserRole)
         if not payload:
+            self._automated.set_target(self._show_dir_for(item))
             self._report.setHtml(
                 "<p style='color:#54595d'>Select an episode to see its "
-                "analysis.</p>")
+                "analysis, or run the whole show from Automated coding.</p>")
             return
         ep = Path(payload)
+        self._automated.set_target(ep)
         cached = load_cached(self._root, show_key(self._root, ep.parent),
                              ep.stem)
         if not cached:
             self._report.setHtml(
                 f"<p style='color:#54595d'><b>{ep.name}</b><br>"
-                "Not analyzed yet. Run the analysis from the Tkinter build "
-                "(Automated coding → Analyze Episode); the result will appear "
-                "here.</p>")
+                "Not analyzed yet. Run it from Automated coding; the result "
+                "appears here when it finishes.</p>")
             return
         result = EpisodeResult.from_dict(cached)
         events = None
@@ -901,6 +913,22 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         self._report.setHtml(episode_html(result, events=events))
+
+    def _show_dir_for(self, item):
+        """The folder a non-episode row stands for, if it is a show.
+
+        Category rows have no episodes of their own, so they resolve to None
+        rather than to a folder the analysis would find empty.
+        """
+        if self._root is None:
+            return None
+        names = []
+        node = item
+        while node is not None:
+            names.append(node.text())
+            node = node.parent()
+        path = self._root.joinpath(*reversed(names))
+        return path if path.is_dir() and list_episodes(path) else None
 
     def _not_yet(self, what: str) -> None:
         QMessageBox.information(

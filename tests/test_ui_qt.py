@@ -240,3 +240,16 @@ def test_settings_is_scoring_only():
     for measurement_key in ("cut_detection_threshold", "sample_fps",
                             "flashing_luminance_threshold", "measurements"):
         assert measurement_key not in src, measurement_key
+
+
+def test_cancel_signal_survives_the_engine_exception_handler():
+    """Cancellation must not be recorded as a failed episode.
+
+    analyze_show_batch wraps each episode in `except Exception`, so an
+    ordinary exception raised from the progress callback would be swallowed
+    and the episode marked failed. The cancel signal therefore derives from
+    BaseException, which that clause does not catch.
+    """
+    from ui.automated import _Cancelled
+    assert issubclass(_Cancelled, BaseException)
+    assert not issubclass(_Cancelled, Exception)
