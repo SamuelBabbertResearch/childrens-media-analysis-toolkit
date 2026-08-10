@@ -432,6 +432,9 @@ QWidget[actionBar="true"] {{
                 stop:0 {c['action_bar_top']}, stop:1 {c['action_bar_bottom']});
     border-top: 1px solid {c['dialog_seam']};
 }}
+QLabel[confirmQuestion="true"] {{
+    font-size: {pt['heading']}px; font-weight: bold; color: #000000;
+}}
 QLabel[wizardTitle="true"] {{
     font-size: {pt['title']}px; font-weight: bold; color: #000000;
 }}

@@ -32,7 +32,9 @@ from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QRect, QRectF, Qt
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPen
-from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
+)
 
 from ui import native_frame, theme
 from ui.tokens import METRICS, color
@@ -211,3 +213,54 @@ class ModalDialogFrame:
         row.setSpacing(6)
         dialog._modal_outer.addWidget(bar)
         return row
+
+
+class ConfirmDialog(QDialog):
+    """A destructive confirmation, in the application's own chrome.
+
+    Not a QMessageBox: the stock box arrives in the platform's dialog style
+    rather than this one, and its default button is the affirmative — so
+    dismissing it with Enter carries out the destruction. Here Cancel is the
+    default and holds the keyboard, and the confirming button is ordinary
+    rather than accented, because the accent means "this is the action you
+    probably want" and for a deletion it is not.
+
+    `detail` is where the caller says what will NOT be lost. That is usually
+    the sentence a person actually needs before deciding.
+    """
+
+    def __init__(self, parent, title: str, question: str, detail: str = "",
+                 confirm_text: str = "Delete") -> None:
+        super().__init__(parent)
+        self.setModal(True)
+        self.setMinimumWidth(400)
+        body = ModalDialogFrame.install(self, title)
+
+        ask = QLabel(question)
+        ask.setWordWrap(True)
+        ask.setProperty("confirmQuestion", "true")
+        body.addWidget(ask)
+        if detail:
+            note = QLabel(detail)
+            note.setWordWrap(True)
+            note.setProperty("role", "dim")
+            body.addWidget(note)
+        body.addStretch(1)
+
+        row = ModalDialogFrame.add_action_bar(self)
+        row.addStretch(1)
+        confirm = QPushButton(confirm_text)
+        confirm.clicked.connect(self.accept)
+        row.addWidget(confirm)
+        cancel = QPushButton("Cancel")
+        cancel.setDefault(True)
+        cancel.setAutoDefault(True)
+        cancel.clicked.connect(self.reject)
+        row.addWidget(cancel)
+        cancel.setFocus()
+
+    @staticmethod
+    def ask(parent, title: str, question: str, detail: str = "",
+            confirm_text: str = "Delete") -> bool:
+        dialog = ConfirmDialog(parent, title, question, detail, confirm_text)
+        return dialog.exec() == QDialog.Accepted

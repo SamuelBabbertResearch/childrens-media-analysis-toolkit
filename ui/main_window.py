@@ -40,7 +40,7 @@ from analyzer.pipeline_graph import (
     NODE_TYPES, default_doc, delete_doc, duplicate_doc, list_docs,
     node_type, save_doc, unique_name,
 )
-from ui.modal import WindowTitleBar
+from ui.modal import ConfirmDialog, WindowTitleBar
 from ui.pipeline_view import Canvas, ZoomPill
 from ui.welcome import WelcomeDialog
 from ui.inspector import Inspector
@@ -387,10 +387,19 @@ class MainWindow(QMainWindow):
         self._btn_add.setMenu(self._add_stage_menu())
         bar.row.addWidget(self._btn_add)
 
-        self._btn_del = QPushButton("Delete")
+        self._btn_del = QPushButton("Delete Stage")
         self._btn_del.setEnabled(False)
+        self._btn_del.setToolTip(
+            "Remove the selected stage and its links from this pipeline.")
         self._btn_del.clicked.connect(self._delete_selected)
         bar.row.addWidget(self._btn_del)
+
+        self._btn_del_pipe = QPushButton("Delete Pipeline…")
+        self._btn_del_pipe.setToolTip(
+            "Delete this whole pipeline diagram. Episodes, cached analysis "
+            "and hand coding are not touched.")
+        self._btn_del_pipe.clicked.connect(self._delete_pipeline)
+        bar.row.addWidget(self._btn_del_pipe)
 
         self._btn_fit = QPushButton("Fit View")
         bar.row.addWidget(self._btn_fit)
@@ -584,12 +593,17 @@ class MainWindow(QMainWindow):
         doc = self._doc()
         if doc is None:
             return
-        answer = QMessageBox.question(
-            self, "Delete Pipeline",
-            f"Delete the pipeline {doc.name!r}?\n\n"
-            f"Episodes, cached analysis and hand coding are not touched — "
-            f"only this diagram.")
-        if answer != QMessageBox.Yes:
+        nodes, links = len(doc.nodes), len(doc.connections)
+        if not ConfirmDialog.ask(
+                self, "Delete Pipeline",
+                f"Delete the pipeline “{doc.name}”?",
+                f"Its {nodes} stage{'s' if nodes != 1 else ''} and "
+                f"{links} link{'s' if links != 1 else ''} go with it, and this "
+                f"cannot be undone.\n\n"
+                f"Nothing measured is affected: the episodes, their cached "
+                f"analysis, the index and every hand-coded sheet stay exactly "
+                f"as they are. Only this diagram is removed.",
+                confirm_text="Delete Pipeline"):
             return
         index = self._pipe_pick.currentIndex()
         delete_doc(doc)

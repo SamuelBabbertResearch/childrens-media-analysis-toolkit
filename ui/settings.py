@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget,
 )
 
-from ui.modal import ModalDialogFrame
+from ui.modal import ConfirmDialog, ModalDialogFrame
 from ui.tokens import color
 
 DIALOG_W = 450        # .settings-dialog width
@@ -235,9 +235,13 @@ class SettingsDialog(QDialog):
 
     def _delete_preset(self) -> None:
         name = self._preset.currentText()
-        if QMessageBox.question(self, "Delete Preset",
-                                f"Delete the preset {name!r}?") \
-                != QMessageBox.Yes:
+        if not ConfirmDialog.ask(
+                self, "Delete Preset",
+                f"Delete the preset “{name}”?",
+                "The weights and ceilings saved under this name are removed. "
+                "Nothing is re-scored until you apply a different preset, and "
+                "no measurement is affected.",
+                confirm_text="Delete Preset"):
             return
         self.config.get("presets", {}).pop(name, None)
         self._preset.removeItem(self._preset.currentIndex())
