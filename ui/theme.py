@@ -24,7 +24,8 @@ from PySide6.QtWidgets import QApplication
 
 from ui.tokens import (
     COLORS,
-    FONT_PT,
+    FONT_PX,
+    METRICS,
     MONO_FAMILY_PREFERENCE,
     UI_FAMILY_PREFERENCE,
     color,
@@ -69,9 +70,13 @@ def mono_family() -> str:
 
 
 def font(role: str = "body", bold: bool = False, mono: bool = False) -> QFont:
-    """A QFont in POINTS. Qt scales points for the display; do not use pixels."""
-    f = QFont(mono_family() if mono else ui_family(),
-              FONT_PT.get(role, FONT_PT["body"]))
+    """A QFont sized in device-independent pixels.
+
+    Qt scales these for the display, so 11px here is 11px at 100% and 16.5
+    physical pixels at 150% — the reference density, preserved on any monitor.
+    """
+    f = QFont(mono_family() if mono else ui_family())
+    f.setPixelSize(FONT_PX.get(role, FONT_PX["body"]))
     f.setBold(bold)
     return f
 
@@ -79,7 +84,8 @@ def font(role: str = "body", bold: bool = False, mono: bool = False) -> QFont:
 def stylesheet() -> str:
     """The application stylesheet, interpolated from the shared tokens."""
     c = COLORS
-    pt = FONT_PT
+    pt = FONT_PX
+    m = METRICS
     fam = ui_family()
     mono = mono_family()
     return f"""
@@ -88,15 +94,15 @@ QWidget {{
     background: {c['window_bg']};
     color: {c['text']};
     font-family: "{fam}";
-    font-size: {pt['body']}pt;
+    font-size: {pt['body']}px;
 }}
 QMainWindow, QDialog {{ background: {c['window_bg']}; }}
 
 QLabel {{ background: transparent; }}
-QLabel[role="title"]   {{ font-size: {pt['title']}pt; font-weight: bold; }}
-QLabel[role="heading"] {{ font-size: {pt['heading']}pt; font-weight: bold; }}
-QLabel[role="dim"]     {{ color: {c['text_dim']}; font-size: {pt['small']}pt; }}
-QLabel[role="faint"]   {{ color: {c['text_faint']}; font-size: {pt['small']}pt; }}
+QLabel[role="title"]   {{ font-size: {pt['title']}px; font-weight: bold; }}
+QLabel[role="heading"] {{ font-size: {pt['heading']}px; font-weight: bold; }}
+QLabel[role="dim"]     {{ color: {c['text_dim']}; font-size: {pt['small']}px; }}
+QLabel[role="faint"]   {{ color: {c['text_faint']}; font-size: {pt['small']}px; }}
 
 /* ------------------------------------------------------------ toolbar -- */
 QToolBar {{
@@ -104,8 +110,8 @@ QToolBar {{
                 stop:0 {c['toolbar_top']}, stop:1 {c['toolbar_bottom']});
     border: none;
     border-bottom: 1px solid {c['panel_border']};
-    spacing: 6px;
-    padding: 4px 8px;
+    spacing: 5px;
+    padding: 3px 8px;
 }}
 /* Per-tab controls, one step lighter than the main toolbar so the hierarchy
    reads: window chrome, then tab strip, then this. */
@@ -120,7 +126,8 @@ QStatusBar {{
                 stop:0 {c['statusbar_top']}, stop:1 {c['statusbar_bottom']});
     border-top: 1px solid {c['chrome_line']};
     color: {c['text']};
-    font-size: {pt['small']}pt;
+    font-size: {pt['small']}px;
+    min-height: {m['header_h']}px;
 }}
 QStatusBar::item {{ border: none; }}
 
@@ -132,9 +139,10 @@ QPushButton {{
                 stop:0 {c['control_top']}, stop:1 {c['control_bottom']});
     border: 1px solid {c['control_border']};
     border-top-color: {c['control_gloss']};
-    border-radius: 3px;
-    padding: 3px 12px;
-    min-height: 18px;
+    border-radius: {m['radius']}px;
+    padding: 0 10px;
+    min-height: {m['control_h']}px;
+    max-height: {m['control_h']}px;
 }}
 QPushButton:hover {{
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -222,7 +230,7 @@ QTabBar::tab {{
     border-bottom: none;
     border-top-left-radius: 3px;
     border-top-right-radius: 3px;
-    padding: 4px 12px;
+    padding: {m['tab_pad_y']}px {m['tab_pad_x']}px;
     margin-right: 1px;
 }}
 QTabBar::tab:hover {{ background: {c['tab_active']}; }}
@@ -234,7 +242,7 @@ QTabBar::tab:selected {{
     font-weight: bold;
     border-top: 2px solid {c['accent']};
     margin-bottom: -1px;
-    padding-bottom: 5px;
+    padding-bottom: {m['tab_pad_y'] + 1}px;
 }}
 
 /* ------------------------------------------------- inputs and combos -- */
@@ -242,9 +250,10 @@ QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit {{
     background: {c['panel_bg']};
     border: 1px solid {c['control_border']};
     border-top-color: #7d8086;
-    border-radius: 3px;
-    padding: 2px 5px;
-    min-height: 18px;
+    border-radius: {m['radius_tight']}px;
+    padding: 0 5px;
+    min-height: {m['control_h']}px;
+    max-height: {m['control_h']}px;
     selection-background-color: {c['accent']};
     selection-color: {c['text_on_accent']};
 }}
@@ -269,7 +278,10 @@ QTreeView, QTableView, QListView {{
     gridline-color: {c['table_cell_line']};
     outline: none;
 }}
-QTreeView::item, QTableView::item, QListView::item {{ padding: 2px 4px; }}
+QTreeView::item, QTableView::item, QListView::item {{
+    padding: 1px 4px;
+    min-height: {m['row_h']}px;
+}}
 QTreeView::item:hover, QTableView::item:hover {{
     background: {c['row_hover']};
 }}
@@ -289,7 +301,9 @@ QHeaderView::section {{
     border: none;
     border-right: 1px solid {c['panel_border']};
     border-bottom: 1px solid {c['panel_border']};
-    padding: 3px 6px;
+    padding: 0 6px;
+    min-height: {m['header_h']}px;
+    max-height: {m['header_h']}px;
     font-weight: bold;
 }}
 QHeaderView::section:hover {{ background: {c['panel_header']}; }}
@@ -303,7 +317,7 @@ QFrame[panel="true"] {{
 QLabel[panelHeader="true"] {{
     background: {c['panel_header']};
     border-bottom: 1px solid {c['panel_border']};
-    padding: 3px 6px;
+    padding: 2px 6px;
     font-weight: bold;
 }}
 /* Monospace, inset, so a long path reads as a value rather than prose. */

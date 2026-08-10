@@ -181,10 +181,41 @@ COLORS: dict[str, str] = {
     "emphasis_low_fg":  "#1e429f",
 }
 
-# Point sizes. 9pt is the Windows system default and the density an instrument
-# of this kind wants. Copying "11" from a Snow Leopard spec as PIXELS is the
-# standard retro-UI error — that 11 was points, roughly 15px at today's
-# densities.
+# Sizes in DEVICE-INDEPENDENT PIXELS.
+#
+# This is safe in Qt and would not have been in Tk. Qt 6 scales the whole UI by
+# the display's device-pixel ratio, so a "px" in a stylesheet is a logical unit
+# that becomes 1.5 physical pixels at 150% — the same scaling a point size
+# gets. In Tk a pixel was a physical pixel, which is why the equivalent Tk
+# tokens are points and why copying a pixel value from a period specification
+# was a units error there.
+#
+# The reference layouts are a dense desktop utility: 11px text against 19-20px
+# controls. Qt's own defaults are considerably airier, so every box metric has
+# to be stated explicitly or the interface drifts 20-50% taller than intended.
+FONT_PX: dict[str, int] = {
+    "tiny":    9,
+    "small":   10,
+    "body":    11,
+    "table":   11,
+    "heading": 12,
+    "title":   13,
+}
+
+# Control geometry, likewise from the reference layouts.
+METRICS: dict[str, int] = {
+    "control_h":   20,   # buttons, inputs, combos
+    "row_h":       19,   # tree and table rows
+    "header_h":    20,   # view header sections
+    "titlebar_h":  24,
+    "tab_pad_x":   12,
+    "tab_pad_y":   3,
+    "radius":      3,
+    "radius_tight": 2,
+}
+
+# Retained for the Tkinter front-end, which measures in points. Do not use for
+# Qt — see FONT_PX above.
 FONT_PT: dict[str, int] = {
     "tiny":    8,
     "small":   8,

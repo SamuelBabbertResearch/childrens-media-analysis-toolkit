@@ -32,7 +32,7 @@ from analyzer.show_index import (
 )
 from ui import theme
 from ui.report import episode_html
-from ui.tokens import color
+from ui.tokens import METRICS, color
 
 # Column order for the library grid.
 COL_NAME, COL_STATUS, COL_LENGTH, COL_ADDED = range(4)
@@ -273,6 +273,7 @@ class MainWindow(QMainWindow):
         self._tree.setModel(self._model)
         self._tree.setAlternatingRowColors(True)
         self._tree.setUniformRowHeights(True)
+        self._tree.setIndentation(METRICS["row_h"] - 2)
         self._tree.setSelectionMode(QAbstractItemView.SingleSelection)
         self._tree.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._tree.setEditTriggers(QAbstractItemView.NoEditTriggers)
