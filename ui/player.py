@@ -30,18 +30,58 @@ from PySide6.QtWidgets import (
 )
 
 
-def available() -> tuple[bool, str]:
-    """(usable, explanation). Never raises — the caller shows the reason."""
+# One libvlc instance for the whole application, built once and silenced.
+#
+# libvlc writes to stderr directly, and on a VLC whose plugin cache is out of
+# date that is one "stale plugins cache" line per plugin — hundreds of lines
+# before the window appears. The messages are harmless: VLC notices the cache
+# is older than the plugins and rescans. They are also not ours to print, so
+# the log is routed to a callback that drops them. The reference to that
+# callback is kept alive deliberately: libvlc holds a raw pointer to it, and
+# letting Python collect it crashes the process on the next log line.
+#
+# The instance is cached because `available()` and the player each used to
+# build their own, which doubled both the startup cost and the noise.
+_instance = None
+_log_sink = None
+
+
+def _libvlc():
+    """The shared instance, or None if libvlc will not start."""
+    global _instance, _log_sink
+    if _instance is not None:
+        return _instance
     try:
         import vlc
     except ImportError:
+        return None
+    try:
+        inst = vlc.Instance("--no-video-title-show", "--quiet",
+                            "--intf", "dummy")
+        if inst is None:
+            return None
+        try:
+            _log_sink = vlc.CallbackDecorators.LogCb(
+                lambda data, level, ctx, fmt, args: None)
+            inst.log_set(_log_sink, None)
+        except Exception:       # noqa: BLE001 - silencing is best-effort
+            pass
+        _instance = inst
+        return _instance
+    except Exception:           # noqa: BLE001 - reported by available()
+        return None
+
+
+def available() -> tuple[bool, str]:
+    """(usable, explanation). Never raises — the caller shows the reason."""
+    try:
+        import vlc                          # noqa: F401
+    except ImportError:
         return False, ("python-vlc is not installed. Install it with "
                        "`pip install python-vlc`.")
-    try:
-        vlc.Instance("--no-video-title-show")
-    except Exception as exc:                # noqa: BLE001 - reported verbatim
-        return False, (f"VLC is installed but libvlc would not start: {exc}. "
-                       f"A 64-bit VLC is needed to match this interpreter.")
+    if _libvlc() is None:
+        return False, ("VLC is installed but libvlc would not start. A "
+                       "64-bit VLC is needed to match this interpreter.")
     return True, ""
 
 
@@ -79,7 +119,7 @@ class VideoPlayer(QWidget):
         import vlc
 
         self._vlc = vlc
-        self._instance = vlc.Instance("--no-video-title-show", "--quiet")
+        self._instance = _libvlc()
         self._player = self._instance.media_player_new()
         self._duration = 0.0
         self._scrubbing = False
