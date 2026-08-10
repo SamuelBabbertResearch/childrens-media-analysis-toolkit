@@ -48,6 +48,7 @@ from ui.report import episode_html
 from ui.automated import AutomatedTab
 from ui.index_tab import IndexTab
 from ui.settings import SettingsDialog
+from ui.trials_tab import TrialsTab
 from ui.tokens import METRICS, color
 
 # The reference marks folders and episodes with these two glyphs.
@@ -61,7 +62,6 @@ UNPORTED = {
     "Pipeline": "The pipeline editor is still on the Tkinter build.",
     "Human coding": "Coding, validation, and agreement are still on the "
                     "Tkinter build.",
-    "Trials": "The trials registry is still on the Tkinter build.",
 }
 
 
@@ -358,8 +358,9 @@ class MainWindow(QMainWindow):
         self._index.episode_chosen.connect(self._show_indexed_episode)
         self._tabs.addTab(self._index, "Index")
         self._tabs.addTab(self._automated, "Automated coding")
-        for name in ("Human coding", "Trials"):
-            self._tabs.addTab(self._placeholder(name), name)
+        self._tabs.addTab(self._placeholder("Human coding"), "Human coding")
+        self._trials = TrialsTab(self)
+        self._tabs.addTab(self._trials, "Trials")
 
         self._tabs.setCurrentIndex(1)
 
@@ -821,6 +822,7 @@ class MainWindow(QMainWindow):
         self._release_columns()
         if hasattr(self, "_index"):
             self._index.refresh()
+            self._trials.refresh()
         self._count.setText(
             f"{shows} show{'s' if shows != 1 else ''}, "
             f"{episodes} episode{'s' if episodes != 1 else ''}")
