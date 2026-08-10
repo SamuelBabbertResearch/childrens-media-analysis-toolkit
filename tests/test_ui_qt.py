@@ -284,3 +284,27 @@ def test_outlier_fences_need_enough_values():
     from ui.index_tab import _fences
     assert _fences([1, 2, 3, 4, 5, 6, 7]) is None
     assert _fences([1, 2, 3, 4, 5, 6, 7, 100]) is not None
+
+
+def test_coding_sheet_columns_match_the_parser():
+    """A sheet written here must be one code_events.py can read.
+
+    The writer keeps its own column list so a mismatch is one obvious edit
+    rather than a silently malformed sheet; this checks the two agree.
+    """
+    import analyzer.event_coding as ec
+    from ui import handcoding
+    assert handcoding.COLUMNS == ec._COLUMNS
+
+
+def test_coding_offers_exactly_the_registered_vocabulary():
+    """The codebook is the registry; the screen must not add or drop a term.
+
+    Compared as sets: the engine holds these as sets, so their order carries
+    no meaning and asserting on it would only test the assertion.
+    """
+    import analyzer.event_coding as ec
+    from ui import handcoding
+    assert set(handcoding.RELEVANCE) == set(ec._RELEVANCE)
+    assert set(handcoding.REPEAT) == set(ec._REPEAT)
+    assert {t for t, _ in ec.EVENT_TYPES} == set(ec._EVENT_TYPE_SET)

@@ -46,6 +46,7 @@ from ui.welcome import WelcomeDialog
 from ui.inspector import Inspector
 from ui.report import episode_html
 from ui.automated import AutomatedTab
+from ui.handcoding import HandCodingTab
 from ui.index_tab import IndexTab
 from ui.settings import SettingsDialog
 from ui.trials_tab import TrialsTab
@@ -60,8 +61,6 @@ COL_NAME, COL_STATUS, COL_LENGTH, COL_ADDED = range(4)
 
 UNPORTED = {
     "Pipeline": "The pipeline editor is still on the Tkinter build.",
-    "Human coding": "Coding, validation, and agreement are still on the "
-                    "Tkinter build.",
 }
 
 
@@ -358,7 +357,8 @@ class MainWindow(QMainWindow):
         self._index.episode_chosen.connect(self._show_indexed_episode)
         self._tabs.addTab(self._index, "Index")
         self._tabs.addTab(self._automated, "Automated coding")
-        self._tabs.addTab(self._placeholder("Human coding"), "Human coding")
+        self._handcoding = HandCodingTab(self)
+        self._tabs.addTab(self._handcoding, "Human coding")
         self._trials = TrialsTab(self)
         self._tabs.addTab(self._trials, "Trials")
 
@@ -920,6 +920,7 @@ class MainWindow(QMainWindow):
             return
         ep = Path(payload)
         self._automated.set_target(ep)
+        self._handcoding.set_target(ep)
         cached = load_cached(self._root, show_key(self._root, ep.parent),
                              ep.stem)
         if not cached:
