@@ -439,37 +439,6 @@ QLabel[listItemDesc="true"] {{
 QLabel[listItemDesc="true"][selected="true"] {{
     color: {c['text_on_accent_dim']};
 }}
-/* A QRadioButton is not a QLabel, so it takes the base QWidget background and
-   paints a window-coloured slab over a selected row. The circle itself is
-   drawn with border-radius, and the dot with a radial gradient, because Qt
-   otherwise renders the indicator as a small bevelled box. */
-QRadioButton {{ background: transparent; }}
-QRadioButton::indicator {{
-    width: 12px;
-    height: 12px;
-    border: 1px solid {c['control_border']};
-    border-radius: 7px;
-    background: {c['panel_bg']};
-}}
-QRadioButton::indicator:checked {{
-    background: qradialgradient(cx:0.5, cy:0.5, radius:0.5,
-                stop:0 {c['accent']}, stop:0.42 {c['accent']},
-                stop:0.46 {c['panel_bg']}, stop:1 {c['panel_bg']});
-}}
-/* On the filled row the ring is white and the well shows the fill through. */
-QWidget[listItem="true"][selected="true"] QRadioButton::indicator {{
-    border-color: {c['text_on_accent']};
-    background: transparent;
-}}
-/* rgba(...,0), not the `transparent` keyword: Qt does not accept it in a
-   gradient stop and falls back to white, which is the pale ring that appeared
-   around the dot. */
-QWidget[listItem="true"][selected="true"] QRadioButton::indicator:checked {{
-    background: qradialgradient(cx:0.5, cy:0.5, radius:0.5,
-                stop:0 {c['text_on_accent']}, stop:0.42 {c['text_on_accent']},
-                stop:0.46 rgba(255,255,255,0), stop:1 rgba(255,255,255,0));
-}}
-
 /* Inputs are a pixel shorter inside a dialog than on the toolbar. */
 QWidget[dialogContent="true"] QLineEdit {{
     min-height: {m['dialog_input_h']}px;

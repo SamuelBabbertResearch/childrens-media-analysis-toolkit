@@ -113,6 +113,16 @@ Each of these looked like a styling failure and was not.
   its text, which is a clipped heading.
 - **`ResizeToContents` pins a column** after sizing it. Hand columns back as
   `Interactive` once sized, or long names elide with no way to widen them.
+- **`transparent` is not a valid gradient stop.** Qt substitutes white, so a
+  fade-to-nothing becomes a fade-to-white disc. Use `rgba(255,255,255,0)`.
+- **Do not style a `QRadioButton` indicator into a circle.** It is drawn as a
+  small bevelled box that takes the widget background, and reshaping it needs
+  a radial gradient for the dot — see the stop above. Paint the mark instead;
+  `ui/welcome.py`'s `Dot` is 20 lines and exact.
+- **Qt focuses the first widget in the tab order.** If that is a text field,
+  any key the field consumes will look dead on a freshly opened dialog. Set
+  the intended focus in `showEvent`, not in `__init__` — before the widget is
+  shown it does not stick.
 - Qt has no `box-shadow`, `text-shadow`, `inset`, or `line-height`. For a
   shadow on a real widget use `QGraphicsDropShadowEffect`; on a canvas item,
   paint it.

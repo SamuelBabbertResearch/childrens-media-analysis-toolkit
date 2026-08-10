@@ -25,10 +25,11 @@ so `keyPressEvent` does it explicitly.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
-    QButtonGroup, QCheckBox, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QRadioButton, QScrollArea, QVBoxLayout, QWidget,
+    QCheckBox, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QScrollArea, QVBoxLayout, QWidget,
 )
 
 from analyzer.pipeline_graph import TEMPLATES, unique_name
@@ -45,12 +46,53 @@ TEMPLATE_KEYS = ("full", "automated", "handcoding", "language", "mixed",
                  "validation", "blank")
 
 
+class Dot(QWidget):
+    """The chosen-row mark, painted rather than a styled QRadioButton.
+
+    Qt draws a radio indicator as a small bevelled box, and the box takes the
+    widget background, so on a filled row it stamped a pale slab over the
+    fill. Styling it away needs a radial gradient for the dot, and Qt rejects
+    `transparent` as a gradient stop and substitutes white — which is the pale
+    disc that survived two attempts to remove it. Painting it is both shorter
+    and exact.
+    """
+
+    D = 13
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setFixedSize(self.D + 2, self.D + 2)
+        self._on = False
+
+    def set_on(self, on: bool) -> None:
+        if on != self._on:
+            self._on = on
+            self.update()
+
+    def paintEvent(self, event) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        ring = QRectF(1, 1, self.D, self.D)
+        if self._on:
+            # On the filled row: white ring, fill showing through, white dot.
+            p.setPen(QPen(QColor(color("text_on_accent")), 1))
+            p.setBrush(Qt.NoBrush)
+            p.drawEllipse(ring)
+            p.setBrush(QColor(color("text_on_accent")))
+            p.setPen(Qt.NoPen)
+            p.drawEllipse(ring.adjusted(3.5, 3.5, -3.5, -3.5))
+        else:
+            p.setPen(QPen(QColor(color("control_border")), 1))
+            p.setBrush(QColor(color("panel_bg")))
+            p.drawEllipse(ring)
+
+
 class LayoutRow(QWidget):
     """One layout, as the reference's `.list-item`."""
 
     picked = Signal(str)
 
-    def __init__(self, template, group: QButtonGroup) -> None:
+    def __init__(self, template) -> None:
         super().__init__()
         self.key = template.key
         self.setProperty("listItem", "true")
@@ -63,11 +105,8 @@ class LayoutRow(QWidget):
         row.setContentsMargins(8, 6, 8, 6)
         row.setSpacing(8)
 
-        self.radio = QRadioButton()
-        group.addButton(self.radio)
-        self.radio.toggled.connect(
-            lambda on: self.picked.emit(self.key) if on else None)
-        row.addWidget(self.radio, 0, Qt.AlignTop)
+        self.dot = Dot()
+        row.addWidget(self.dot, 0, Qt.AlignTop)
 
         text = QVBoxLayout()
         text.setSpacing(2)
@@ -81,18 +120,15 @@ class LayoutRow(QWidget):
         row.addLayout(text, 1)
 
     def set_selected(self, on: bool) -> None:
-        # The radio too: its indicator is styled through the row's property,
-        # and an ancestor property change does not repolish descendants.
-        for w in (self, self._title, self._desc, self.radio):
+        for w in (self, self._title, self._desc):
             w.setProperty("selected", "true" if on else "false")
             # A property change needs an explicit repolish to take effect.
             w.style().unpolish(w)
             w.style().polish(w)
-        if on and not self.radio.isChecked():
-            self.radio.setChecked(True)
+        self.dot.set_on(on)
 
     def mousePressEvent(self, event) -> None:
-        self.radio.setChecked(True)
+        self.picked.emit(self.key)
 
 
 class WelcomeDialog(QDialog):
@@ -125,6 +161,9 @@ class WelcomeDialog(QDialog):
         listbox = QScrollArea()
         listbox.setProperty("listView", "true")
         listbox.setWidgetResizable(True)
+        # The list takes the keyboard, so the arrows reach keyPressEvent
+        # instead of being swallowed by whatever Qt focused first.
+        listbox.setFocusPolicy(Qt.StrongFocus)
         listbox.setMaximumHeight(LIST_MAX_H)
         host = QWidget()
         host.setProperty("listHost", "true")
@@ -133,10 +172,9 @@ class WelcomeDialog(QDialog):
         rows.setContentsMargins(0, 0, 0, 0)
         rows.setSpacing(0)
 
-        self._group = QButtonGroup(self)
         self._rows: dict[str, LayoutRow] = {}
         for i, template in enumerate(TEMPLATES):
-            row = LayoutRow(template, self._group)
+            row = LayoutRow(template)
             row.picked.connect(self._select)
             rows.addWidget(row)
             self._rows[template.key] = row
@@ -172,8 +210,17 @@ class WelcomeDialog(QDialog):
 
         self._order = [t.key for t in TEMPLATES]
         self._listbox = listbox
-        self._rows[TEMPLATES[0].key].set_selected(True)
-        self._rows[TEMPLATES[0].key].radio.setFocus()
+        self._select(TEMPLATES[0].key)
+
+    def showEvent(self, event) -> None:
+        """Focus the list, not the name field.
+
+        Qt gives focus to the first widget in the tab order, which was the
+        name field — and the arrow keys are deliberately left to it while it
+        has focus, so on a freshly opened dialog they appeared dead.
+        """
+        super().showEvent(event)
+        self._listbox.setFocus()
 
     @staticmethod
     def _divider() -> QFrame:
@@ -195,10 +242,8 @@ class WelcomeDialog(QDialog):
             i = self._order.index(self._selected)
             nxt = min(max(i + step, 0), len(self._order) - 1)
             if nxt != i:
-                row = self._rows[self._order[nxt]]
-                row.set_selected(True)
-                row.radio.setFocus()
-                self._listbox.ensureWidgetVisible(row)
+                self._select(self._order[nxt])
+                self._listbox.ensureWidgetVisible(self._rows[self._order[nxt]])
             event.accept()
             return
         super().keyPressEvent(event)
