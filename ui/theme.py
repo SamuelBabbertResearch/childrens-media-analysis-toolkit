@@ -363,18 +363,20 @@ QLabel[pathDisplay="true"] {{
 }}
 
 /* ---------------------------------------------------------- scrollbars -- */
-QScrollBar:vertical   {{ background: {c['surface_bottom']}; width: 12px;
+/* The period scrollbar was a slim track, not a modern 12-15px gutter. */
+QScrollBar:vertical   {{ background: transparent; width: 9px;
                          margin: 0; border: none; }}
-QScrollBar:horizontal {{ background: {c['surface_bottom']}; height: 12px;
+QScrollBar:horizontal {{ background: transparent; height: 9px;
                          margin: 0; border: none; }}
 QScrollBar::handle:vertical, QScrollBar::handle:horizontal {{
-    background: #c1c4c9;
-    border: 1px solid {c['chrome_line']};
-    border-radius: 5px;
-    min-height: 24px;
-    min-width: 24px;
+    background: {c['scroll_handle']};
+    border: none;
+    border-radius: 4px;
+    min-height: 28px;
+    min-width: 28px;
+    margin: 2px;
 }}
-QScrollBar::handle:hover {{ background: #a9adb3; }}
+QScrollBar::handle:hover {{ background: {c['scroll_handle_hover']}; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; width: 0; }}
 QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
 
@@ -437,6 +439,34 @@ QLabel[listItemDesc="true"] {{
 QLabel[listItemDesc="true"][selected="true"] {{
     color: {c['text_on_accent_dim']};
 }}
+/* A QRadioButton is not a QLabel, so it takes the base QWidget background and
+   paints a window-coloured slab over a selected row. The circle itself is
+   drawn with border-radius, and the dot with a radial gradient, because Qt
+   otherwise renders the indicator as a small bevelled box. */
+QRadioButton {{ background: transparent; }}
+QRadioButton::indicator {{
+    width: 12px;
+    height: 12px;
+    border: 1px solid {c['control_border']};
+    border-radius: 7px;
+    background: {c['panel_bg']};
+}}
+QRadioButton::indicator:checked {{
+    background: qradialgradient(cx:0.5, cy:0.5, radius:0.5,
+                stop:0 {c['accent']}, stop:0.45 {c['accent']},
+                stop:0.5 {c['panel_bg']}, stop:1 {c['panel_bg']});
+}}
+/* On the filled row the ring is white and the well shows the fill through. */
+QWidget[listItem="true"][selected="true"] QRadioButton::indicator {{
+    border-color: {c['text_on_accent']};
+    background: transparent;
+}}
+QWidget[listItem="true"][selected="true"] QRadioButton::indicator:checked {{
+    background: qradialgradient(cx:0.5, cy:0.5, radius:0.5,
+                stop:0 {c['text_on_accent']}, stop:0.45 {c['text_on_accent']},
+                stop:0.5 transparent, stop:1 transparent);
+}}
+
 /* Inputs are a pixel shorter inside a dialog than on the toolbar. */
 QWidget[dialogContent="true"] QLineEdit {{
     min-height: {m['dialog_input_h']}px;

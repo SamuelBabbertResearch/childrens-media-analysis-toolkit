@@ -17,9 +17,10 @@ first screen, so there is nothing behind it, and a dead control is worse than
 an honest one. Skip takes its place.
 
 The list is built from radio buttons in one group rather than a QListView with
-a delegate: the rows carry wrapped prose of very different heights, and the
-radios give real keyboard selection — arrow keys move between them — for free,
-which a hand-drawn row would have to reimplement.
+a delegate, because the rows carry wrapped prose of very different heights.
+Arrow-key navigation is NOT free that way: Qt moves between radio buttons with
+the arrows only when they share a parent, and each row here is its own widget,
+so `keyPressEvent` does it explicitly.
 """
 
 from __future__ import annotations
@@ -80,7 +81,9 @@ class LayoutRow(QWidget):
         row.addLayout(text, 1)
 
     def set_selected(self, on: bool) -> None:
-        for w in (self, self._title, self._desc):
+        # The radio too: its indicator is styled through the row's property,
+        # and an ancestor property change does not repolish descendants.
+        for w in (self, self._title, self._desc, self.radio):
             w.setProperty("selected", "true" if on else "false")
             # A property change needs an explicit repolish to take effect.
             w.style().unpolish(w)
@@ -167,7 +170,10 @@ class WelcomeDialog(QDialog):
         self._create.clicked.connect(self._accept)
         action.addWidget(self._create)
 
+        self._order = [t.key for t in TEMPLATES]
+        self._listbox = listbox
         self._rows[TEMPLATES[0].key].set_selected(True)
+        self._rows[TEMPLATES[0].key].radio.setFocus()
 
     @staticmethod
     def _divider() -> QFrame:
@@ -177,6 +183,26 @@ class WelcomeDialog(QDialog):
         return line
 
     # -- behaviour --------------------------------------------------------
+    def keyPressEvent(self, event) -> None:
+        """Up and down move through the layouts.
+
+        Qt moves between radio buttons with the arrow keys only when they
+        share a parent. Each row is its own widget here, so the group never
+        forms and the navigation has to be explicit.
+        """
+        if event.key() in (Qt.Key_Up, Qt.Key_Down) and not self._name.hasFocus():
+            step = -1 if event.key() == Qt.Key_Up else 1
+            i = self._order.index(self._selected)
+            nxt = min(max(i + step, 0), len(self._order) - 1)
+            if nxt != i:
+                row = self._rows[self._order[nxt]]
+                row.set_selected(True)
+                row.radio.setFocus()
+                self._listbox.ensureWidgetVisible(row)
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
     def _select(self, key: str) -> None:
         self._selected = key
         for row_key, row in self._rows.items():

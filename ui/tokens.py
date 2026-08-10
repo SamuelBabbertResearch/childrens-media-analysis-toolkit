@@ -141,6 +141,8 @@ COLORS: dict[str, str] = {
 
     # --- views --------------------------------------------------------------
     "row_hover":      "#f0f4f9",
+    "scroll_handle":       "#bfc2c7",
+    "scroll_handle_hover": "#9fa3a9",
     "table_header":   "#eaeaea",
     "table_alt_row":  "#f9f9f9",
     "table_cell_line": "#d0d0d0",
