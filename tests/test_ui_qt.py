@@ -189,3 +189,25 @@ def test_percentile_reads_naturally_at_the_bottom():
                                "show_total": 1, "show_rank": 1})
     assert "0th" not in html
     assert "lowest of 24" in html
+
+
+def test_welcome_offers_every_template_not_just_the_illustrated_four():
+    """The reference draws four cards; the registry has seven.
+
+    Showing only the illustrated ones would make the wizard a worse map of
+    the tool than the tool is, and would hide Blank canvas entirely.
+    """
+    from analyzer.pipeline_graph import TEMPLATES
+    from ui import welcome
+    assert len(TEMPLATES) > 4
+    for template in TEMPLATES:
+        assert template.key in welcome.TEMPLATE_GLYPH, template.key
+
+
+def test_welcome_builds_a_real_document():
+    """Create Pipeline must produce a document the Pipeline tab can open."""
+    from analyzer.pipeline_graph import TEMPLATES
+    full = next(t for t in TEMPLATES if t.key == "full")
+    doc = full.build("Test study")
+    assert doc.name == "Test study"
+    assert doc.nodes and doc.connections

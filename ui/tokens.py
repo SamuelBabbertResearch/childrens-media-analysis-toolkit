@@ -129,6 +129,16 @@ COLORS: dict[str, str] = {
     "note_border":   "#e0e0e0",
     "rule_soft":     "#d9d9d9",
 
+    # --- starting-layout wizard (ui/reference/welcome.css) ------------------
+    "card_bg":          "#ffffff",
+    "card_border":      "#cccccc",
+    "card_sel_bg":      "#ebf4ff",
+    "card_sel_border":  "#2b72d6",
+    "card_title_fg":    "#111111",
+    "card_desc_fg":     "#444444",
+    "modal_foot_top":    "#e6e6e6",
+    "modal_foot_bottom": "#d8d8d8",
+
     # --- views --------------------------------------------------------------
     "row_hover":      "#f0f4f9",
     "table_header":   "#eaeaea",

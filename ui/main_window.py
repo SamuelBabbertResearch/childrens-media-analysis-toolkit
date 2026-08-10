@@ -21,7 +21,7 @@ from PySide6.QtGui import (
     QPainter, QPixmap, QShortcut, QStandardItem, QStandardItemModel,
 )
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
+    QAbstractItemView, QComboBox, QDialog, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
     QInputDialog, QLabel, QMainWindow, QMenu, QMenuBar, QMessageBox,
     QPushButton, QSplitter, QTabWidget,
     QTextBrowser, QToolBar, QTreeView, QVBoxLayout, QWidget,
@@ -41,6 +41,7 @@ from analyzer.pipeline_graph import (
     node_type, save_doc, unique_name,
 )
 from ui.pipeline_view import Canvas, ZoomPill
+from ui.welcome import WelcomeDialog
 from ui.inspector import Inspector
 from ui.report import episode_html
 from ui.tokens import METRICS, color
@@ -298,6 +299,27 @@ class MainWindow(QMainWindow):
         if saved and Path(saved).is_dir():
             QTimer.singleShot(0, lambda: self.set_root(Path(saved)))
 
+        # The starting-layout wizard is the first screen, after the window is
+        # up and the library has been restored — it offers to name a pipeline
+        # against the ones already there, so it needs the root first.
+        if get_pref("show_welcome_on_start", True):
+            QTimer.singleShot(0, self.show_welcome)
+
+    def show_welcome(self) -> None:
+        """Offer a starting layout. Declining leaves the window as it is."""
+        existing = [d.name for d in getattr(self, "_docs", [])]
+        dialog = WelcomeDialog(existing, self)
+        if dialog.exec() != QDialog.Accepted or dialog.doc is None:
+            return
+        save_doc(dialog.doc, self._root)
+        self._docs.append(dialog.doc)
+        self._pipe_pick.addItem(dialog.doc.name)
+        self._pipe_pick.setCurrentIndex(len(self._docs) - 1)
+        self._tabs.setCurrentIndex(0)
+        self.statusBar().showMessage(
+            f"Created the pipeline {dialog.doc.name!r}. Use Manage to link it "
+            f"to an episode sample.", 8000)
+
     # ---- chrome ----
 
     def _build_title_bar(self) -> None:
@@ -333,6 +355,9 @@ class MainWindow(QMainWindow):
         act_open = QAction("Choose Root Folder…", self)
         act_open.triggered.connect(self.choose_root)
         file_menu.addAction(act_open)
+        act_new = QAction("New Pipeline from Layout…", self)
+        act_new.triggered.connect(self.show_welcome)
+        file_menu.addAction(act_new)
         file_menu.addSeparator()
         act_quit = QAction("E&xit", self)
         act_quit.triggered.connect(self.close)

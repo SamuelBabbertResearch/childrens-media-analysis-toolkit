@@ -401,6 +401,38 @@ QTextBrowser {{
     border: none;
 }}
 
+/* ------------------------------------------- starting-layout wizard -- */
+/* Values from ui/reference/welcome.css: .option-card, .card-title,
+   .card-desc, .card-icon, .wizard-title, .wizard-subtitle, .modal-footer. */
+QLabel[wizardTitle="true"] {{
+    font-size: 14px; font-weight: bold; color: {c['card_title_fg']};
+}}
+QLabel[wizardSubtitle="true"] {{ color: {c['text_dim']}; }}
+QFrame[card="true"] {{
+    background: {c['card_bg']};
+    border: 1px solid {c['card_border']};
+    border-radius: 5px;
+}}
+QFrame[card="true"][selected="true"] {{
+    background: {c['card_sel_bg']};
+    border: 2px solid {c['card_sel_border']};
+}}
+QFrame[card="true"] QLabel {{ background: transparent; border: none; }}
+QLabel[cardIcon="true"] {{ font-size: 18px; color: {c['card_sel_border']}; }}
+QLabel[cardTitle="true"] {{
+    font-size: {pt['heading']}px; font-weight: bold;
+    color: {c['card_title_fg']};
+}}
+QLabel[cardDesc="true"] {{
+    font-size: {pt['small']}px; color: {c['card_desc_fg']};
+}}
+QWidget[nameRow="true"] {{ border-top: 1px solid {c['card_border']}; }}
+QWidget[modalFooter="true"] {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['modal_foot_top']}, stop:1 {c['modal_foot_bottom']});
+    border-top: 1px solid {c['control_border']};
+}}
+
 /* ------------------------------------------------- pipeline workbench -- */
 /* Values from ui/reference/pipeline.css: .inspector-panel, .inspector-title,
    .inspector-subtitle, .info-banner, .inspector-table, .zoom-toolbar. */
