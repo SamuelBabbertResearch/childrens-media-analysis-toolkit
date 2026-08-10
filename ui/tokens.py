@@ -116,7 +116,15 @@ COLORS: dict[str, str] = {
     # --- inspector key/value grid -------------------------------------------
     "kv_key_bg":   "#f0f0f0",
     "kv_key_fg":   "#444444",
+    "kv_val_fg":   "#222222",
+    "kv_key_line": "#e0e0e0",
     "kv_row_line": "#e5e5e5",
+
+    # --- report typography and note boxes -----------------------------------
+    "section_title": "#0f4f96",   # section headings, same blue as the ambox
+    "note_bg":       "#f8f9fa",
+    "note_border":   "#e0e0e0",
+    "rule_soft":     "#d9d9d9",
 
     # --- views --------------------------------------------------------------
     "row_hover":      "#f0f4f9",

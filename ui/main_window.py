@@ -295,6 +295,11 @@ class MainWindow(QMainWindow):
         self._report = QTextBrowser()
         self._report.setOpenExternalLinks(False)
         self._report.setFrameShape(QFrame.NoFrame)
+        # The reference results pane is a 6px gutter, not the ~4px Qt default,
+        # and the document font has to be set on the document rather than the
+        # widget or the stylesheet's px sizes resolve against the wrong base.
+        self._report.document().setDocumentMargin(6)
+        self._report.document().setDefaultFont(theme.font("body"))
         self._report.setHtml(
             f"<p style='color:{color('text_dim')}'>Choose a show or episode "
             f"on the left.</p>")
