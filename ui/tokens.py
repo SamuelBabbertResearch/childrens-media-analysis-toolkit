@@ -159,13 +159,16 @@ COLORS: dict[str, str] = {
     # The application draws its own title bar (ui/native_frame.py) while the
     # window keeps its real Win32 frame styles, so snap, edge resizing, the
     # system menu and the maximise animation still come from Windows.
+    # The caption CONTROLS are Windows' own — minimise, maximise, close, left
+    # to right — not the reference's three round lights. This is a Windows
+    # application; see the note at the top of ui/modal.py.
     "titlebar_top":    "#e6e6e6",
     "titlebar_bottom": "#d1d1d1",
     "titlebar_line":   "#a6a6a6",
-    "titlebar_fg":     "#333333",
-    "light_close": "#ff5f56",
-    "light_min":   "#ffbd2e",
-    "light_max":   "#27c93f",
+    "titlebar_fg":     "#1d1d1d",
+    # Windows caption-button hover, its red close included.
+    "caption_hover":       "#d0d0d0",
+    "caption_close_hover": "#c42b1c",
 
     # --- list views (see ui/DESIGN.md §3) -----------------------------------
     "list_divider":     "#f0f0f0",
@@ -229,6 +232,7 @@ FONT_PX: dict[str, int] = {
     "grid":    11,   # library grid rows; .tree-row in the reference
     "heading": 12,
     "title":   13,
+    "caption": 12,   # window title, the platform caption size
 }
 
 # Control geometry, likewise from the reference layouts.
@@ -236,7 +240,8 @@ METRICS: dict[str, int] = {
     "control_h":   20,   # buttons, inputs, combos
     "row_h":       19,   # tree and table rows
     "header_h":    20,   # view header sections
-    "titlebar_h":  24,
+    "titlebar_h":  30,   # Windows caption controls need the room
+    "caption_btn_w": 34,
     "dialog_input_h":  19,   # input/select height in a dialog
     "tab_pad_x":   10,
     "tab_pad_y":   3,
@@ -253,6 +258,7 @@ FONT_PT: dict[str, int] = {
     "table":   9,
     "heading": 11,
     "title":   13,
+    "caption": 12,   # window title, the platform caption size
 }
 
 # First available wins, and this order is the reference stack resolved for

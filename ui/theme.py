@@ -453,18 +453,21 @@ QRadioButton::indicator {{
 }}
 QRadioButton::indicator:checked {{
     background: qradialgradient(cx:0.5, cy:0.5, radius:0.5,
-                stop:0 {c['accent']}, stop:0.45 {c['accent']},
-                stop:0.5 {c['panel_bg']}, stop:1 {c['panel_bg']});
+                stop:0 {c['accent']}, stop:0.42 {c['accent']},
+                stop:0.46 {c['panel_bg']}, stop:1 {c['panel_bg']});
 }}
 /* On the filled row the ring is white and the well shows the fill through. */
 QWidget[listItem="true"][selected="true"] QRadioButton::indicator {{
     border-color: {c['text_on_accent']};
     background: transparent;
 }}
+/* rgba(...,0), not the `transparent` keyword: Qt does not accept it in a
+   gradient stop and falls back to white, which is the pale ring that appeared
+   around the dot. */
 QWidget[listItem="true"][selected="true"] QRadioButton::indicator:checked {{
     background: qradialgradient(cx:0.5, cy:0.5, radius:0.5,
-                stop:0 {c['text_on_accent']}, stop:0.45 {c['text_on_accent']},
-                stop:0.5 transparent, stop:1 transparent);
+                stop:0 {c['text_on_accent']}, stop:0.42 {c['text_on_accent']},
+                stop:0.46 rgba(255,255,255,0), stop:1 rgba(255,255,255,0));
 }}
 
 /* Inputs are a pixel shorter inside a dialog than on the toolbar. */

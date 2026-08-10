@@ -80,7 +80,8 @@ stated or the interface drifts. All of them live in `ui/tokens.py`:
 | `METRICS["control_h"]` | 20 | `.btn` |
 | `METRICS["dialog_input_h"]` | 19 | `input` inside `.dialog-content` |
 | `METRICS["header_h"]` | 20 | `.data-table th` |
-| `METRICS["titlebar_h"]` | 24 | `.titlebar`, windows *and* dialogs |
+| `METRICS["titlebar_h"]` | 30 | `.titlebar` — 24 in the mockups; see below |
+| `METRICS["caption_btn_w"]` | 34 | not in the mockups; Windows caption |
 
 Sizes are **device-independent pixels**. Qt 6 scales the whole interface by
 the display's device-pixel ratio, so `11px` is 11px at 100% and 16.5 physical
@@ -123,6 +124,22 @@ their real Win32 frame styles — see §1 and `ui/native_frame.py`. Never reach
 for `Qt.FramelessWindowHint`: it strips `WS_THICKFRAME`/`WS_CAPTION` and takes
 Aero Snap, edge resizing, the drop shadow, the maximise animation, Win+Arrow
 and the system menu with it.
+
+**The caption controls are Windows', not the mockups'.** The mockups draw
+three round lights in close-minimise-zoom order. That is another platform's
+convention: the order is reversed from Windows, the shapes mean nothing to
+someone who has not used that platform, and there is no restore affordance.
+§7 already puts platform behaviour above the visual specification, so the
+strip carries minimise, maximise/restore and close, left to right at the
+right-hand end, painted as Windows paints them with the red close hover. The
+strip is 30px rather than the mockups' 24 because the controls need the room,
+and the title is set at the platform caption size rather than the mockups'
+bold small type. The glyphs are painted, not taken from an icon font, so they
+need neither Segoe Fluent Icons nor Segoe MDL2 Assets installed.
+
+This is the standing rule for the rest of the port: **take the mockups'
+surfaces, gradients, spacing and type; take Windows' controls and
+behaviours.**
 
 **A dialog is a small window, not a differently-styled object.** It uses the
 same 24px strip, the same round controls, the same `#ECECEC` ground and the
