@@ -15,11 +15,15 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QStandardItem, QStandardItemModel
+from PySide6.QtCore import QPoint, QRect, Qt, QTimer
+from PySide6.QtGui import (
+    QAction, QColor, QLinearGradient, QPainter, QStandardItem,
+    QStandardItemModel,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
-    QLabel, QMainWindow, QMessageBox, QPushButton, QSplitter, QTabWidget,
+    QLabel, QMainWindow, QMenuBar, QMessageBox, QPushButton, QSplitter,
+    QTabWidget,
     QTextBrowser, QToolBar, QTreeView, QVBoxLayout, QWidget,
 )
 
@@ -30,7 +34,7 @@ from analyzer.schema import EpisodeResult
 from analyzer.show_index import (
     list_category_shows, list_episodes, list_shows, list_top_level, show_key,
 )
-from ui import theme
+from ui import native_frame, theme
 from ui.report import episode_html
 from ui.tokens import METRICS, color
 
@@ -134,6 +138,109 @@ class SubToolBar(QFrame):
         self.row.setSpacing(6)
 
 
+class TitleBar(QWidget):
+    """The reference's own title strip: document name left, three lights right.
+
+    The lights are drawn rather than made buttons so they can sit on the exact
+    10px circle the reference specifies without a control's padding around
+    them; each is still a real click target through `mousePressEvent`.
+
+    Windows conventions are preserved, not replaced. The strip reports
+    HTCAPTION to Windows (see ui/native_frame.py), so dragging, snapping,
+    double-click-to-maximise and the right-click system menu all still come
+    from the system. The lights sit in the reference's order — close, minimise,
+    zoom, left to right — which is the opposite of the Windows order; they are
+    labelled by tooltip and reachable from the system menu and the usual
+    keyboard shortcuts either way.
+    """
+
+    LIGHT_D = 10
+    LIGHT_GAP = 6
+    PAD_X = 8
+
+    def __init__(self, window) -> None:
+        super().__init__()
+        self._window = window
+        self.setFixedHeight(METRICS["titlebar_h"])
+        self.setMouseTracking(True)
+        self._hover = -1
+        self.setToolTip("")
+
+    # -- geometry ---------------------------------------------------------
+    def _light_rects(self) -> list[QRect]:
+        d, gap = self.LIGHT_D, self.LIGHT_GAP
+        y = (self.height() - d) // 2
+        out = []
+        x = self.width() - self.PAD_X - d
+        for _ in range(3):
+            out.append(QRect(x, y, d, d))
+            x -= d + gap
+        return out[::-1]  # close, minimise, zoom — left to right
+
+    def _light_at(self, pos) -> int:
+        for i, r in enumerate(self._light_rects()):
+            if r.adjusted(-2, -2, 2, 2).contains(pos):
+                return i
+        return -1
+
+    def is_caption(self, x: int, y: int) -> bool:
+        """False over a light, so the control takes the click, not the drag."""
+        return self._light_at(QPoint(x, y)) < 0
+
+    # -- painting ---------------------------------------------------------
+    def paintEvent(self, event) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+
+        grad = QLinearGradient(0, 0, 0, self.height())
+        grad.setColorAt(0.0, QColor(color("titlebar_top")))
+        grad.setColorAt(1.0, QColor(color("titlebar_bottom")))
+        p.fillRect(self.rect(), grad)
+        p.setPen(QColor(color("titlebar_line")))
+        p.drawLine(0, self.height() - 1, self.width(), self.height() - 1)
+
+        p.setFont(theme.font("body", bold=True))
+        p.setPen(QColor(color("titlebar_fg")))
+        lights_left = self._light_rects()[0].left() - 12
+        p.drawText(QRect(self.PAD_X, 0, lights_left - self.PAD_X,
+                         self.height()),
+                   Qt.AlignVCenter | Qt.AlignLeft, self._window.windowTitle())
+
+        fills = ("light_close", "light_min", "light_max")
+        for i, rect in enumerate(self._light_rects()):
+            col = QColor(color(fills[i]))
+            if self._hover == i:
+                col = col.lighter(112)
+            p.setBrush(col)
+            p.setPen(QColor(0, 0, 0, 64))
+            p.drawEllipse(rect)
+
+    # -- interaction ------------------------------------------------------
+    def mouseMoveEvent(self, event) -> None:
+        hit = self._light_at(event.position().toPoint())
+        if hit != self._hover:
+            self._hover = hit
+            self.setToolTip(("Close", "Minimise", "Zoom")[hit] if hit >= 0
+                            else "")
+            self.update()
+
+    def leaveEvent(self, event) -> None:
+        self._hover = -1
+        self.update()
+
+    def mousePressEvent(self, event) -> None:
+        hit = self._light_at(event.position().toPoint())
+        if hit == 0:
+            self._window.close()
+        elif hit == 1:
+            self._window.showMinimized()
+        elif hit == 2:
+            if self._window.isMaximized():
+                self._window.showNormal()
+            else:
+                self._window.showMaximized()
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -143,6 +250,7 @@ class MainWindow(QMainWindow):
         self._cfg = load_config()
         self._root: Path | None = None
 
+        self._build_title_bar()
         self._build_menu()
         self._build_toolbar()
         self._build_tabs()
@@ -155,8 +263,35 @@ class MainWindow(QMainWindow):
 
     # ---- chrome ----
 
+    def _build_title_bar(self) -> None:
+        """Attach the reference's title strip, or keep the native frame.
+
+        The strip is only installed if the Win32 hook attaches. Everywhere else
+        — another platform, an older Windows, a ctypes failure — the window
+        keeps its ordinary title bar, which is a worse match for the reference
+        and a much better outcome than a window that cannot be moved.
+        """
+        self._title_bar = TitleBar(self)
+        self._menubar = QMenuBar()
+        attached = native_frame.install(
+            self, METRICS["titlebar_h"], self._title_bar.is_caption)
+        if not attached:
+            self._title_bar = None
+            return
+
+        # The strip has to sit ABOVE the menu bar, and QMainWindow keeps the
+        # menu bar topmost no matter where a toolbar is added. So the two are
+        # stacked into one widget and installed as the menu area together.
+        holder = QWidget()
+        v = QVBoxLayout(holder)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(0)
+        v.addWidget(self._title_bar)
+        v.addWidget(self._menubar)
+        self.setMenuWidget(holder)
+
     def _build_menu(self) -> None:
-        bar = self.menuBar()
+        bar = getattr(self, "_menubar", None) or self.menuBar()
         file_menu = bar.addMenu("&File")
         act_open = QAction("Choose Root Folder…", self)
         act_open.triggered.connect(self.choose_root)

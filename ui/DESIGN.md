@@ -80,11 +80,24 @@ front-ends move together — do not introduce a second value.
   look.
 - **`inset` shadows are not supported.** Simulate a sunken edge with
   `border-top-color` darker than the other three, which Qt does honour.
-- **Custom title bars and traffic lights: do not build.** This is a Windows
-  application. Replacing the native title bar breaks snap, maximise, the system
-  menu, and screen-reader window handling — a real accessibility cost for
-  decoration. Use the native frame; only the *paint inside* is period-inspired.
-  Traffic-light colours stay in the tokens for any in-canvas use.
+- **The custom title bar is built** (`ui/native_frame.py`, `TitleBar`), and the
+  way it is built is the point. The usual route — `Qt.FramelessWindowHint` —
+  strips `WS_THICKFRAME` and `WS_CAPTION`, and with them Aero Snap, edge
+  resizing, the drop shadow, the maximise animation, Win+Arrow, and the
+  right-click system menu. That cost is what this section used to forbid, and
+  it is still not acceptable.
+
+  Instead the window keeps its real Win32 frame styles and only suppresses the
+  frame's *drawing*, by answering `WM_NCCALCSIZE` with a client area covering
+  the whole window. Hit testing goes back to Windows through `WM_NCHITTEST`:
+  the strip answers `HTCAPTION`, so drag, snap, double-click-to-maximise and
+  the system menu are all still the system's, not reimplementations. If the
+  hook cannot attach, the native title bar is kept — a window that does not
+  match the reference beats a window that cannot be moved.
+
+  The lights run close, minimise, zoom left to right, which is the reference's
+  order and the reverse of the Windows one. They carry tooltips, and every
+  action remains on the system menu and the usual keyboard shortcuts.
 
 ---
 
@@ -220,8 +233,10 @@ like source code.
 1. **The stimulus-only guardrail** (`CLAUDE.md` §2.2). No field, badge, column,
    or infobox row reports appropriateness, target audience age, educational
    value, or quality. If a mockup contains such a row, it does not get built.
-2. **Windows behaviour is preserved.** Native title bar and window management,
-   Windows keyboard conventions, Windows file dialogs, Windows DPI scaling,
-   platform accessibility. Only the paint is period-inspired.
+2. **Windows behaviour is preserved.** Window management, keyboard conventions,
+   file dialogs, DPI scaling, platform accessibility. Note the wording: the
+   *behaviour*, not the native title bar — §1 explains how the strip is drawn
+   without giving any of it up. A visual change that costs a window behaviour
+   is still refused; one that does not is fair game.
 3. **Nothing is conveyed by colour alone.** Every status carries a glyph and a
    word as well, so it survives greyscale and colour blindness.

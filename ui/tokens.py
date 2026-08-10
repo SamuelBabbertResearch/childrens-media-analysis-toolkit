@@ -143,9 +143,13 @@ COLORS: dict[str, str] = {
     "dialog_seam":   "#b0b0b0",
     "action_bar_top":    "#e2e2e2",
     "action_bar_bottom": "#d0d0d0",
-    # Kept for in-canvas use only. The application uses the native Windows
-    # title bar: replacing it would break snap, maximise, the system menu, and
-    # screen-reader window handling for the sake of decoration.
+    # The application draws its own title bar (ui/native_frame.py) while the
+    # window keeps its real Win32 frame styles, so snap, edge resizing, the
+    # system menu and the maximise animation still come from Windows.
+    "titlebar_top":    "#e6e6e6",
+    "titlebar_bottom": "#d1d1d1",
+    "titlebar_line":   "#a6a6a6",
+    "titlebar_fg":     "#333333",
     "light_close": "#ff5f56",
     "light_min":   "#ffbd2e",
     "light_max":   "#27c93f",

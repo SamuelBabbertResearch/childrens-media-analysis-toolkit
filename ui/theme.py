@@ -113,6 +113,13 @@ QToolBar {{
     spacing: 6px;
     padding: 4px 8px;
 }}
+/* The title strip paints itself; the toolbar hosting it must add nothing. */
+QToolBar#titleBar {{
+    background: transparent;
+    border: none;
+    padding: 0;
+    spacing: 0;
+}}
 /* Per-tab controls, one step lighter than the main toolbar so the hierarchy
    reads: window chrome, then tab strip, then this. */
 QFrame[subbar="true"] {{
