@@ -118,8 +118,8 @@ protecting.
 ```
 analyzer/   engine + data model      (no GUI imports — enforced by test)
 cli.py      thin layer over analyzer
-ui/         Qt front-end             (thin layer over analyzer)
-gui*.py     Tk front-end             (legacy; being retired)
+gui*.py     Tk front-end             (THE CURRENT SOFTWARE)
+ui/         Qt front-end             (in progress — not yet the product)
 ```
 
 Both front-ends read the same project folder, cache, config and preferences,

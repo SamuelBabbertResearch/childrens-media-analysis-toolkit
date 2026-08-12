@@ -37,8 +37,8 @@ makes pacing incomparable across shows — migrate all or none.
 
 | Purpose | Choice | Notes |
 |---|---|---|
-| GUI | **PySide6** (Qt 6) | the current front-end, in `ui/` |
-| GUI (legacy) | **Tkinter** | `gui*.py`, being retired |
+| GUI (shipping) | **Tkinter** | `gui*.py` — the front-end users actually run |
+| GUI (in progress) | **PySide6** (Qt 6) | `ui/` — the replacement being built |
 | Charts | **matplotlib** | `FigureCanvasQTAgg`; imported lazily — it costs ~1s to load |
 | Video playback | **python-vlc** + **VLC** | hand coding only; 64-bit VLC required to match the interpreter |
 

@@ -19,12 +19,14 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
    sub-tab (Speech + Vocabulary, `gui.py` ~line 3521) with **no Qt equivalent**.
    The docs previously implied the port was complete; it is not.
 
-3. **Decide the branch and the README.** `feature/language-analysis` is 70
-   commits ahead of `master`, which has none of the Qt work. And `README.md`
-   still documents the Tk build as the product — its Language tab, and
-   `python gui.py` under "Building from source". Both need a call: merge or
-   not, and rewrite the README for the Qt build or state plainly that Tk is
-   still the shipping front-end.
+3. **Push the branch, and decide about `master`.** 54 commits exist **only on
+   this machine** — six weeks of work with no backup. `feature/language-analysis`
+   is 71 commits ahead of `master`, whose last commit is 2026-06-30, and
+   `master` is what GitHub shows visitors. Pushing is the urgent half; merging
+   forward is the decision.
+
+   `README.md` needs no change on this point — it describes the Tk build
+   because the Tk build *is* the software. That was checked, not assumed.
 
 4. **Port Human coding's remaining two screens.**
    *Validate tool* (tool vs. human scoring) and *Agreement* (Cohen's kappa

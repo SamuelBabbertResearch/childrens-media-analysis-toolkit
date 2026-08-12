@@ -10,27 +10,32 @@ everything else.
 
 ## Where the project stands
 
-CMAT has **two front-ends against one engine**. The Qt build (`python
-cmat_qt.py`) has all six top-level tabs, but **three Tk screens have no Qt
-equivalent at all** — Language, Validate tool, and Agreement. The Tk build
-(`python gui.py`) remains the complete application.
+CMAT has **two front-ends against one engine**.
+
+**`python gui.py` (Tkinter) is the software.** It is complete and it is what
+gets used. **`python cmat_qt.py` (Qt) is the replacement being built** — it has
+all six top-level tabs but several Tk screens have no Qt equivalent at all, so
+it is not yet a substitute. Do not describe it as the current build.
 
 **Branch:** work happens on `feature/language-analysis`, which is **70 commits
 ahead of `master`** — the entire Qt port, the index dedup fix, the Trials tab
 and these documents are all on it. `master` has none of it. Whether to merge is
 an open question (`TODO.md`).
 
-| Tab | Qt | Notes |
+| Screen | In Qt yet? | Notes |
 |---|---|---|
 | Pipeline | ✅ | node canvas, undo/redo, wiring by dragging ports |
 | Library | ✅ | episode report, show aggregate, chart |
 | Index | ✅ | sortable, filterable, over the SQLite index |
 | Automated coding | ⚠️ | *Analyze* ported. Tk's **Language** sub-tab (Speech + Vocabulary) has **no Qt equivalent** |
-| Human coding | ⚠️ | *Code* screen only — VLC embedded. *Validate tool* and *Agreement* still Tk |
+| Human coding | ⚠️ | *Code* screen only — VLC embedded |
 | Trials | ✅ | 22 recorded runs in this working copy |
 | Full Series Aggregate | ❌ | Tk only — the Qt Library has no cross-season aggregate |
 | Settings dialog | ✅ | scoring settings only |
 | Episode Sampler | ❌ | Tk only; the Qt button is disabled and says so |
+| Language (Speech + Vocabulary) | ❌ | Tk only — no `ui/language.py` exists |
+| Human coding → Validate tool | ❌ | Tk only |
+| Human coding → Agreement | ❌ | Tk only |
 
 Run the tests with `python -m pytest -q` from the repo root: **221 passed,
 13 skipped** (234 collected).

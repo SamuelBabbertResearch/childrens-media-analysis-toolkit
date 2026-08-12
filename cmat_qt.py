@@ -3,14 +3,18 @@ cmat_qt.py — entry point for the PySide6 build.
 
     python cmat_qt.py
 
-Every tab is ported: Pipeline, Library, Index, Automated coding, Human coding
-and Trials, plus the Settings dialog and the starting-layout wizard. The
-Episode Sampler is the one action still only on the Tk build, and its button
-says so rather than sitting there looking live.
+IN PROGRESS — not yet the product. `python gui.py` is the software people
+actually use; this is its replacement, still being built.
 
-The Tkinter build is still `python gui.py`. Both read the same project folder,
-cache, preferences and settings, so they can be run against one project and
-compared directly.
+Present here: Pipeline, Library, Index, Automated coding (Analyze only), Human
+coding (Code only), Trials, the Settings dialog and the starting-layout wizard.
+
+NOT here, and only on the Tk build: the Language screen (Speech + Vocabulary),
+Human coding's Validate tool and Agreement, Full Series Aggregate, and the
+Episode Sampler.
+
+Both read the same project folder, cache, preferences and settings, so they can
+be run against one project and compared directly.
 """
 
 from __future__ import annotations

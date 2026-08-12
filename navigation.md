@@ -10,7 +10,7 @@ whenever files move, a folder changes purpose, or a system is added.
 | Folder | Purpose |
 |---|---|
 | `analyzer/` | The engine and data model. **Imports no GUI framework** — enforced by `tests/test_engine_isolation.py` |
-| `ui/` | The Qt (PySide6) front-end. The current interface |
+| `ui/` | The Qt (PySide6) front-end — **in progress**, not yet the shipping interface |
 | `tests/` | pytest suite |
 | `validation/` | Hand coding, codebooks, and trial manifests — **authoritative data a person typed** |
 | `docs/` | Long-form documentation; `docs/wiki` |
@@ -90,8 +90,8 @@ whenever files move, a folder changes purpose, or a system is added.
 python -m pytest -q                    the test suite — run before and after any change
 
 
-python cmat_qt.py                      the Qt build — the current application
-python gui.py                          the Tk build — legacy, being retired
+python gui.py                          the Tk build — THE CURRENT SOFTWARE
+python cmat_qt.py                      the Qt build — in progress, not yet the product
 
 python cli.py analyze <file.mp4>       single episode → JSON
 python cli.py analyze <show_folder>    batch → per-episode JSON + aggregate
