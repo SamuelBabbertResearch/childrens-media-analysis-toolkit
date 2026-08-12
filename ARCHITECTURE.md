@@ -410,7 +410,7 @@ format presets exist because saturation systematically favours animation — see
 
 ## 11. Test suite
 
-231 tests, 13 skipped. What each file protects:
+234 collected: 221 passed, 13 skipped. What each file protects:
 
 | File | Guards |
 |---|---|

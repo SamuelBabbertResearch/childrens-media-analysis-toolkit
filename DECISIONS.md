@@ -325,7 +325,7 @@ was luminous — a bright top falling to a mid blue over a dark-but-not-black ri
 — and the alternative's `#003A70` is nearly navy, making a button read as
 stamped out rather than lit.
 **Date.** 2026-08-10.
-**Rejected.** `#37A2E8 → #0066CC` on `#003A70` from `welcome.css`.
+**Rejected.** `#37A2E8 → #0066CC` on `#003A70`, from an extraction of GeminiStartingLayoutAlternative.html — superseded and no longer in `ui/reference/`.
 
 ### Report tables follow the mockup, not MediaWiki
 **Decision.** `.data-table`: `#EAEAEA` headers, `#B8B8B8`/`#D0D0D0` borders,
