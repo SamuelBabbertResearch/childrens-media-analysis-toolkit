@@ -335,7 +335,7 @@ code so the interface, the exports and the paper cannot drift apart.
 | `dissolves` | `cmat_plateau` — *experimental* |
 | `scene_relation` | `frame_similarity` — ***unvalidated*** |
 
-Four statuses, and they mean different things:
+Five statuses, and they mean different things. The table above shows only the first three; the last two apply to whole metric families (see `METRIC_STATUS` in `analyzer/provenance.py`):
 
 - **validated** — graded against human coding.
 - **unvalidated** — works, ungraded. Flag it wherever its numbers appear.
@@ -444,7 +444,21 @@ come from.
     pipelines/                 ← pipeline documents
 ```
 
-Only **one** level of category nesting is discovered. A show whose episodes sit
-in a `Season 1` subfolder is treated as a category containing a show called
-`Season 1` — correct behaviour given the convention, and worth knowing when a
-show row reports that it groups shows rather than episodes.
+Only **one** level of category nesting is discovered — but season folders are
+handled at a second layer, and the two disagree in a way worth knowing.
+
+`analyzer/show_index.py` recognises `Season N`, `Series N`, `S N` and `Part N`
+(`parse_season_folder`), and `show_name_for_db()` returns the **parent** folder
+as the show name, so all seasons appear under one show **in the index**.
+
+So for `Little Bear/Season 1/ep.mp4`:
+
+| Layer | Sees |
+|---|---|
+| Library tree / `show_key` / cache path | a category `Little Bear` containing a show `Season 1` |
+| Index and database `show_name` | one show, `Little Bear`, with `season_num` 1 |
+
+Both are working as written. The consequence is that selecting `Little Bear` in
+the Library reports that it groups shows rather than episodes, while the Index
+correctly shows it as a single show — and a cross-season aggregate exists in
+the Tk build's **Full Series Aggregate**, not in the Qt Library.

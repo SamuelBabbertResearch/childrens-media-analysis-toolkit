@@ -87,6 +87,9 @@ whenever files move, a folder changes purpose, or a system is added.
 ## Entry points
 
 ```
+python -m pytest -q                    the test suite — run before and after any change
+
+
 python cmat_qt.py                      the Qt build — the current application
 python gui.py                          the Tk build — legacy, being retired
 

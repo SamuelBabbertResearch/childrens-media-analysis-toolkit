@@ -152,8 +152,9 @@ surfaces, gradients, spacing and type; take Windows' controls and
 behaviours.**
 
 **A dialog is a small window, not a differently-styled object.** It uses the
-same 24px strip, the same round controls, the same `#ECECEC` ground and the
-same one accent. A dialog that introduces its own palette is a bug.
+same 30px strip (`METRICS["titlebar_h"]`), the same caption controls, the same
+`#ECECEC` ground and the same one accent — the mockups' 24px could not hold
+Windows controls. A dialog that introduces its own palette is a bug.
 
 For a new dialog, do not rebuild any of this:
 
@@ -300,9 +301,11 @@ front-ends move together — do not introduce a second value.
   hook cannot attach, the native title bar is kept — a window that does not
   match the reference beats a window that cannot be moved.
 
-  The lights run close, minimise, zoom left to right, which is the reference's
-  order and the reverse of the Windows one. They carry tooltips, and every
-  action remains on the system menu and the usual keyboard shortcuts.
+  **Superseded:** this section once specified the reference's three round
+  lights in close-minimise-zoom order. They were built and then removed. The
+  strip carries **Windows caption controls** — minimise, maximise/restore,
+  close, left to right at the right-hand end, with the red close hover — for
+  the reasons in §0.5. `ui/modal.py` is the implementation.
 
 ---
 
@@ -411,11 +414,15 @@ front-ends move together — do not introduce a second value.
 
 ## 6. Typography
 
-Sizes are **points**, not pixels — Qt scales points for the display. Copying a
-pixel value from a period specification is a units error: that era's "11" was
-points, roughly 15px at current densities. The pixel values quoted throughout
-this document are from the source specification and should be read as
-proportions, not as literals to type into a stylesheet.
+**Sizes are device-independent pixels.** See §0.3, which is authoritative;
+`ui/tokens.py` holds `FONT_PX` for Qt and keeps `FONT_PT` marked Tk-only.
+
+*This paragraph previously said the opposite* — that sizes were points and a
+pixel value from a period specification was a units error. That was true of the
+**Tkinter** build, where a pixel was a physical pixel. Qt 6 scales the whole
+interface by the display's device-pixel ratio, so a stylesheet `px` is a
+logical unit that scales exactly as a point size does, and the reference
+layouts' pixel values are typed in literally.
 
 | Role | Size |
 |---|---|

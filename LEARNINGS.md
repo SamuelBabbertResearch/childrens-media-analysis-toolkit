@@ -100,11 +100,16 @@ key the cache on a content hash (size + duration) — still open, see
 **What.** Season folders inside a show folder were repeatedly conflated with
 shows — "it is still conflating season files within a show file as different
 shows", and full-series aggregates would not produce.
-**Why.** The convention discovers exactly one level of nesting, so
-`Show/Season 1/*.mp4` reads as category `Show` containing show `Season 1`.
-**Avoid.** Know that this is the convention behaving as designed, not a bug —
-selecting `Arthur` correctly reports that it groups shows. If a true
-show-across-seasons aggregate is needed, that is a feature, not a fix.
+**Why.** Two layers disagree, and both are working as written. Folder
+discovery sees one level of nesting, so `Show/Season 1/*.mp4` reads as category
+`Show` containing show `Season 1` — that is what `show_key` and the cache path
+use. But `show_index.show_name_for_db()` recognises season folders and files
+them under the **parent** name, so the index shows one show with a season
+number.
+**Avoid.** Know which layer you are looking at. Selecting `Arthur` in the
+Library reporting "groups shows" is the tree layer; the Index showing one
+`Arthur` is the database layer. A cross-season aggregate in the Qt Library does
+not exist yet — the Tk build's **Full Series Aggregate** is the only one.
 
 ### The sampler's CSV paths did not match the cache's keys
 **What.** Loading a sampling template failed to find already-analysed episodes;

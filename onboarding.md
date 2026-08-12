@@ -11,21 +11,29 @@ everything else.
 ## Where the project stands
 
 CMAT has **two front-ends against one engine**. The Qt build (`python
-cmat_qt.py`) is now the current application: all six tabs are ported. The Tk
-build (`python gui.py`) still runs and is still the only home of two screens.
+cmat_qt.py`) has all six top-level tabs, but **three Tk screens have no Qt
+equivalent at all** — Language, Validate tool, and Agreement. The Tk build
+(`python gui.py`) remains the complete application.
+
+**Branch:** work happens on `feature/language-analysis`, which is **70 commits
+ahead of `master`** — the entire Qt port, the index dedup fix, the Trials tab
+and these documents are all on it. `master` has none of it. Whether to merge is
+an open question (`TODO.md`).
 
 | Tab | Qt | Notes |
 |---|---|---|
 | Pipeline | ✅ | node canvas, undo/redo, wiring by dragging ports |
 | Library | ✅ | episode report, show aggregate, chart |
 | Index | ✅ | sortable, filterable, over the SQLite index |
-| Automated coding | ✅ | worker thread, progress, cancel |
+| Automated coding | ⚠️ | *Analyze* ported. Tk's **Language** sub-tab (Speech + Vocabulary) has **no Qt equivalent** |
 | Human coding | ⚠️ | *Code* screen only — VLC embedded. *Validate tool* and *Agreement* still Tk |
 | Trials | ✅ | 22 recorded runs in this working copy |
+| Full Series Aggregate | ❌ | Tk only — the Qt Library has no cross-season aggregate |
 | Settings dialog | ✅ | scoring settings only |
 | Episode Sampler | ❌ | Tk only; the Qt button is disabled and says so |
 
-Test suite: **221 passed, 13 skipped**.
+Run the tests with `python -m pytest -q` from the repo root: **221 passed,
+13 skipped** (234 collected).
 
 ## How the project got here (June – August 2026)
 

@@ -18,8 +18,20 @@ from pathlib import Path
 from typing import Any
 
 # Reference figures from CMAT's validation study (see validation/VALIDATION_LOG.md).
-# Per-episode hard-cut F1 spanned 0.84 (dissolve-heavy 1960s cel under snowfall)
-# to 0.96 (clean modern cel); aggregate ~0.91 across coded episodes.
+#
+# UNRESOLVED - do not quote either figure in a paper until this is settled.
+# An earlier comment here read: "per-episode hard-cut F1 spanned 0.84
+# (dissolve-heavy 1960s cel under snowfall) to 0.96 (clean modern cel);
+# aggregate ~0.91 across coded episodes." That contradicts the constants below
+# (0.75-0.91, aggregate 0.85), and VALIDATION_LOG.md records runs at 0.836 and
+# 0.964. The constants are what CLAUDE.md and ARCHITECTURE.md quote and what the
+# interface shows, so they are treated as current - but which pass produced 0.75
+# is recorded nowhere, and that gap is the problem.
+#
+# Resolving it means deciding which scoring pass is authoritative, deleting the
+# other figure, and stating in ARCHITECTURE.md section 9 which runs the
+# aggregate covers. See TODO.md item 1. Guessing here would be worse than the
+# ambiguity: this is the number the product's honesty claim rests on.
 REFERENCE_HARD_CUT_F1_RANGE = "0.75–0.91"
 REFERENCE_HARD_CUT_F1_AGG = "0.85"
 
