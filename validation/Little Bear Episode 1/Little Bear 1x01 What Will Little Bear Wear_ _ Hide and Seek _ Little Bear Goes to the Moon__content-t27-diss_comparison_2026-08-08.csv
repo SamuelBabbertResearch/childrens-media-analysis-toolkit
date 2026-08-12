@@ -1,0 +1,13 @@
+scoring,type,TP,FP,FN,precision,recall,F1
+boundary,dissolve,0,2,2,0.0,0.0,0.0
+boundary,fade_in,1,0,1,1.0,0.5,0.667
+boundary,fade_out,1,0,0,1.0,1.0,1.0
+boundary,hard_cut,67,2,4,0.971,0.944,0.957
+boundary,other,2,0,3,1.0,0.4,0.571
+boundary,ALL,71,4,10,0.947,0.877,0.91
+typed,dissolve,0,5,2,0.0,0.0,0.0
+typed,fade_in,0,0,2,0.0,0.0,0.0
+typed,fade_out,0,0,1,0.0,0.0,0.0
+typed,hard_cut,66,4,5,0.943,0.93,0.936
+typed,other,0,0,5,0.0,0.0,0.0
+typed,ALL,66,9,15,0.88,0.815,0.846

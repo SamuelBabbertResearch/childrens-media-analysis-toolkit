@@ -20,6 +20,7 @@ from tkinter import filedialog, messagebox, ttk
 from analyzer.aggregate import compute_show_aggregate, save_show_results
 from analyzer.cache import load_cached, save_cache
 from analyzer.config_loader import load_config, _base_dir
+from analyzer.measurements import normalize_config
 from analyzer.engine import analyze_episode
 from analyzer.speech import transcribe_only, _find_cc_file
 from analyzer.metrics_sensory import rescore_episode
@@ -260,8 +261,36 @@ class App(tk.Tk):
         self._vocab_results: list = []
         self._vocab_analysis_running = False
 
+        self._pipeline_window = None
+        self._pipeline_view = None
+
         self._build_ui()
         self._poll_queue()
+
+        # Reopen the last library so returning users do not re-pick it every
+        # launch. Must run after the UI exists — it repopulates the tree.
+        self._restore_root_folder()
+        self._update_first_run_hint()
+
+        # Land on the tab that can actually be acted on. With no library the
+        # Pipeline tab has nothing to report, so open on Library, where the
+        # getting-started panel and the Choose Folder button are.
+        if not self._root_folder:
+            try:
+                self._left_nb.select(1)          # Library
+            except Exception:
+                pass
+
+        # F1 is the Windows convention for "explain this program".
+        self.bind_all("<F1>", lambda _e: self._open_pipeline_window())
+
+        # First question, not first diagram: ask how the tool is going to be
+        # used and route from the answer. Shown after the main window is
+        # mapped so it does not lose the initial focus race.
+        from analyzer.prefs import get_pref, migrate_from_config
+        migrate_from_config(self._cfg)     # honour settings from older builds
+        if get_pref("show_welcome_on_start", True):
+            self.after(350, self._open_welcome)
 
     # -----------------------------------------------------------------------
     # UI construction
@@ -280,9 +309,13 @@ class App(tk.Tk):
 
         file_menu = tk.Menu(menubar, tearoff=0)
         file_menu.add_command(label="Choose Root Folder...", command=self._choose_folder)
+        file_menu.add_command(label="Analysis Pipeline...", accelerator="F1",
+                              command=self._open_pipeline_window)
         file_menu.add_command(label="Episode Sampler...", command=self._open_sampler)
         file_menu.add_command(label="Import Episode Metadata from Wikipedia...",
                               command=self._open_wiki_import)
+        file_menu.add_command(label="Measurement settings...",
+                              command=self._open_measurement_settings)
         file_menu.add_command(label="Optional tools...",
                               command=self._open_optional_tools)
         file_menu.add_command(label="Import Episode Metadata from TVMaze...",
@@ -312,7 +345,7 @@ class App(tk.Tk):
         # otherwise Tkinter allocates all horizontal space to the label first.
         tk.Button(bar, text="Settings...", command=self._open_settings,
                   padx=6).pack(side=tk.RIGHT, padx=4, pady=2)
-        tk.Button(bar, text="Choose...", command=self._choose_folder,
+        tk.Button(bar, text="Episode Sampler...", command=self._open_sampler,
                   padx=6).pack(side=tk.RIGHT, padx=(0, 4), pady=2)
         ttk.Separator(bar, orient=tk.VERTICAL).pack(side=tk.RIGHT, fill=tk.Y, pady=3)
         self._toolbar_preset_var = tk.StringVar()
@@ -336,8 +369,12 @@ class App(tk.Tk):
             wraplength=320,
         )
         tk.Label(bar, text="Preset:").pack(side=tk.RIGHT, padx=(6, 2), pady=3)
-        # Left-side label with expand=True packs last so it fills only the remainder
+        # Left-side label with expand=True packs last so it fills only the remainder.
+        # "Choose Folder..." sits directly beside the label it acts on — next to
+        # the preset dropdown it read as though it picked a preset.
         tk.Label(bar, text="Root folder:").pack(side=tk.LEFT, padx=(6, 2), pady=3)
+        tk.Button(bar, text="Choose Folder...", command=self._choose_folder,
+                  padx=6).pack(side=tk.LEFT, padx=(0, 6), pady=2)
         self._folder_var = tk.StringVar(value="(none chosen)")
         tk.Label(bar, textvariable=self._folder_var, anchor="w",
                  fg="navy").pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -354,19 +391,133 @@ class App(tk.Tk):
 
         left_nb = ttk.Notebook(left)
         left_nb.pack(fill=tk.BOTH, expand=True)
+        self._left_nb = left_nb
+
+        # ---- Pipeline tab (first: it explains what every other tab is for) ----
+        from gui_pipeline import PipelineView
+        pipe_tab = tk.Frame(left_nb)
+        left_nb.add(pipe_tab, text="Pipeline")
+        self._pipeline_view = PipelineView(pipe_tab, app=self)
+        self._pipeline_view.pack(fill=tk.BOTH, expand=True)
 
         # ---- Library tab ----
         lib_tab = tk.Frame(left_nb)
         left_nb.add(lib_tab, text="Library")
 
-        tree_frame = tk.Frame(lib_tab)
+        # First-run guidance, shown IN the empty pane rather than only in the
+        # status bar. Removed as soon as a library is loaded, and dismissible
+        # before then.
+        from gui_theme import color as _bc, dpi_scale as _bds
+        _bs = _bds(self)
+        _ibg, _ibd = _bc("info_bg"), _bc("info_rule")
+        self._first_run = tk.Frame(lib_tab, bg=_ibg, highlightthickness=1,
+                                   highlightbackground=_bc("info_border"))
+
+        # 4px accent rule down the left edge — the MediaWiki ambox convention.
+        _strip = tk.Frame(self._first_run, bg=_ibd,
+                          width=int(round(4 * _bs)))
+        _strip.pack(side=tk.LEFT, fill=tk.Y)
+        _strip.pack_propagate(False)
+
+        _inner = tk.Frame(self._first_run, bg=_ibg)
+        _inner.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        _head = tk.Frame(_inner, bg=_ibg)
+        _head.pack(fill=tk.X, padx=10, pady=(7, 2))
+        tk.Label(_head, text="GETTING STARTED", bg=_ibg, fg=_bc("info_text"),
+                 font=("TkDefaultFont", 9, "bold"), anchor="w").pack(side=tk.LEFT)
+        tk.Button(_head, text="✕", bd=0, bg=_ibg, fg=_bc("text_dim"),
+                  activebackground=_ibg, padx=4, pady=0, takefocus=True,
+                  command=lambda: self._first_run.pack_forget()).pack(
+                      side=tk.RIGHT)
+        steps = [
+            ("1.", "Choose Folder… — pick the folder that CONTAINS your show "
+                   "folders, not a show folder itself."),
+            ("2.", "Episode Sampler… — optional. Draws a documented, "
+                   "reproducible sample so your episode selection can be "
+                   "defended in a write-up."),
+            ("3.", "Pick a show or episode below, then use Automated coding → "
+                   "Analyze Episode."),
+        ]
+        # Each step keeps its action beside it, so the button that performs a
+        # step is never in a different part of the window from its wording.
+        actions = {0: ("Choose Folder...", self._choose_folder),
+                   1: ("Episode Sampler...", self._open_sampler)}
+        for i, (num, body) in enumerate(steps):
+            row = tk.Frame(_inner, bg=_ibg)
+            row.pack(fill=tk.X, padx=10, pady=1)
+            tk.Label(row, text=num, bg=_ibg, fg=_bc("text"), width=2,
+                     anchor="nw", font=("TkDefaultFont", 9,
+                                        "bold")).pack(side=tk.LEFT, anchor="n")
+            if i in actions:
+                label, cmd = actions[i]
+                tk.Button(row, text=label, command=cmd, padx=6).pack(
+                    side=tk.RIGHT, padx=(8, 0))
+            lbl = tk.Label(row, text=body, bg=_ibg, fg=_bc("text"), anchor="w",
+                           justify="left", font=("TkDefaultFont", 9))
+            lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            row.bind("<Configure>",
+                     lambda e, w=lbl: w.configure(wraplength=max(200, e.width - 190)))
+        tk.Frame(_inner, bg=_ibg, height=int(round(6 * _bs))).pack()
+        self._first_run.pack(fill=tk.X, padx=6, pady=(6, 4))
+
+        # The grid gets the whole tab. An inspector here would only repeat what
+        # the Results panel already shows for the same selection.
+        from gui_theme import apply_theme, color as _tc, dpi_scale as _tds
+
+        apply_theme(self)
+        _s = _tds(self)
+        tree_wrap = tk.Frame(lib_tab, bg=_tc("panel_bg"))
+        tree_wrap.pack(fill=tk.BOTH, expand=True, padx=int(round(4 * _s)),
+                       pady=int(round(4 * _s)))
+
+        hdr = tk.Frame(tree_wrap, bg=_tc("mw_header_bg"))
+        hdr.pack(fill=tk.X)
+        tk.Label(hdr, text="Shows & Episodes", bg=_tc("mw_header_bg"),
+                 fg=_tc("text"), font=("TkDefaultFont", 9, "bold"),
+                 anchor="w").pack(side=tk.LEFT, padx=6, pady=3)
+        self._lib_count_var = tk.StringVar(value="no library loaded")
+        tk.Label(hdr, textvariable=self._lib_count_var, bg=_tc("mw_header_bg"),
+                 fg=_tc("text_dim"), font=("TkDefaultFont", 8),
+                 anchor="e").pack(side=tk.RIGHT, padx=6)
+
+        tree_frame = tk.Frame(tree_wrap, bg=_tc("panel_bg"))
         tree_frame.pack(fill=tk.BOTH, expand=True)
 
-        self._tree = ttk.Treeview(tree_frame, selectmode="browse")
-        self._tree.heading("#0", text="Shows / Episodes")
+        # "kind" and "path" stay in values so existing selection code keeps
+        # reading values[0]/values[1]; displaycolumns hides them from view.
+        self._tree = ttk.Treeview(
+            tree_frame, selectmode="browse", style="CMAT.Treeview",
+            columns=("kind", "path", "status", "count", "added"),
+            displaycolumns=("status", "count", "added"),
+            show="tree headings")
+        self._tree.heading("#0", text="Name")
+        self._tree.heading("status", text="Status")
+        self._tree.heading("count", text="Episodes / Length")
+        self._tree.heading("added", text="Added")
+        # Narrow enough that the three data columns are visible without
+        # scrolling at the default window size; stretches to take any surplus.
+        self._tree.column("#0", width=int(round(168 * _s)),
+                          minwidth=int(round(120 * _s)), stretch=True)
+        self._tree.column("status", width=int(round(96 * _s)), anchor="w",
+                          stretch=False)
+        self._tree.column("count", width=int(round(86 * _s)), anchor="e",
+                          stretch=False)
+        self._tree.column("added", width=int(round(76 * _s)), anchor="center",
+                          stretch=False)
+
+        # A Treeview cannot draw a pill inside a cell, so status is coloured
+        # text on the row instead — same information, no false precision.
+        self._tree.tag_configure("st_analyzed", foreground=_tc("badge_analyzed_fg"))
+        self._tree.tag_configure("st_coded", foreground=_tc("status_complete"))
+        self._tree.tag_configure("st_ready", foreground=_tc("text_dim"))
+        self._tree.tag_configure("st_show", font=("TkDefaultFont", 9, "bold"))
+
         vsb = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self._tree.yview)
-        self._tree.configure(yscrollcommand=vsb.set)
+        hsb = ttk.Scrollbar(tree_frame, orient=tk.HORIZONTAL, command=self._tree.xview)
+        self._tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
+        hsb.pack(side=tk.BOTTOM, fill=tk.X)
         self._tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self._tree.bind("<<TreeviewSelect>>", self._on_tree_select)
 
@@ -485,20 +636,34 @@ class App(tk.Tk):
         auto_nb.add(lang_tab, text="Language")
         self._build_language_tab(lang_tab)
 
-        # ---- Validation sub-tab (grades the automated detector) ----
-        val_tab = ValidationTab(auto_nb,
-                                get_root_folder=lambda: self._root_folder)
-        auto_nb.add(val_tab, text="Validation")
+        # ---- Human coding tab (Code | Validate | Agreement) ----
+        # Hand-coding and Validation were separate top-level tabs, and
+        # Validation sat under "Automated coding" even though its first two
+        # steps are a person watching an episode. Both begin "pick an episode,
+        # code it by hand", so they belong in one place.
+        human_tab = tk.Frame(left_nb)
+        left_nb.add(human_tab, text="Human coding")
+        human_nb = ttk.Notebook(human_tab)
+        human_nb.pack(fill=tk.BOTH, expand=True)
 
-        # ---- Hand-coding tab (human coding as the measurement) ----
         hand_tab = HandCodingTab(
-            left_nb,
+            human_nb,
             get_root_folder=lambda: self._root_folder,
             on_results=self._show_handcoded_results)
-        left_nb.add(hand_tab, text="Hand-coding")
+        human_nb.add(hand_tab, text="Code")
+
+        val_tab = ValidationTab(human_nb,
+                                get_root_folder=lambda: self._root_folder)
+        human_nb.add(val_tab, text="Validate tool")
+
+        agree_tab = tk.Frame(human_nb)
+        human_nb.add(agree_tab, text="Agreement")
+        self._build_agreement_tab(agree_tab)
+
         # Kept so the Episode Sampler can route a drawn sample here as well as
         # to the automated queue (see send_to_handcoding).
         self._hand_tab = hand_tab
+        self._human_nb = human_nb
         self._left_nb = left_nb
 
         # ---- Trials tab ----
@@ -620,20 +785,67 @@ class App(tk.Tk):
             title="Select the ROOT folder (the one containing show sub-folders)"
         )
         if folder:
-            self._root_folder = Path(folder)
-            self._folder_var.set(str(self._root_folder))
-            self._populate_tree()
-            self._btn_full_series.config(state=tk.NORMAL)
-            if list_top_level(self._root_folder):
-                self._write_txt("Choose a show or episode in the library to see results.\n\n"
-                                "Cached results load instantly; new episodes need to be analyzed.")
-            # If nothing found, _populate_tree already writes an explanation
-            # Open (or create) the index DB and seed it from existing cached results
-            if self._db_conn:
-                self._db_conn.close()
-            self._db_conn = get_db(self._root_folder)
-            self._backfill_index()
-            self._refresh_index()
+            self._set_root_folder(Path(folder), remember=True)
+
+    def _set_root_folder(self, folder: Path, remember: bool = False) -> None:
+        """Point the app at a library and rebuild everything that depends on it."""
+        self._root_folder = folder
+        self._folder_var.set(str(folder))
+        self._populate_tree()
+        self._btn_full_series.config(state=tk.NORMAL)
+        if list_top_level(folder):
+            self._write_txt("Choose a show or episode in the library to see results.\n\n"
+                            "Cached results load instantly; new episodes need to be analyzed.")
+        # If nothing found, _populate_tree already writes an explanation
+        # Open (or create) the index DB and seed it from existing cached results
+        if self._db_conn:
+            self._db_conn.close()
+        self._db_conn = get_db(folder)
+        self._backfill_index()
+        self._refresh_index()
+        # The pipeline is computed against the library root, so it is
+        # meaningless until one is chosen and must be rebuilt when it changes.
+        self._refresh_pipeline()
+        self._update_first_run_hint()
+        if remember:
+            self._remember_root_folder(folder)
+
+    def _update_first_run_hint(self) -> None:
+        """Show the getting-started panel only while there is no library."""
+        panel = getattr(self, "_first_run", None)
+        if panel is None:
+            return
+        if self._root_folder and panel.winfo_ismapped():
+            panel.pack_forget()
+        elif not self._root_folder and not panel.winfo_ismapped():
+            panel.pack(fill=tk.X, padx=6, pady=6, before=panel.master.winfo_children()[-1])
+
+    def _remember_root_folder(self, folder: Path) -> None:
+        """Persist the library location so the next launch opens straight into it.
+
+        Stored in user_prefs.json, not config.json: this is a local absolute
+        path, and config.json is versioned and shared.
+        """
+        from analyzer.prefs import set_pref
+        set_pref("last_root_folder", str(folder))
+
+    def _restore_root_folder(self) -> None:
+        """Reopen the last library, if it is still there.
+
+        A folder that has been moved, renamed, or unplugged is silently ignored
+        rather than reported as an error — the user simply lands on the
+        first-run screen, which tells them what to do.
+        """
+        from analyzer.prefs import get_pref
+        saved = get_pref("last_root_folder")
+        if not saved:
+            return
+        try:
+            path = Path(saved)
+            if path.is_dir():
+                self._set_root_folder(path)
+        except Exception:
+            pass
 
     def _populate_tree(self) -> None:
         self._tree.delete(*self._tree.get_children())
@@ -644,19 +856,27 @@ class App(tk.Tk):
             self._coded_map = coded_episode_map()
         except Exception:
             self._coded_map = {}
+        self._lib_shows = 0
+        self._lib_episodes = 0
         if not self._root_folder:
+            self._lib_count_var.set("no library loaded")
             return
         items = list_top_level(self._root_folder)
         for kind, d in items:
             if kind == "category":
                 cat_node = self._tree.insert(
-                    "", tk.END, text=f"  [{d.name}]",
-                    values=("category", str(d)), open=True,
+                    "", tk.END, text=f" {d.name}",
+                    values=("category", str(d), "", "", ""), open=True,
+                    tags=("st_show",),
                 )
                 for show_dir in list_category_shows(d):
                     self._insert_show_node(cat_node, show_dir)
             else:
                 self._insert_show_node("", d)
+        self._lib_count_var.set(
+            f"{self._lib_shows} show{'s' if self._lib_shows != 1 else ''}, "
+            f"{self._lib_episodes} episode"
+            f"{'s' if self._lib_episodes != 1 else ''}")
         if not items:
             self._write_txt(
                 "No show folders found under:\n"
@@ -671,30 +891,67 @@ class App(tk.Tk):
                 "        episode01.mp4\n"
             )
 
+    @staticmethod
+    def _fmt_duration(seconds: float) -> str:
+        if not seconds:
+            return "—"
+        m, s = divmod(int(round(seconds)), 60)
+        h, m = divmod(m, 60)
+        return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+    @staticmethod
+    def _fmt_added(path: Path) -> str:
+        try:
+            from datetime import datetime
+            return datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d")
+        except Exception:
+            return ""
+
     def _insert_show_node(self, parent_iid: str, show_dir: Path) -> None:
         """Insert a show and its episodes into the library tree."""
         skey = show_key(self._root_folder, show_dir)
         show_node = self._tree.insert(
-            parent_iid, tk.END, text=f"  {show_dir.name}",
-            values=("show", str(show_dir)), open=True,
+            parent_iid, tk.END, text=f" {show_dir.name}",
+            values=("show", str(show_dir), "", "", ""), open=True,
+            tags=("st_show",),
         )
         from analyzer.validation import coding_for_stem
         cmap = getattr(self, "_coded_map", None)
         if cmap is None:
             cmap = {}
-        for ep in list_episodes(show_dir):
+
+        episodes = list_episodes(show_dir)
+        n_analyzed = 0
+        for ep in episodes:
             cached = load_cached(self._root_folder, skey, ep.stem)
             coded = coding_for_stem(ep.stem, cmap)
-            # Mark WHICH measurement exists — automated and hand-coded are
+            # Report WHICH measurement exists — automated and hand-coded are
             # different data and must never be confused for one another.
-            marks = []
+            has_hand = bool(coded.get("transitions") or coded.get("events"))
             if cached:
-                marks.append("auto")
-            if coded.get("transitions") or coded.get("events"):
-                marks.append("hand-coded")
-            label = f"    {ep.name}" + (f"  [{' + '.join(marks)}]" if marks else "")
-            self._tree.insert(show_node, tk.END, text=label,
-                               values=("episode", str(ep)))
+                n_analyzed += 1
+            if cached and has_hand:
+                status, tag = "Analyzed + coded", "st_coded"
+            elif cached:
+                status, tag = "Analyzed", "st_analyzed"
+            elif has_hand:
+                status, tag = "Hand-coded", "st_coded"
+            else:
+                status, tag = "Not measured", "st_ready"
+            length = self._fmt_duration((cached or {}).get("duration_sec", 0))
+            self._tree.insert(show_node, tk.END, text=f" {ep.name}",
+                              values=("episode", str(ep), status, length,
+                                      self._fmt_added(ep)),
+                              tags=(tag,))
+
+        total = len(episodes)
+        summary = (f"{n_analyzed}/{total} analyzed" if total else "no episodes")
+        self._tree.set(show_node, "status", summary)
+        self._tree.set(show_node, "count",
+                       f"{total} ep." if total else "—")
+        self._tree.set(show_node, "added", self._fmt_added(show_dir))
+        self._lib_shows += 1
+        self._lib_episodes += total
 
     # -----------------------------------------------------------------------
     # Tree selection
@@ -1162,34 +1419,33 @@ class App(tk.Tk):
 
         m = result.metrics
 
-        # Sensory load — lead with the composite score
-        t.insert(tk.END, "Sensory Load Score\n", "h2")
-        t.insert(tk.END, f"  {m.sensory_load.score:.3f}", "score")
-        t.insert(tk.END, "  (0 = low stimulation  ·  1 = high)")
+        # --- Sensory load ---------------------------------------------------
+        self._section(t, "Sensory load")
+        t.insert(tk.END, f"{m.sensory_load.score:.3f}", "score")
+        t.insert(tk.END, "   0 = low stimulation, 1 = high\n")
         if not m.sensory_load.audio_available:
-            t.insert(tk.END, "  [visual only — no audio]", "dim")
-        t.insert(tk.END, "\n")
+            t.insert(tk.END, "Visual only — no audio track.\n", "dim")
 
-        # Percentile ranking (only when this episode is indexed in DB)
         if self._db_conn and self._current_ep_path:
             pct = get_episode_percentile(self._db_conn, str(self._current_ep_path))
             if pct:
                 def _ordinal(n: int) -> str:
                     sfx = {1: "st", 2: "nd", 3: "rd"}.get(
-                        n % 10 if n % 100 not in (11, 12, 13) else 0, "th"
-                    )
+                        n % 10 if n % 100 not in (11, 12, 13) else 0, "th")
                     return f"{n}{sfx}"
-                line = (f"  {_ordinal(pct['percentile'])} percentile  "
-                        f"({pct['global_total']} episodes indexed)")
+                line = (f"{_ordinal(pct['percentile'])} percentile of "
+                        f"{pct['global_total']} indexed episodes")
                 if pct["show_total"] >= 3:
-                    line += (f"  ·  {_ordinal(pct['show_rank'])} highest "
-                             f"of {pct['show_total']} in {pct['show_name']}")
-                t.insert(tk.END, line + "\n", "pct")
-        t.insert(tk.END, "\n")
+                    line += (f"; {_ordinal(pct['show_rank'])} of "
+                             f"{pct['show_total']} in {pct['show_name']}")
+                t.insert(tk.END, line + ".\n", "pct")
 
+        # Components, with the contribution each actually makes to the score.
+        # The old ASCII bars showed a normalised value but not what drove the
+        # composite; value x weight answers "why is the score what it is".
         cfg = result.config.get("sensory_load_weights", {})
         c = m.sensory_load.components
-        components = [
+        comps = [
             ("Pacing",     c.pacing,     cfg.get("pacing",         0.25)),
             ("Saturation", c.saturation, cfg.get("saturation",     0.05)),
             ("Contrast",   c.contrast,   cfg.get("color_contrast", 0.10)),
@@ -1197,115 +1453,106 @@ class App(tk.Tk):
             ("Flashing",   c.flashing,   cfg.get("flashing",       0.15)),
             ("Audio",      c.audio,      cfg.get("audio",          0.20)),
         ]
-        for label, val, wt in components:
+        rows = []
+        for label, val, wt in comps:
             if label == "Audio" and not m.sensory_load.audio_available:
-                t.insert(tk.END, f"  {'Audio':<12} n/a   (weight {wt:.0%}, no audio track)\n", "dim")
+                rows.append({"component": "Audio", "value": None,
+                             "weight": wt, "contrib": None})
                 continue
-            self._bar(t, val)
-            t.insert(tk.END, f"  {label:<12} {val:.3f}  (weight {wt:.0%})\n")
+            rows.append({"component": label, "value": val, "weight": wt,
+                         "contrib": val * wt})
+        self._embed_component_table(t, rows)
 
-        t.insert(tk.END, "\n")
+        # --- Measured features ----------------------------------------------
+        sl, sp, cs, mo, fl = (m.shot_length, m.scene_pacing,
+                              m.color_saturation, m.motion, m.flashing)
+        self._section(t, "Measured features")
+        self._props(t, [
+            ("Cuts per minute", f"{sp.cuts_per_min:.1f}", ""),
+            ("Mean shot length", f"{sl.mean_sec:.2f} s", ""),
+            ("Median shot length", f"{sl.median_sec:.2f} s", ""),
+            ("Shots per minute", f"{sl.shots_per_min:.1f}", ""),
+            ("Total shots", f"{sl.count:,}", ""),
+            ("Shot-length CV", f"{sp.shot_length_cv:.3f}",
+             "rhythm variability; higher is burstier"),
+            ("Colour saturation", f"{cs.mean:.3f}",
+             f"temporal variance {cs.temporal_var:.4f}"),
+            ("Colour contrast", f"{cs.contrast_mean:.3f}",
+             "spatial spread of brightness"),
+            ("Motion (mean)", f"{mo.mean:.4f}", f"peak {mo.peak:.4f}"),
+            ("Flashing events/min",
+             f"{fl.luminance_delta_events_per_min:.2f}",
+             "whole-frame luminance change"),
+        ])
 
-        # Shot length
-        t.insert(tk.END, "Shot Length\n", "h2")
-        sl = m.shot_length
-        t.insert(tk.END, f"  Mean shot:    {sl.mean_sec:.2f} s\n")
-        t.insert(tk.END, f"  Median shot:  {sl.median_sec:.2f} s\n")
-        t.insert(tk.END, f"  Shots/min:    {sl.shots_per_min:.1f}\n")
-        t.insert(tk.END, f"  Total shots:  {sl.count}\n\n")
-
-        # Scene pacing
-        t.insert(tk.END, "Scene Pacing\n", "h2")
-        sp = m.scene_pacing
-        t.insert(tk.END, f"  Cuts/min:        {sp.cuts_per_min:.1f}\n")
-        t.insert(tk.END,
-                 f"  Shot-length CV:  {sp.shot_length_cv:.3f}  "
-                 "(rhythm variability: higher = burstier)\n\n")
-
-        # Color saturation & contrast
-        t.insert(tk.END, "Color\n", "h2")
-        cs = m.color_saturation
-        self._bar(t, cs.mean)
-        t.insert(tk.END, f"  Saturation mean:   {cs.mean:.3f}\n")
-        t.insert(tk.END, f"  Saturation var:    {cs.temporal_var:.4f}\n")
-        self._bar(t, min(1.0, cs.contrast_mean / 0.35))
-        t.insert(tk.END, f"  Contrast mean:     {cs.contrast_mean:.3f}  "
-                         "(spatial brightness spread)\n\n")
-
-        # Motion
-        t.insert(tk.END, "Motion\n", "h2")
-        mo = m.motion
-        self._bar(t, mo.mean)
-        t.insert(tk.END, f"  Mean: {mo.mean:.4f}\n")
-        t.insert(tk.END, f"  Peak: {mo.peak:.4f}\n\n")
-
-        # Flashing
-        t.insert(tk.END, "Flashing\n", "h2")
-        fl = m.flashing
-        t.insert(tk.END,
-                 f"  Luminance-delta events/min:  "
-                 f"{fl.luminance_delta_events_per_min:.2f}\n\n")
-
-        # Audio
-        t.insert(tk.END, "Audio Loudness\n", "h2")
+        # --- Audio -----------------------------------------------------------
         au = m.audio
+        self._section(t, "Audio")
         if au.available:
-            self._bar(t, min(1.0, au.rms_mean / 0.20))
-            t.insert(tk.END, f"  RMS mean:          {au.rms_mean:.4f}\n")
-            t.insert(tk.END, f"  RMS peak:          {au.rms_peak:.4f}\n")
-            t.insert(tk.END, f"  Temporal variance: {au.rms_temporal_var:.6f}  "
-                             "(volume variation over time)\n")
-            t.insert(tk.END, f"  Dynamic range:     {au.dynamic_range_db:.1f} dB  "
-                             "(peak-to-mean ratio)\n")
+            self._props(t, [
+                ("RMS mean", f"{au.rms_mean:.4f}", ""),
+                ("RMS peak", f"{au.rms_peak:.4f}", ""),
+                ("Temporal variance", f"{au.rms_temporal_var:.6f}",
+                 "volume variation over time"),
+                ("Dynamic range", f"{au.dynamic_range_db:.1f} dB",
+                 "peak-to-mean ratio"),
+            ])
         else:
-            t.insert(tk.END, "  Not available (FFmpeg not found or no audio track)\n", "dim")
+            t.insert(tk.END, "Not available — FFmpeg not found, or the file "
+                             "has no audio track.\n", "dim")
 
-        # Speech
-        t.insert(tk.END, "\nSpeech\n", "h2")
-        sp = m.speech
-        if sp.available:
-            _src = {"srt": "SRT subtitle file", "vtt": "VTT subtitle file",
-                    "whisper": "Whisper AI transcription"}.get(sp.source, sp.source)
-            t.insert(tk.END, f"  Source:            {_src}\n", "dim")
-            t.insert(tk.END, f"  Words per minute:  {sp.words_per_minute:.1f}\n")
-            t.insert(tk.END, f"  Speech density:    {sp.speech_density:.1%}  "
-                             "(fraction of episode with dialogue)\n")
-            t.insert(tk.END, f"  Total words:       {sp.total_words:,}\n")
+        # --- Speech ----------------------------------------------------------
+        spx = m.speech
+        self._section(t, "Speech")
+        if spx.available:
+            src = {"srt": "SRT subtitle file", "vtt": "VTT subtitle file",
+                   "whisper": "Whisper transcription"}.get(spx.source, spx.source)
+            self._props(t, [
+                ("Words per minute", f"{spx.words_per_minute:.1f}", ""),
+                ("Speech density", f"{spx.speech_density:.1%}",
+                 "share of runtime containing dialogue"),
+                ("Total words", f"{spx.total_words:,}", ""),
+                ("Source", src, "English-only metrics"),
+            ])
         else:
-            _src = sp.source
-            if _src == "disabled" or _src == "none":
-                _msg = "enable auto-transcription in Settings, or place an .srt / .vtt file alongside the video"
-            elif _src == "not_installed":
-                _msg = "faster-whisper is not installed — open a terminal and run:  pip install faster-whisper"
-            elif _src.startswith("error:"):
-                _msg = f"transcription failed: {_src[6:]}"
+            src = spx.source
+            if src in ("disabled", "none"):
+                msg = ("no caption file found. Add an .srt/.vtt beside the "
+                       "video, or enable Whisper in Settings.")
+            elif src == "not_installed":
+                msg = "faster-whisper is not installed (pip install faster-whisper)."
+            elif src.startswith("error:"):
+                msg = f"transcription failed: {src[6:]}"
             else:
-                _msg = "no CC file found and auto-transcription is disabled"
-            t.insert(tk.END, f"  Not available — {_msg}\n", "dim")
+                msg = "no caption file, and auto-transcription is off."
+            t.insert(tk.END, f"Not available — {msg}\n", "dim")
 
-        # Fantastical events — human-coded channel, joined from validation/
+        # --- Human coding ----------------------------------------------------
         from analyzer.event_coding import latest_rates_for_stem
-        ep_stem = Path(result.file).stem
-        ev = latest_rates_for_stem(ep_stem)
-        t.insert(tk.END, "\nFantastical Events (human-coded)\n", "h2")
+        ev = latest_rates_for_stem(Path(result.file).stem)
+        self._section(t, "Fantastical events (hand-coded)")
         if ev:
             win = ev.get("window")
-            win_txt = (f"window {win[0]:.0f}–{win[1]:.0f}s"
+            win_txt = (f"{win[0]:.0f}–{win[1]:.0f}s"
                        if isinstance(win, list) and len(win) == 2
                        else "full episode")
-            t.insert(tk.END,
-                     f"  Events per minute:  {ev.get('events_per_min', '—')}\n")
-            t.insert(tk.END,
-                     f"  Events coded:       {ev.get('n_events', '—')}  "
-                     f"({win_txt}, coded {ev.get('date','')})\n")
-            t.insert(tk.END,
-                     "  Human judgment per EVENT_CODEBOOK.md — not a pixel "
-                     "measurement.\n", "dim")
+            self._props(t, [
+                ("Events per minute", ev.get("events_per_min", "—"), ""),
+                ("Events coded", ev.get("n_events", "—"), f"window {win_txt}"),
+                ("Coded", ev.get("date", "—"), "per EVENT_CODEBOOK.md"),
+            ])
+            t.insert(tk.END, "A human judgement, not a pixel measurement.\n",
+                     "dim")
         else:
             t.insert(tk.END,
-                     "  Not coded — fantasy is a semantic judgment coded by "
-                     "hand.\n  Use code_events.py (template → code in VLC → "
-                     "rates) to add it.\n", "dim")
+                     "Not coded. Fantasy is a semantic judgement that no "
+                     "formal-features measure can make; code it under Human "
+                     "coding → Code.\n", "dim")
+
+        # Which tool produced each number, and whether it has been graded.
+        # Without this a figure from an ungraded component reads exactly like a
+        # validated one.
+        self._render_provenance(t, result)
 
         # Validation provenance — CMAT reports its own accuracy
         from analyzer.provenance import validation_statement
@@ -1334,6 +1581,283 @@ class App(tk.Tk):
         self._meta_season.set(str(meta["season_num"]) if meta.get("season_num") is not None else "")
         self._meta_ep_num.set(str(meta["episode_num"]) if meta.get("episode_num") is not None else "")
         self._btn_save_meta.config(state=tk.NORMAL)
+
+    def _build_agreement_tab(self, parent: tk.Frame) -> None:
+        """Inter-rater reliability. The maths already existed with no way in.
+
+        Two coders coding the same episode is the standard evidence that a
+        coding scheme is reproducible, and it was reachable only from the
+        command line.
+        """
+        tk.Label(parent, text=" Two-coder agreement (inter-rater reliability) ",
+                 font=("TkDefaultFont", 9, "bold"), anchor="w").pack(
+                     fill=tk.X, padx=6, pady=(8, 2))
+        tk.Label(
+            parent, anchor="w", justify="left", wraplength=430,
+            fg="#555555", font=("TkDefaultFont", 8),
+            text=("Have a second person code the same episode independently, "
+                  "using the same codebook and without seeing the first "
+                  "coder's sheet. Then compare the two sheets here.\n\n"
+                  "Reports how often the coders marked the same events "
+                  "(detection agreement) and how often they gave a matched "
+                  "event the same label (Cohen's kappa)."),
+        ).pack(fill=tk.X, padx=6, pady=(0, 6))
+
+        self._agree_a = tk.StringVar(value="(no file chosen)")
+        self._agree_b = tk.StringVar(value="(no file chosen)")
+
+        for label, var, setter in (
+            ("Coder A sheet:", self._agree_a, "a"),
+            ("Coder B sheet:", self._agree_b, "b"),
+        ):
+            row = tk.Frame(parent)
+            row.pack(fill=tk.X, padx=6, pady=2)
+            tk.Label(row, text=label, width=13, anchor="w").pack(side=tk.LEFT)
+            tk.Button(row, text="Choose…",
+                      command=lambda s=setter: self._pick_agreement_file(s),
+                      padx=6).pack(side=tk.LEFT)
+            tk.Label(row, textvariable=var, anchor="w", fg="navy",
+                     font=("TkDefaultFont", 8)).pack(side=tk.LEFT, padx=(6, 0),
+                                                     fill=tk.X, expand=True)
+
+        tol_row = tk.Frame(parent)
+        tol_row.pack(fill=tk.X, padx=6, pady=(4, 2))
+        tk.Label(tol_row, text="Match tolerance ±", anchor="w").pack(side=tk.LEFT)
+        self._agree_tol = tk.StringVar(value="2.0")
+        tk.Entry(tol_row, textvariable=self._agree_tol, width=5).pack(side=tk.LEFT)
+        tk.Label(tol_row, text="seconds").pack(side=tk.LEFT, padx=(3, 0))
+
+        tk.Button(parent, text="Compute agreement",
+                  command=self._run_agreement, padx=8).pack(
+                      anchor="w", padx=6, pady=(6, 4))
+
+        self._agree_out = tk.Text(parent, height=12, wrap="word",
+                                  font=("Consolas", 8), state=tk.DISABLED)
+        self._agree_out.pack(fill=tk.BOTH, expand=True, padx=6, pady=(2, 8))
+
+        self._agree_paths: dict[str, Path | None] = {"a": None, "b": None}
+
+    def _pick_agreement_file(self, which: str) -> None:
+        from analyzer.validation import get_validation_dir
+        path = filedialog.askopenfilename(
+            title=f"Choose the coding sheet for coder {which.upper()}",
+            initialdir=str(get_validation_dir()),
+            filetypes=[("Coding sheets", "*.csv"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        self._agree_paths[which] = Path(path)
+        (self._agree_a if which == "a" else self._agree_b).set(Path(path).name)
+
+    def _run_agreement(self) -> None:
+        a, b = self._agree_paths.get("a"), self._agree_paths.get("b")
+        if not a or not b:
+            messagebox.showinfo("Two sheets needed",
+                                "Choose a coding sheet for each coder first.")
+            return
+        if a == b:
+            messagebox.showwarning(
+                "Same file twice",
+                "Both sides point at the same sheet, which would report "
+                "perfect agreement for trivial reasons. Choose the second "
+                "coder's own file.")
+            return
+        try:
+            tol = float(self._agree_tol.get())
+        except ValueError:
+            tol = 2.0
+        warnings: list[str] = []
+        try:
+            from analyzer.event_coding import inter_coder_agreement
+            res = inter_coder_agreement(a, b, tolerance=tol,
+                                        warn_cb=warnings.append)
+        except Exception as exc:                        # noqa: BLE001
+            messagebox.showerror("Could not compare", str(exc))
+            return
+
+        lines = [f"Coder A: {a.name}", f"Coder B: {b.name}",
+                 f"Tolerance: ±{tol:g}s", ""]
+        for key, value in res.items():
+            if isinstance(value, (int, float, str)) or value is None:
+                shown = "not defined" if value is None else value
+                lines.append(f"  {key.replace('_', ' '):<28} {shown}")
+        if res.get("kappa") is None:
+            lines += ["", "  Kappa is undefined here — it needs at least two",
+                      "  different labels across the matched events."]
+        if warnings:
+            lines += ["", "Warnings:"] + [f"  {w}" for w in warnings[:10]]
+
+        self._agree_out.config(state=tk.NORMAL)
+        self._agree_out.delete("1.0", tk.END)
+        self._agree_out.insert(tk.END, "\n".join(lines))
+        self._agree_out.config(state=tk.DISABLED)
+
+    def _section(self, t: tk.Text, title: str) -> None:
+        """A MediaWiki-style section heading: title over a full-width rule."""
+        from gui_theme import color as _c
+        t.insert(tk.END, "\n" + title + "\n", "h2")
+        rule = tk.Frame(t, bg=_c("mw_border"), height=1)
+        t.window_create(tk.END, window=rule, padx=6)
+        t.insert(tk.END, "\n")
+        # The rule has no natural width inside a Text widget, so it is tied to
+        # the widget's own width and re-sized whenever that changes.
+        def _fit(_e=None, r=rule) -> None:
+            try:
+                r.configure(width=max(80, t.winfo_width() - 28))
+            except tk.TclError:
+                pass
+        _fit()
+        t.bind("<Configure>", _fit, add="+")
+
+    def _props(self, t: tk.Text, rows) -> None:
+        """Embed a label/value(/note) table."""
+        from gui_tables import PropertyTable
+        table = PropertyTable(t, rows)
+        table.embed_in(t)
+
+    def _embed_component_table(self, t: tk.Text, rows) -> None:
+        """The composite broken into what each component contributes."""
+        from gui_tables import Column, WikiTable
+
+        columns = [
+            Column("component", "Component", width=104, stretch=True),
+            Column("value", "Normalised", width=76, numeric=True),
+            Column("weight", "Weight", width=62, numeric=True, fmt="{:.0%}"),
+            Column("contrib", "Contribution", width=88, numeric=True),
+        ]
+        table = WikiTable(t, columns, height=len(rows), emphasis=False,
+                          scrollbars=False)
+        table.set_rows(rows)
+        table.embed_in(t)
+
+    def _embed_aggregate_table(self, t: tk.Text, agg: ShowAggregate) -> None:
+        """Show-level summary statistics as a table.
+
+        Emphasis is off here: the rows are different measures on different
+        scales, so "unusual" across them would be meaningless — a cuts/min
+        value is not comparable with a saturation value.
+        """
+        from gui_tables import Column, WikiTable
+
+        columns = [
+            Column("metric", "Metric", width=150, stretch=True),
+            Column("mean", "Mean", width=60, numeric=True),
+            Column("median", "Median", width=60, numeric=True),
+            Column("std", "Std", width=56, numeric=True),
+            Column("min", "Min", width=56, numeric=True),
+            Column("max", "Max", width=56, numeric=True),
+        ]
+        stats = [
+            ("Sensory load score",   agg.sensory_load_score),
+            ("Cuts / min",           agg.cuts_per_min),
+            ("Shot length mean (s)", agg.shot_length_mean_sec),
+            ("Colour saturation",    agg.color_saturation_mean),
+            ("Colour contrast",      agg.color_contrast_mean),
+            ("Motion mean",          agg.motion_mean),
+            ("Flashing events/min",  agg.flashing_events_per_min),
+        ]
+        rows = [{"metric": label, "mean": s.mean, "median": s.median,
+                 "std": s.std, "min": s.min, "max": s.max}
+                for label, s in stats]
+        audio = agg.audio_rms_mean
+        rows.append({"metric": "Audio RMS mean"} if audio.mean <= 0 else
+                    {"metric": "Audio RMS mean", "mean": audio.mean,
+                     "median": audio.median, "std": audio.std,
+                     "min": audio.min, "max": audio.max})
+
+        table = WikiTable(t, columns, height=len(rows), emphasis=False)
+        table.set_rows(rows)
+        table.embed_in(t)
+
+    def _embed_episode_table(self, t: tk.Text,
+                             results: list[EpisodeResult]) -> None:
+        """Per-episode metrics as a real table rather than padded text.
+
+        The old block truncated episode names to 26 characters and lost its
+        column alignment as soon as a name ran long, which is most of the time
+        with real filenames.
+        """
+        from gui_tables import Column, WikiTable
+
+        # Declared at 96 DPI; WikiTable scales them. Headings are abbreviated
+        # so seven columns have a chance of fitting the results pane before
+        # the user has to scroll.
+        columns = [
+            Column("episode", "Episode", width=170, stretch=True),
+            Column("cuts", "Cuts/min", width=58, numeric=True, fmt="{:.1f}"),
+            Column("sat", "Sat.", width=48, numeric=True),
+            Column("motion", "Motion", width=52, numeric=True),
+            Column("flash", "Flash/min", width=62, numeric=True, fmt="{:.1f}"),
+            Column("audio", "Audio", width=56, numeric=True, fmt="{:.4f}"),
+            Column("load", "Load", width=52, numeric=True),
+        ]
+        rows: list[dict] = []
+        for r in results:
+            if r.status == "failed":
+                rows.append({"episode": f"{r.file} — analysis failed",
+                             "_failed": True})
+                continue
+            m = r.metrics
+            rows.append({
+                "episode": r.file,
+                "cuts":   m.scene_pacing.cuts_per_min,
+                "sat":    m.color_saturation.mean,
+                "motion": m.motion.mean,
+                "flash":  m.flashing.luminance_delta_events_per_min,
+                "audio":  m.audio.rms_mean if m.audio.available else None,
+                "load":   m.sensory_load.score,
+            })
+
+        table = WikiTable(
+            t, columns, height=min(14, max(4, len(rows))),
+            comparison_set="this show's analyzed episodes")
+        table.set_rows(rows)
+        table.embed_in(t)
+
+    def _render_provenance(self, t: tk.Text, result: EpisodeResult) -> None:
+        """How this episode was measured, and whether the settings still match.
+
+        The engine records both the tool per measurement and a fingerprint of
+        the settings that produced the numbers. Surfacing them here is the
+        difference between "flashing: 3.2/min" and "flashing: 3.2/min, from a
+        component nobody has ever graded".
+        """
+        tools = getattr(result, "measurement_tools", None) or {}
+        if not tools:
+            return
+
+        t.insert(tk.END, "\n" + "─" * 40 + "\n", "dim")
+        t.insert(tk.END, "Measured with\n", "h2")
+
+        ungraded: list[str] = []
+        for key, desc in tools.items():
+            if desc == "disabled":
+                continue
+            label = key.replace("_", " ").title()
+            t.insert(tk.END, f"  {label:<16} {desc}\n",
+                     "err" if "[unvalidated]" in desc else "dim")
+            if "[unvalidated]" in desc or "[experimental]" in desc:
+                ungraded.append(label)
+
+        if ungraded:
+            t.insert(tk.END,
+                     "  Not graded against hand coding: "
+                     + ", ".join(ungraded)
+                     + ".\n  Treat these as exploratory; do not report them as "
+                       "validated measures.\n", "err")
+
+        # Stale cache: the numbers above were produced under settings that no
+        # longer match the current configuration, so they are not comparable
+        # with anything analyzed now.
+        try:
+            from analyzer.cache import is_stale
+            if is_stale(result.to_dict(), self._cfg):
+                t.insert(tk.END,
+                         "  ⚠ Measurement settings have changed since this "
+                         "episode was analyzed.\n    Re-analyze it before "
+                         "comparing these numbers with newer results.\n", "err")
+        except Exception:
+            pass
 
     def _render_show(self, agg: ShowAggregate, results: list[EpisodeResult],
                      total_eps: int, sample_info: dict | None = None,
@@ -1399,48 +1923,12 @@ class App(tk.Tk):
 
         t.insert(tk.END, "Aggregate across episodes\n", "h2")
         t.insert(tk.END, "  Each episode weighted equally regardless of length.\n", "dim")
-        t.insert(tk.END,
-                 f"\n{'Metric':<28} {'Mean':>8} {'Median':>8} "
-                 f"{'Std':>8} {'Min':>8} {'Max':>8}\n", "mono")
-        t.insert(tk.END, "-" * 70 + "\n", "dim")
-
-        def row(label: str, s) -> None:
-            t.insert(tk.END,
-                     f"  {label:<26} {s.mean:>8.3f} {s.median:>8.3f} "
-                     f"{s.std:>8.3f} {s.min:>8.3f} {s.max:>8.3f}\n", "mono")
-
-        row("Sensory load score", agg.sensory_load_score)
-        row("Cuts / min",         agg.cuts_per_min)
-        row("Shot length mean (s)", agg.shot_length_mean_sec)
-        row("Color saturation",   agg.color_saturation_mean)
-        row("Motion mean",        agg.motion_mean)
-        row("Flashing events/min", agg.flashing_events_per_min)
-        if agg.audio_rms_mean.mean > 0:
-            row("Audio RMS mean",     agg.audio_rms_mean)
-        else:
-            t.insert(tk.END, f"  {'Audio RMS mean':<26} {'n/a':>8}\n", "dim")
+        self._embed_aggregate_table(t, agg)
 
         ok = [r for r in results if r.status == "ok"]
         if ok:
             t.insert(tk.END, "\n\nPer-episode breakdown\n", "h2")
-            t.insert(tk.END,
-                     f"\n{'Episode':<28} {'Cut/m':>6} {'Sat':>6} "
-                     f"{'Mot':>6} {'Flash':>7} {'Audio':>7} {'Load':>7}\n", "mono")
-            t.insert(tk.END, "-" * 73 + "\n", "dim")
-            for r in results:
-                if r.status == "failed":
-                    t.insert(tk.END, f"  {r.file:<26}  FAILED\n", "err")
-                else:
-                    m = r.metrics
-                    audio_str = f"{m.audio.rms_mean:>7.4f}" if m.audio.available else f"{'n/a':>7}"
-                    t.insert(tk.END,
-                             f"  {r.file:<26} "
-                             f"{m.scene_pacing.cuts_per_min:>6.1f} "
-                             f"{m.color_saturation.mean:>6.3f} "
-                             f"{m.motion.mean:>6.3f} "
-                             f"{m.flashing.luminance_delta_events_per_min:>7.1f} "
-                             f"{audio_str} "
-                             f"{m.sensory_load.score:>7.3f}\n", "mono")
+            self._embed_episode_table(t, results)
 
         # Fantastical events — human-coded channel, joined from validation/
         from analyzer.event_coding import events_stats_for_stems
@@ -1776,6 +2264,9 @@ class App(tk.Tk):
                         if auto_s is not None:
                             auto_set_season(self._db_conn, str(ep_path), auto_s)
                         self._refresh_index()
+                    # An episode just moved from "selected" to "measured" —
+                    # keep the pipeline view honest without a manual refresh.
+                    self._refresh_pipeline()
                 else:
                     messagebox.showerror(
                         "Analysis failed",
@@ -2311,6 +2802,96 @@ class App(tk.Tk):
     def _open_optional_tools(self) -> None:
         from gui_optional_tools import OptionalToolsWindow
         OptionalToolsWindow(self)
+
+    def _open_measurement_settings(self) -> None:
+        from gui_measurements import MeasurementsDialog
+        MeasurementsDialog(self)
+
+    def _open_welcome(self) -> None:
+        """Ask what the user is here to do, then route to it."""
+        from gui_welcome import WelcomeWindow
+        WelcomeWindow(self, on_done=self._on_welcome_done)
+
+    def _on_welcome_done(self, choice: str | None, doc) -> None:
+        """Act on the welcome choice.
+
+        Both routes need a library, so anyone without one lands on Library
+        with the getting-started panel. Cancelling changes nothing.
+        """
+        if choice is None:
+            return
+        if not self._root_folder:
+            try:
+                self._left_nb.select(1)                  # Library
+            except Exception:
+                pass
+            if choice == "pipeline" and doc is not None:
+                self._status_var.set(
+                    f"Pipeline “{doc.name}” created. Choose a media folder to "
+                    "start filling it in.")
+            else:
+                self._status_var.set(
+                    "Choose a media folder to begin — see Getting started.")
+            self._choose_folder()
+            if not self._root_folder:
+                return
+
+        if choice == "explore":
+            try:
+                self._left_nb.select(1)                  # Library
+            except Exception:
+                pass
+            self._status_var.set(
+                "Pick a show or episode, then Automated coding → Analyze "
+                "Episode.")
+            return
+
+        # Pipeline route: adopt the new document and show it.
+        self._refresh_pipeline()
+        view = getattr(self, "_pipeline_view", None)
+        if view is not None and doc is not None:
+            try:
+                view.select_document(doc.id)
+            except Exception:
+                pass
+        try:
+            self._left_nb.select(0)                      # Pipeline
+        except Exception:
+            pass
+        if doc is not None:
+            self._status_var.set(
+                f"Pipeline “{doc.name}” created. Link it to an episode sample "
+                "from Manage ▾ to show live progress.")
+
+    def _open_pipeline_window(self) -> None:
+        """Open (or re-focus) the standalone pipeline window."""
+        from gui_pipeline import PipelineWindow
+        existing = getattr(self, "_pipeline_window", None)
+        if existing is not None and existing.winfo_exists():
+            existing.deiconify()
+            existing.lift()
+            existing.focus_force()
+            return
+
+        def _clear() -> None:
+            self._pipeline_window = None
+
+        self._pipeline_window = PipelineWindow(self, on_close=_clear)
+
+    def _refresh_pipeline(self) -> None:
+        """Re-read the pipeline from disk. Cheap; safe to call after any change."""
+        view = getattr(self, "_pipeline_view", None)
+        if view is not None:
+            try:
+                view.refresh()
+            except Exception:
+                pass
+        win = getattr(self, "_pipeline_window", None)
+        if win is not None and win.winfo_exists():
+            try:
+                win.view.refresh()
+            except Exception:
+                pass
 
     def _open_wiki_import(self) -> None:
         WikiImportDialog(self, app_ref=self)
@@ -2952,6 +3533,15 @@ class App(tk.Tk):
         _sp_hdrs   = ("Show", "File", "Air Date", "WPM", "Density", "Total Words", "Source")
         _sp_widths = (90, 120, 72, 55, 62, 78, 60)
 
+        # Anchored to the bottom and packed before the expanding tree, so the
+        # explanation of why rows are missing cannot be squeezed to nothing.
+        self._lang_sp_note = tk.Label(
+            sp_tab, text="Choose a root folder, then click Refresh.",
+            fg="#555555", font=("TkDefaultFont", 8), anchor="w",
+            justify="left", wraplength=460,
+        )
+        self._lang_sp_note.pack(side=tk.BOTTOM, fill=tk.X, padx=4, pady=(2, 4))
+
         sp_tree_frame = tk.Frame(sp_tab)
         sp_tree_frame.pack(fill=tk.BOTH, expand=True)
 
@@ -2972,12 +3562,6 @@ class App(tk.Tk):
         sp_vsb.pack(side=tk.RIGHT, fill=tk.Y)
         sp_hsb.pack(side=tk.BOTTOM, fill=tk.X)
         self._lang_sp_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        self._lang_sp_note = tk.Label(
-            sp_tab, text="Choose a root folder, then click Refresh.",
-            fg="#555555", font=("TkDefaultFont", 8), anchor="w",
-        )
-        self._lang_sp_note.pack(fill=tk.X, padx=4, pady=(2, 4))
 
         # ---- Vocabulary sub-tab ----
         vc_tab = tk.Frame(sub_nb)
@@ -3038,6 +3622,13 @@ class App(tk.Tk):
         _vc_hdrs   = ("File", "Status", "Flesch", "F-K Gr", "T1%", "T2%", "T3%", "AoA", "MTLD")
         _vc_widths = (130, 52, 50, 50, 42, 42, 42, 44, 55)
 
+        # The action row is packed BEFORE the expanding tree, anchored to the
+        # bottom. Packed after it, pack hands the tree its full requested
+        # height first and leaves this row ~2px in a short pane — the buttons
+        # are present but invisible.
+        action_row = tk.Frame(vc_tab)
+        action_row.pack(side=tk.BOTTOM, fill=tk.X, padx=4, pady=(4, 4))
+
         vc_tree_frame = tk.Frame(vc_tab)
         vc_tree_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=(2, 0))
 
@@ -3057,8 +3648,6 @@ class App(tk.Tk):
         vc_hsb.pack(side=tk.BOTTOM, fill=tk.X)
         self._vocab_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        action_row = tk.Frame(vc_tab)
-        action_row.pack(fill=tk.X, padx=4, pady=(4, 4))
         self._vocab_chart_var = tk.StringVar(value="Stacked Tiers")
         ttk.Combobox(
             action_row, textvariable=self._vocab_chart_var,
@@ -3136,6 +3725,7 @@ class App(tk.Tk):
             self._lang_sp_note.config(text="Choose a root folder first.")
             return
         rows: list[dict] = []
+        missing: list[str] = []       # analyzed, but no captions and no transcript
         for show_dir in list_shows(self._root_folder):
             skey  = show_key(self._root_folder, show_dir)
             dname, _ = display_show_name(self._root_folder, show_dir)
@@ -3166,6 +3756,7 @@ class App(tk.Tk):
                                 save_cache(self._root_folder, skey, ep.stem, c)
 
                     if not sp.available:
+                        missing.append(ep.name)
                         continue
 
                     air_date = ""
@@ -3187,10 +3778,19 @@ class App(tk.Tk):
                     continue
         self._lang_speech_rows = rows
         self._populate_lang_speech_tree()
-        n = len(rows)
+        n, gap = len(rows), len(missing)
         note = f"{n} episode{'s' if n != 1 else ''} with speech data."
-        if n == 0:
-            note += "  Analyze episodes with CC files or enable Whisper in Settings."
+        # Episodes without captions are simply absent from the table, which
+        # reads as "nothing here" rather than "no transcript yet". Say which it
+        # is, and name the button that fixes it.
+        if gap:
+            note += (f"   {gap} analyzed episode{'s' if gap != 1 else ''} "
+                     f"had no caption file and no transcript — these are not "
+                     f"listed. Use Analyze → “Transcribe Missing Subtitles”, "
+                     f"or enable Whisper under Settings → Speech Analysis.")
+        elif n == 0:
+            note += ("  Analyze episodes first (Automated coding → Analyze), "
+                     "then return here.")
         self._lang_sp_note.config(text=note)
 
     def _populate_lang_speech_tree(self) -> None:
@@ -3840,7 +4440,9 @@ class SettingsDialog(tk.Toplevel):
         super().__init__(parent)
         self._app = parent
         self.title("Settings — Presets & Weights")
-        self.resizable(False, False)
+        # Vertically resizable: the content is taller than some laptop screens,
+        # and a fixed height would clip the buttons off the bottom.
+        self.resizable(False, True)
         self.grab_set()
         self.transient(parent)
 
@@ -3862,7 +4464,9 @@ class SettingsDialog(tk.Toplevel):
         self._refresh_preset_desc()
         self._update_total()
 
-        self.geometry("480x660")
+        # Clamp to the usable screen height so the buttons stay reachable.
+        height = min(810, max(560, parent.winfo_screenheight() - 120))
+        self.geometry(f"480x{height}")
         self.update_idletasks()
         px, py = parent.winfo_rootx(), parent.winfo_rooty()
         pw, ph = parent.winfo_width(), parent.winfo_height()
@@ -3873,6 +4477,22 @@ class SettingsDialog(tk.Toplevel):
 
     def _build(self) -> None:
         pad = {"padx": 10, "pady": 4}
+
+        # Buttons are built and packed FIRST so they anchor to the bottom. A
+        # side=BOTTOM widget packed after an expand=True widget (the columns
+        # frame below) gets zero height — see CLAUDE.md.
+        bf = tk.Frame(self)
+        bf.pack(side=tk.BOTTOM, pady=(4, 10))
+        tk.Button(bf, text="Apply & Re-score", command=self._apply,
+                  padx=8).pack(side=tk.LEFT, padx=4)
+        tk.Button(bf, text="Save as Preset...", command=self._save_as_preset,
+                  padx=8).pack(side=tk.LEFT, padx=4)
+        tk.Button(bf, text="Save as Default", command=self._save_default,
+                  padx=8).pack(side=tk.LEFT, padx=4)
+        tk.Button(bf, text="Close", command=self.destroy,
+                  padx=8).pack(side=tk.LEFT, padx=4)
+        ttk.Separator(self, orient=tk.HORIZONTAL).pack(
+            side=tk.BOTTOM, fill=tk.X, padx=6, pady=2)
 
         # Preset row
         top = tk.Frame(self)
@@ -3987,17 +4607,29 @@ class SettingsDialog(tk.Toplevel):
 
         ttk.Separator(self, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=6, pady=2)
 
-        # Buttons
-        bf = tk.Frame(self)
-        bf.pack(pady=(4, 10))
-        tk.Button(bf, text="Apply & Re-score", command=self._apply,
-                  padx=8).pack(side=tk.LEFT, padx=4)
-        tk.Button(bf, text="Save as Preset...", command=self._save_as_preset,
-                  padx=8).pack(side=tk.LEFT, padx=4)
-        tk.Button(bf, text="Save as Default", command=self._save_default,
-                  padx=8).pack(side=tk.LEFT, padx=4)
-        tk.Button(bf, text="Close", command=self.destroy,
-                  padx=8).pack(side=tk.LEFT, padx=4)
+        # Measurement settings live in their own dialog because they invalidate
+        # cached analysis, unlike everything above which re-scores from cache.
+        mf = tk.LabelFrame(self, text="Measurement Tools & Thresholds",
+                           padx=8, pady=6)
+        mf.pack(fill=tk.X, padx=10, pady=(0, 4))
+        tk.Label(
+            mf,
+            text="Everything above re-scores instantly from cached analysis. "
+                 "To change WHICH tool measures something — the shot-boundary "
+                 "detector, sampling rates, detection thresholds — open the "
+                 "measurement editor. Those settings change the raw numbers, so "
+                 "they require re-analyzing affected episodes.",
+            wraplength=430, justify="left", anchor="w",
+            fg="#555555", font=("TkDefaultFont", 8),
+        ).pack(fill=tk.X, pady=(0, 4))
+        tk.Button(mf, text="Open Measurement Settings...",
+                  command=self._open_measurements, padx=8).pack(anchor="w")
+
+    def _open_measurements(self) -> None:
+        """Hand off to the measurement editor, which owns the config from here."""
+        from gui_measurements import MeasurementsDialog
+        self.destroy()
+        MeasurementsDialog(self._app)
 
     # ---- preset helpers ----
 
@@ -4105,9 +4737,15 @@ class SettingsDialog(tk.Toplevel):
         new_cfg = copy.deepcopy(self._app._cfg)
         new_cfg["sensory_load_weights"] = weights
         new_cfg["normalization_reference_ranges"] = ranges
-        new_cfg["speech_transcription_enabled"] = self._speech_enabled_var.get()
-        new_cfg["speech_whisper_model"] = self._speech_model_var.get()
-        return new_cfg
+
+        # Speech must be written into the measurements block, not the flat keys:
+        # the block is authoritative, so normalize_config() would re-derive the
+        # flat keys from it and silently revert this toggle.
+        speech = new_cfg.setdefault("measurements", {}).setdefault("speech", {})
+        speech["tool"] = ("captions_then_whisper"
+                          if self._speech_enabled_var.get() else "captions_only")
+        speech.setdefault("params", {})["model"] = self._speech_model_var.get()
+        return normalize_config(new_cfg)
 
     def _apply(self) -> None:
         new_cfg = self._build_new_cfg()
@@ -4196,6 +4834,12 @@ class SettingsDialog(tk.Toplevel):
             existing["normalization_reference_ranges"] = new_cfg["normalization_reference_ranges"]
             existing["speech_transcription_enabled"] = new_cfg["speech_transcription_enabled"]
             existing["speech_whisper_model"] = new_cfg["speech_whisper_model"]
+            # If a measurements block is already saved it takes precedence over
+            # the flat keys above, so the speech selection has to go in there too.
+            if isinstance(existing.get("measurements"), dict):
+                existing["measurements"].setdefault("speech", {}).update(
+                    new_cfg["measurements"]["speech"]
+                )
             config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
             messagebox.showinfo("Saved", f"Default settings saved to:\n{config_path}",
                                 parent=self)
@@ -4373,9 +5017,45 @@ def _ensure_shows_folder() -> None:
     shows.mkdir(exist_ok=True)
 
 
+def _enable_dpi_awareness() -> None:
+    """Render at the display's real pixel density instead of being upscaled.
+
+    Without this a Tk process is DPI-unaware, so Windows draws the window at
+    96 DPI and bitmap-stretches the result — which is exactly why text looked
+    soft at 125%/150%/200%. Declaring per-monitor awareness makes Windows hand
+    us the true pixel grid; Tk then needs `tk scaling` set to match so point
+    sizes still resolve to the right number of pixels.
+
+    Best-effort by design: on an OS without shcore, or when the host has
+    already fixed awareness for the process, we simply keep the old behaviour.
+    """
+    import ctypes
+    try:                                    # Per-Monitor v2, Windows 10+
+        # The context is a HANDLE: passing a bare -4 marshals as a 32-bit int
+        # and silently fails on 64-bit, leaving the process DPI-unaware.
+        ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+    except Exception:
+        try:                                # Per-Monitor v1, Windows 8.1+
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:
+            try:                            # System DPI, Vista+
+                ctypes.windll.user32.SetProcessDPIAware()
+            except Exception:
+                return
+
+
 def main() -> None:
+    _enable_dpi_awareness()
     _ensure_shows_folder()
     app = App()
+    try:
+        # Tk measures point sizes against this; leaving it at the 96 DPI
+        # default would make every point-sized font too small once the process
+        # is DPI-aware. Pixel-sized fonts (negative sizes) are unaffected.
+        dpi = app.winfo_fpixels("1i")
+        app.tk.call("tk", "scaling", dpi / 72.0)
+    except Exception:
+        pass
     app.mainloop()
 
 

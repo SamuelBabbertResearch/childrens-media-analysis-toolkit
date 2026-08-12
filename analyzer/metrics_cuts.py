@@ -1,24 +1,42 @@
 """
-Shot length and scene pacing metrics via PySceneDetect + dissolve detection.
+Shot length and scene pacing metrics.
 
-Hard cuts  — detected by PySceneDetect ContentDetector (abrupt luminance spike).
-Dissolves  — detected by a secondary frame-score pass that finds sustained
-             moderate-change plateaus that ContentDetector misses because no
-             single frame exceeds the spike threshold.
+Hard cuts  — found by the detector selected in the measurement registry
+             (analyzer/measurements.py): PySceneDetect ContentDetector by
+             default, or AdaptiveDetector, or TransNetV2 when installed.
+             _detect_shots() is the single dispatch point; everything
+             downstream of it is detector-independent.
+Dissolves  — a secondary frame-score pass finding sustained moderate-change
+             plateaus that frame-differencing misses because no single frame
+             exceeds the spike threshold. Experimental (measured F1 ~0.17):
+             the signal is not separable from camera motion by this method.
 
 Shot length  = duration between consecutive hard cuts.
 Scene pacing = cut rate, shot CV, rolling 30s timeline, plus optional dissolve rate.
+
+Detectors are NOT interchangeable within one corpus — TransNetV2 finds ~5-7%
+more transitions than ContentDetector, so a half-migrated index makes pacing
+incomparable across shows. Switching detectors marks cached results stale; see
+analyzer/cache.py.
 """
 
 from __future__ import annotations
 import math
 from pathlib import Path
+from typing import Any, Callable
 
 import cv2
 import numpy as np
-from scenedetect import detect, ContentDetector
+from scenedetect import detect, AdaptiveDetector, ContentDetector
 
 from .schema import ShotLengthMetrics, ScenePacingMetrics
+
+# Content-score scale used by _compute_frame_scores() and ContentDetector alike.
+# The dissolve pass is calibrated against this scale, so when a detector with an
+# unrelated parameter scale is selected (TransNetV2's threshold is a
+# probability), the dissolve pass falls back to this rather than reusing a
+# number that means something else entirely.
+CONTENT_SCALE_DEFAULT = 27.0
 
 
 # ---------------------------------------------------------------------------
@@ -202,12 +220,31 @@ def classify_cut_transitions(
         return []
 
     prev_bounds = [0.0] + list(cut_times[:-1])
-    next_bounds = list(cut_times[1:]) + [max(duration_sec, cut_times[-1] + 1.0)]
+    # Final bound is the video end, NOT max(duration, last_cut+1): the latter
+    # let a cut near the end sample past the last frame (a cut at 99.8s in a
+    # 100s video sampled ~100.3s).
+    last_bound = duration_sec if duration_sec > 0 else cut_times[-1]
+    next_bounds = list(cut_times[1:]) + [last_bound]
     results: list[dict] = []
 
     for t, pb, nb in zip(cut_times, prev_bounds, next_bounds):
-        off_b = max(min(offset_sec, (t - pb) / 2.0), 0.15)
-        off_a = max(min(offset_sec, (nb - t) / 2.0), 0.15)
+        # Stay strictly inside the adjacent shots. The 0.15s standoff avoids
+        # sampling transition frames, but must never exceed half the distance
+        # to the neighbouring cut — otherwise on shots under ~0.3s it would
+        # sample ACROSS that cut and compare the wrong pair of shots.
+        # Clamp order matters: staying inside the shot wins over the standoff.
+        half_b = max((t - pb) / 2.0, 0.0)
+        half_a = max((nb - t) / 2.0, 0.0)
+        off_b = min(max(min(offset_sec, half_b), 0.15), half_b)
+        off_a = min(max(min(offset_sec, half_a), 0.15), half_a)
+        if off_b <= 0.0 or off_a <= 0.0:
+            # No strictly-interior sample exists on one side (zero-length gap,
+            # or a cut sitting on the video boundary). Sampling exactly AT the
+            # cut would compare transition frames, so report unknown instead of
+            # inventing a similarity.
+            results.append({"timestamp_sec": round(t, 3),
+                            "similarity": None, "label": "unknown"})
+            continue
         try:
             fa = _grab_frame(cap, t - off_b)
             fb = _grab_frame(cap, t + off_a)
@@ -235,6 +272,54 @@ def classify_cut_transitions(
 # Public API
 # ---------------------------------------------------------------------------
 
+def _detect_shots(
+    video_path: Path,
+    duration_sec: float,
+    tool: str,
+    params: dict[str, Any],
+    status_cb: Callable[[str], None] | None = None,
+) -> tuple[np.ndarray, list[float]]:
+    """Run the selected shot-boundary detector.
+
+    Returns (shot durations, cut times). Every detector must produce cut times
+    on CMAT's convention — the START of each shot after the first — so the
+    downstream pacing math is detector-independent.
+
+    The PySceneDetect paths take durations straight from the scene list rather
+    than recomputing them from cut times plus the video duration. That keeps
+    existing cached numbers bit-identical: the scene list's final end timestamp
+    is frame-derived and need not equal the engine's duration probe exactly.
+    """
+    if tool == "transnetv2":
+        from .detector_transnet import detect_cuts
+        cut_times = detect_cuts(
+            video_path,
+            threshold=float(params.get("threshold", 0.5)),
+            status_cb=status_cb,
+        )
+        bounds = [0.0] + list(cut_times) + [duration_sec]
+        durations = np.array([b - a for a, b in zip(bounds, bounds[1:]) if b > a])
+        return durations, list(cut_times)
+
+    if tool == "pyscenedetect_adaptive":
+        detector = AdaptiveDetector(
+            adaptive_threshold=float(params.get("adaptive_threshold", 3.0)),
+            min_scene_len=int(params.get("min_scene_len", 15)),
+            window_width=int(params.get("window_width", 2)),
+        )
+    else:
+        detector = ContentDetector(
+            threshold=float(params.get("threshold", CONTENT_SCALE_DEFAULT))
+        )
+
+    scene_list = detect(str(video_path), detector)
+    if not scene_list:
+        return np.array([]), []
+    durations = np.array([end.seconds - start.seconds for start, end in scene_list])
+    cut_times = [start.seconds for start, _end in scene_list[1:]]
+    return durations, cut_times
+
+
 def compute_cut_metrics(
     video_path: Path,
     threshold: float,
@@ -245,6 +330,9 @@ def compute_cut_metrics(
     classify_cuts_enabled: bool = False,
     classify_offset_sec: float = 1.0,
     scene_change_similarity_threshold: float = 0.55,
+    tool: str = "pyscenedetect_content",
+    tool_params: dict[str, Any] | None = None,
+    status_cb: Callable[[str], None] | None = None,
 ) -> tuple[ShotLengthMetrics, ScenePacingMetrics]:
     """
     Detect scene cuts and return shot-length and pacing metrics.
@@ -252,6 +340,13 @@ def compute_cut_metrics(
     Args:
         video_path:           Path to the video file.
         threshold:            ContentDetector sensitivity (lower = more hard cuts).
+                              Used when tool_params is None, so existing callers
+                              keep working unchanged.
+        tool:                 Detector key from analyzer.measurements.
+        tool_params:          That detector's parameters; falls back to
+                              *threshold* on the ContentDetector path.
+        status_cb:            Optional status text callback — the neural
+                              detector takes minutes and needs to say so.
         duration_sec:         Pre-computed video duration in seconds.
         detect_dissolves:     If True, run the secondary dissolve detection pass.
         dissolve_noise_floor: Minimum content score to consider as a dissolve frame.
@@ -263,11 +358,22 @@ def compute_cut_metrics(
     Returns:
         (ShotLengthMetrics, ScenePacingMetrics)
     """
-    scene_list = detect(str(video_path), ContentDetector(threshold=threshold))
+    params = dict(tool_params) if tool_params else {"threshold": threshold}
+    durations, cut_times = _detect_shots(
+        video_path, duration_sec, tool, params, status_cb
+    )
+
+    # The dissolve pass scores frames on ContentDetector's scale, so it needs a
+    # threshold on that scale regardless of which detector found the hard cuts.
+    dissolve_hard_threshold = (
+        float(params.get("threshold", threshold))
+        if tool == "pyscenedetect_content"
+        else CONTENT_SCALE_DEFAULT
+    )
 
     duration_min = max(duration_sec / 60.0, 1e-6)
 
-    if not scene_list:
+    if durations.size == 0:
         return (
             ShotLengthMetrics(
                 mean_sec=round(duration_sec, 3),
@@ -281,9 +387,6 @@ def compute_cut_metrics(
                 timeline_cuts_per_30s=[0.0] * max(1, math.ceil(duration_sec / 30.0)),
             ),
         )
-
-    durations = np.array([end.seconds - start.seconds for start, end in scene_list])
-    cut_times = [start.seconds for start, _end in scene_list[1:]]
 
     mean_sec      = float(np.mean(durations))
     shots_per_min = len(durations) / duration_min
@@ -306,7 +409,7 @@ def compute_cut_metrics(
             frame_scores,
             hard_cut_times_sec=cut_times,
             noise_floor=dissolve_noise_floor,
-            hard_threshold=threshold,
+            hard_threshold=dissolve_hard_threshold,
             min_frames=dissolve_min_frames,
         )
         dissolves_per_min = len(dissolve_list) / duration_min

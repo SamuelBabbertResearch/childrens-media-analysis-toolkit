@@ -1,0 +1,15 @@
+{
+  "date": "2026-08-08",
+  "git_commit": "78a49ec",
+  "detections_file": "A Charlie Brown Christmas 1965__content-t27-diss_detections.csv",
+  "manual_file": "A Charlie Brown Christmas 1965_manual.csv",
+  "tolerance_sec": 2.0,
+  "window": [
+    0.0,
+    300.0
+  ],
+  "n_detections": 42,
+  "n_manual": 43,
+  "count_ratio": 0.9767,
+  "signed_relative_count_error": -0.0233
+}

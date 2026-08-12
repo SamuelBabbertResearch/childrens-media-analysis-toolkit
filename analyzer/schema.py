@@ -105,6 +105,16 @@ class EpisodeResult:
     error: str = ""             # populated if status == "failed"
     metrics: EpisodeMetrics = field(default_factory=EpisodeMetrics)
     config: dict[str, Any] = field(default_factory=dict)
+    # Hash of the measurement settings (detector, thresholds, sample rates) that
+    # produced these numbers — NOT the weights, which are re-scorable from cache.
+    # Empty on results written before fingerprinting existed; those are
+    # grandfathered rather than treated as stale. See analyzer/measurements.py.
+    measurement_fingerprint: str = ""
+    # Human-readable "measurement -> tool [status]" map, e.g.
+    # {"transitions": "PySceneDetect — ContentDetector [validated]"}. Carries the
+    # validation status into exports and reports so a number produced by an
+    # ungraded component cannot be read as if it were validated.
+    measurement_tools: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -131,6 +141,8 @@ class EpisodeResult:
             status=d.get("status", "ok"),
             error=d.get("error", ""),
             config=d.get("config", {}),
+            measurement_fingerprint=d.get("measurement_fingerprint", ""),
+            measurement_tools=d.get("measurement_tools", {}) or {},
             metrics=EpisodeMetrics(
                 shot_length=ShotLengthMetrics(**sl) if sl else ShotLengthMetrics(),
                 scene_pacing=ScenePacingMetrics(

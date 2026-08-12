@@ -1,3 +1,8 @@
+# GUI. Migrating from Tkinter (stdlib) to Qt; see CLAUDE.md "GUI migration".
+# LGPLv3 — an obligation the stdlib Tk front-end did not carry, and it adds
+# roughly 150-200 MB to a PyInstaller bundle.
+PySide6>=6.6,<7
+
 opencv-python>=4.8.0,<5
 Pillow>=10.0.0
 numpy>=1.24.0,<2

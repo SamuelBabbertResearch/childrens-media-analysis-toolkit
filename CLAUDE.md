@@ -1,191 +1,190 @@
-# Children's Media Analysis Toolkit (CMAT) — Project Reference
+# CLAUDE.md — CMAT rulebook
 
-All phases (0–5) are complete. This file documents what's built, the architecture rules,
-and gotchas to be aware of when adding new features.
-
----
-
-## Goal
-
-A desktop Windows application that analyzes MP4 episodes of children's TV shows and produces a
-**sensory-load profile** for each episode and a **cumulative profile** for a whole show. The tool
-measures formal/structural features of the video (pacing, color, motion). It does **not** issue a
-verdict on "appropriateness" — it presents transparent, labeled metrics that a person interprets.
-Every composite score must show its component parts.
+Rules only. Everything else has a home: `INDEX.md` points at it.
 
 ---
 
-## Stack (do not substitute without asking)
+## 1. What CMAT is
 
-- Language: **Python 3.11+** (tested on 3.13)
-- Cut / scene detection: **PySceneDetect**
-- Frame analysis: **OpenCV** (`opencv-python`) + **NumPy**
-- Audio metrics: **FFmpeg** (must be on PATH)
-- Aggregation / export: **pandas**
-- GUI: **Tkinter** (standard library) — plain and classic; no Qt, no web frameworks
-- Charts: **matplotlib** embedded in Tk
+**Scientific workflow software for children's media research.** It measures
+formal features of children's television — pacing, colour, motion, flashing,
+audio, language — and supports structured hand coding of what no automated
+measure can see.
 
----
+It is not a media player, a recommendation engine, or a content rater.
 
-## Architecture (non-negotiable)
+### Product principles
 
-1. **`analyzer/` package** — pure analysis engine, zero GUI imports. Each metric is an isolated,
-   independently testable function: input = video path + config, output = numbers.
-2. **`cli.py`** — runs the engine on one file or a folder, writes JSON/CSV. The GUI is a thin
-   layer over this same engine — never duplicate analysis logic in the UI.
-3. **GUI worker thread** — all analysis runs on a background thread with a progress callback.
-   The UI must never freeze.
+- **Clarity.** A researcher must be able to see exactly what the software is
+  doing. Every composite shows its component parts.
+- **Reproducibility.** A run is a record: settings fingerprinted, provenance
+  kept, results comparable across runs.
+- **Transparency.** Unvalidated measures are flagged wherever their numbers
+  appear — in the interface, in exports, and in provenance.
+- **Windows-native behaviour.** Platform conventions outrank visual ambition.
+- **Professional scientific interface.** Dense, legible, information-first.
 
----
+## 2. Non-negotiable rules
 
-## What's built (feature inventory)
+### 2.1 The stimulus-only guardrail
 
-### Analysis engine (`analyzer/`)
-- `engine.py` — per-episode analysis: shot_length, scene_pacing, color_saturation,
-  color_contrast, motion, flashing, audio (FFmpeg RMS + dynamic range), sensory_load composite
-- `batch.py` — batch runner with per-episode progress callback; skips/logs failures
-- `aggregate.py` — show-level aggregate (mean/median/stddev per metric); writes JSON + CSV
-- `cache.py` — disk cache at `<root>/.analysis/<show_key>/<episode_stem>.json`
-- `db.py` — SQLite index at `<root>/.analysis/index.db`; upsert on every analysis
-- `show_index.py` — folder discovery supporting one level of category nesting
-- `schema.py` — `EpisodeResult` and `ShowAggregate` dataclasses
+**CMAT issues no verdict.** No token, badge, column, field, preset, or export
+may report appropriateness, target audience age, educational value, or quality.
+It measures the stimulus, not the viewer.
 
-### GUI (`gui.py`)
-- **Library tab**: tree of categories → shows → episodes; `[analyzed]` label on cached episodes
-- **Index tab**: two sub-tabs (All Episodes / All Shows), sortable `ttk.Treeview` columns,
-  live filter bar, double-click to view details, Refresh Index button
-- **Results panel**: metric table with sensory-load score + all components; percentile rank
-  against indexed episodes; cuts-per-30s timeline chart (matplotlib); Export JSON/CSV/PDF buttons
-- **Toolbar**: Root folder chooser; preset combobox (re-scores instantly from cache); Settings button
-- **Settings dialog**: edit sensory-load weights and normalization ceilings per preset;
-  Apply & Re-score (instant, no re-analysis); Save as Preset / Save as Default
-- **Analysis queue**: enqueue multiple episodes; progress bar with live cut-detection pulse
-- **Episode notes**: text field per episode, saved to SQLite
-- **Compare**: Pin for Compare → Compare with Pinned (side-by-side metric table)
-- **Remove Stale**: scans index for entries whose video file no longer exists
-- **Help → About metrics**: scrollable reference with research grounding and preset guidance
+Consequences that keep coming up:
 
-### Config (`config.json`)
-Seven built-in presets: General / All Ages, Toddler (0-2), Preschool (2-5), Early Childhood (5-8),
-Tween (8-12), Animated / Cartoon, Live-Action / YouTube. Each has its own `sensory_load_weights`
-and `normalization_reference_ranges`. User can save custom presets; built-ins cannot be deleted.
+- Unusual values get a **glyph plus a legend naming the comparison set**, never
+  a colour that implies a verdict.
+- Age-named presets (`Toddler (0-2)`) are **reference ranges for studies of
+  that group**, not suitability ratings.
+- Status badges report the state of the *work* ("Analyzed"), never a property
+  of the programme.
+- `target_age_min`/`target_age_max` exist in the database from metadata
+  imports. They are never a column.
 
-### CLI (`cli.py`)
-```
-python cli.py analyze <file.mp4>          # single episode → JSON
-python cli.py analyze <show_folder>       # batch → per-episode JSON + aggregate
-python cli.py db episodes <root>          # list indexed episodes (sortable)
-python cli.py db shows <root>             # list indexed shows
-```
+### 2.2 Scientific language
 
----
+**Always correlational. Never causal.** No feature *causes* an outcome. Age,
+temperament, sensory-processing profile and viewing dose are not captured.
 
-## Folder / data convention
+**Never quote an accuracy figure without its qualifiers.** The headline is
+hard-cut F1 **0.85** (range 0.75–0.91), matched **type-agnostically within
+±2 s**, from a **PRELIMINARY single-coder pilot**. Type classification scores
+lower and is reported separately. Event-level accuracy and count accuracy are
+different claims and both must be labelled as such.
 
-```
-<root>/
-  ShowName/                  ← flat show (MP4s directly inside)
-    ep01.mp4
-  CategoryName/              ← category (no direct MP4s)
-    ShowName/                ← show inside category
-      ep01.mp4
-  .analysis/
-    ShowName/
-      ep01.json              ← cached episode result
-      aggregate.json / .csv
-    CategoryName/
-      ShowName/
-        ep01.json
-    index.db                 ← SQLite index (all analyzed episodes/shows)
-```
+**Flashing is never presented as a safety assessment.** It is a whole-frame
+luminance mean that implements neither the area threshold nor the red-flash
+criterion broadcast photosensitivity guidance specifies, and the tool is
+unvalidated. It compares episodes measured the same way. Nothing more.
 
-`show_key(root, show_dir)` returns the POSIX relative path (e.g. `"CategoryName/ShowName"`),
-used as both the cache subfolder and the DB primary key.
+**Words per minute is reported with speech density, or not at all.** WPM
+divides by *dialogue time, not runtime* — it is how fast characters speak when
+they speak, not how talkative an episode is. Alone it invites the wrong
+reading.
 
----
+**Say "sensory load" only for the composite.** Six numbers feed it —
+`cuts_per_min`, saturation mean, contrast mean, motion mean, flashing rate,
+audio RMS mean. Shot length, rhythm variability, motion peak, dynamic range,
+speech and hand-coded events are measured and reported but **not scored**.
+Name the metric when you mean the metric.
 
-## Metric definitions
+**Unvalidated measures are flagged wherever their numbers appear.** As of now
+that includes **flashing**, **scene relation** (the 0.55 similarity threshold),
+dissolves, adaptive detection, TransNetV2, Farneback motion, and Whisper
+speech. `analyzer/measurements.py` holds the statuses; `ARCHITECTURE.md` §9
+explains what each one means.
 
-- **Shot length** — PySceneDetect content detection → cut timestamps → gaps between cuts.
-  Report mean, median, shots-per-minute, count. Shorter = faster.
-- **Scene pacing** — Derived from the same cut series: cut rate (cuts/min), variability
-  (coefficient of variation = std/mean), rolling "cuts per 30s" timeline array.
-  Captures *rhythm* distinct from raw shot length.
-  Optional, config-gated extras: dissolve detection (`dissolve_detection_enabled`,
-  off by default) and cut classification (`cut_classification_enabled`, on) which
-  labels each cut within_scene vs scene_change via frame similarity ±1s across the
-  cut (Lang: related vs unrelated cuts), adding `scene_changes_per_min` and
-  `within_scene_cut_fraction`. Similarity threshold (0.55) is UNVALIDATED — do not
-  fold these into sensory_load until tuned against the hand-coded ground truth in
-  `validation/` (see VALIDATION_LOG.md).
-- **Color saturation** — Sample frames at `sample_fps` (default 2), convert to HSV, mean of
-  S channel per frame. Report mean and temporal variance.
-- **Color contrast** — Same frame sample; per-frame standard deviation of V (luminance) channel.
-  Captures visual intensity / dramatic lighting.
-- **Motion** — Normalized mean absolute frame difference between consecutive sampled frames.
-  Method is pluggable (Farneback optical flow can be swapped in). Report mean and peak.
-- **Flashing** — Count luminance-change events exceeding `flashing_luminance_threshold` between
-  sampled frames; report events per minute. Photosensitivity / overstimulation concern.
-- **Audio** — FFmpeg: RMS loudness (mean and peak) and dynamic range (dB). Folded into
-  sensory_load as a weighted component.
-- **Sensory load** — Weighted composite of normalized sub-metrics. Uses fixed reference ranges
-  (NOT per-corpus normalization) so scores are comparable across separate runs. Always output
-  both the composite score and all normalized components.
+The grounding is Huston & Wright's formal features and Lang's LC4MP; Lillard &
+Peterson (2011) and Christakis et al. (2004) are the associations usually
+cited, both correlational and both contested. Verify against primary sources
+before formal citation.
 
----
+### 2.3 Files that must never be committed
 
-## Known design decisions and gotchas
+- **`FOR_PAPER.txt`** — paper notes. Gitignored. Do not `git add -f` it, do not
+  include it in a commit, do not paste its contents into a public file, a
+  commit message, the README, or the website. If `git add -A` would stage it,
+  stop and fix the ignore rule instead.
+  **Keep it updated**: whenever work produces something the paper will need — a
+  figure, a corrected number, a methodological decision, a limitation, a
+  citation — append it without being asked. Date anything numeric, and when a
+  figure is revised keep the superseded value and say what changed; the record
+  of *why a number moved* is itself paper material.
+- **`user_prefs.json`** — contains a local absolute path.
+- **`pipelines/`** — personal project data.
 
-### Cache is path-based
-`cache_path = root / ".analysis" / show_key / f"{episode_stem}.json"`. If the user renames a
-show folder, moves it into a category, or renames episode files, the cache entry is orphaned and
-analysis appears to "disappear." The Remove Stale button finds the reverse (cache with no video).
-**Future improvement**: use a content hash (file size + duration) as the key instead of filename.
+### 2.4 Architecture
 
-### Tkinter pack order in toolbar
-`side=tk.BOTTOM` widgets (and `side=tk.RIGHT`) must be packed **before** any `expand=True`
-widget, otherwise Tkinter allocates all space to the expandable widget first and the later
-widget gets zero height/width. The root-folder label uses `expand=True`, so all right-side
-toolbar widgets are packed before it.
+1. **`analyzer/` has zero GUI imports.** Each metric is an isolated, testable
+   function: input = video path + config, output = numbers. Enforced by
+   `tests/test_engine_isolation.py`. This is what made the Qt migration a
+   presentation rewrite; do not spend it.
+2. **`cli.py` and the GUI are thin layers over the same engine.** Never
+   duplicate analysis logic in a front-end.
+3. **Analysis runs on a worker thread** with a progress callback. The
+   interface must never freeze.
+4. **One palette, one accent, in `ui/tokens.py`** — which imports no framework,
+   so both front-ends share it. Never write a literal colour into a widget.
+   Two sources of truth is how two different blues both came to mean
+   "selected".
 
-### Progress bar animation
-Use `after()` timer-based polling on a `ttk.Progressbar` in determinate mode, not
-`progressbar.start()` in indeterminate mode. The indeterminate animation freezes during
-long Python operations because it needs the event loop.
+## 3. Terminology
 
-### ttk.Combobox tooltip on Windows
-`ttk.Combobox` on Windows uses the native Win32 COMBOBOX control. Mouse events (`<Enter>`,
-`<Motion>`) route to the internal native subwindow and do NOT fire at the Tkinter widget level.
-`_WidgetTooltip` will not show on a combobox regardless of binding strategy. The preset
-tooltip text is available via Help → About metrics instead.
+The pipeline stages are the vocabulary of the whole product. Use these words in
+code, interface strings, and documents; do not invent synonyms.
 
-### DPI scaling
-Tkinter reports `winfo_screenwidth()` in logical pixels. The physical display resolution may
-differ. The `SettingsDialog` centers itself using `winfo_rootx()` / `winfo_width()`, which
-works correctly at runtime; be cautious with any hardcoded pixel sizes.
+| Term | Means |
+|---|---|
+| **Sampling** | how episodes were chosen |
+| **Selection** | the working set drawn from them |
+| **Measurement** | producing numbers — automated coding *or* hand coding |
+| **Validation** | comparing the tool against a human coder |
+| **Results** | aggregates and exports |
 
----
+Two names, and they are not interchangeable:
 
-## Research grounding (condensed)
+- **CMAT** (Children's Media Analysis Toolkit) — the software.
+- **Open Children's Media Index** — the published dataset at
+  OpenChildrensMediaIndex.org, built by `build_site.py`.
 
-The tool measures **formal features** of video (Huston & Wright framework) — content-independent
-structural attributes that trigger the **orienting response** (automatic attention reallocation
-toward novel stimuli). Lang's **LC4MP** provides the resource account: each cut/edit consumes
-finite processing capacity.
+Other terms:
 
-Per-metric literature hooks:
-- **Pacing** — Lillard & Peterson (2011, *Pediatrics*): fast-paced cartoon → immediate EF
-  decrements in 4-year-olds. Lillard et al. (2015): fantastical content may matter as much as
-  raw pace. Present pacing as an associated factor, not a cause.
-- **Motion** — Itti & Koch: high motion is a pre-attentive bottom-up attention magnet.
-- **Flashing** — Photosensitive-epilepsy guidance; 1997 broadcast incident. Clearest safety rationale.
-- **Sensory load composite** — Christakis et al. (2004, *Pediatrics*): correlational association
-  between early heavy TV exposure and later attention problems (contested; correlational only).
+- **Pipeline**, not "trial", for a workflow the user owns. A *trial* is a
+  recorded run — a named sampling plus coding pass, listed in the Trials tab.
+- **Automated coding** and **hand coding** are both measurement. Hand coding is
+  a measurement in its own right, not merely a step towards validating
+  automation.
+- Call the interface a **Classic Desktop UI**, or a **Mavericks-inspired
+  layout** when a period reference is needed. Avoid naming trademarked
+  operating systems or applications in documentation, comments, commit
+  messages, or interface strings.
 
-**Always use correlational language. Never state a feature *causes* an outcome.**
-The tool measures the stimulus, not the viewer. Age, temperament, sensory-processing profile,
-and viewing dose are not captured.
+## 4. Design constraints
 
-Full reference scaffold: Huston & Wright, Lang (LC4MP), Lillard & Peterson (2011),
-Lillard et al. (2015), Christakis et al. (2004), Itti & Koch, Anderson & Pempek,
-Goodrich/Pempek/Calvert. Verify before formal citation.
+- **The visual pipeline is a central product feature**, not decoration. It is
+  how a researcher sees what the software is doing.
+- **Not a generic AI dashboard.** No card grids, no giant headings, no modern
+  SaaS styling, no dashboard tiles.
+- **Take the mockups' surfaces; take Windows' controls and behaviours.**
+  Gradients, spacing and type from the design references; caption controls,
+  keyboard conventions, file dialogs and window management from the platform.
+- **The mockups specify styling only.** Words, columns, figures and states come
+  from the engine. Never adopt a mockup's invented label, metric, or number. If
+  a mockup shows a field the software has no data for, the field is not built.
+- **`ui/reference/*.css` is the source of the design.** Extracted verbatim from
+  the supplied mockups; consume it, never hand-edit it, never re-type values
+  out of it.
+- **Read `ui/DESIGN.md` §0 before building any screen.**
+- **An unavailable control must not look like a broken one.** Disable it and
+  say why.
+
+## 5. Session rules
+
+- **Short sessions.** When a task broadens, stop and split it — hand off
+  through the repo files, not the chat.
+- **Start by reading** `onboarding.md`, `TODO.md`, `DECISIONS.md`,
+  `LEARNINGS.md`. Do not assume context from previous chats unless it is
+  recorded in the repo.
+- **End by updating** `TODO.md` and `onboarding.md`; log any real decision in
+  `DECISIONS.md` and any failure in `LEARNINGS.md`; update `navigation.md` if
+  the structure changed.
+- **No unrequested redesigns.** A settled choice is recorded in `DECISIONS.md`
+  with its reason — read it before revisiting.
+- **No context drift.** If a change does not serve the research pipeline, it
+  does not belong.
+
+## 6. Coding constraints
+
+- **Verify, do not assert.** Run it, measure it, read the rendered output. A
+  scripted edit is not done until the new symbol is grepped and found *called*,
+  not merely imported.
+- **State what is not done.** A file that overstates progress is worse than one
+  that says nothing.
+- **Never write into the working copy's data from a test.** `Shows/`,
+  `validation/` and the pipeline documents are real research data.
+- **Do not substitute a dependency** without asking — see `STACK.md`.
+- Type sizes in the Qt front-end are **device-independent pixels**; the Tk
+  tokens are points and are marked Tk-only.
+- Qt 6 is per-monitor DPI aware by default. **Do not add `ctypes` DPI calls.**

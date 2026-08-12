@@ -933,6 +933,184 @@ content — passing 27 to transnet silently detects nothing. Use
 `--no-dissolves` with transnet: it detects gradual transitions natively, so
 CMAT's dissolve pass would double-count.
 
+## 2026-08-08 — Code-review fixes applied (all six Part A findings)
+
+1. TYPE-CORRECTNESS. `score_by_type()` now scores two ways and both are
+   written to the comparison CSV under a `scoring` column:
+     boundary — a TP means the tool flagged a transition there, whatever it
+                called it. Stratified by the HUMAN label. This is the correct
+                measure for transition RATES and the only fair one for
+                detectors that emit untyped boundaries (TransNetV2).
+     typed    — a TP additionally requires the label to match; temporal
+                matches with the wrong label become FN for the human type and
+                FP for the tool's type. This is classification performance.
+   Added `type_confusion()` (human type → tool type over matched events).
+   `aggregate_summary()` reads only the boundary rows, so the two scorings are
+   never summed together; files without the column are treated as boundary.
+2. MATCHING. Greedy nearest-unclaimed replaced with maximum-cardinality
+   matching (Kuhn's augmenting path, no new dependency — scipy is not a CMAT
+   requirement). Candidate edges are visited nearest-first so offsets stay
+   small among maximum matchings. Codex's counterexample now scores F1 1.0
+   where greedy gave 0.5.
+3. KAPPA. `_cohen_kappa()` and `_kappa_multiclass()` return None where kappa is
+   UNDEFINED (no pairs, or chance agreement = 1) instead of 0.0, which read as
+   "no agreement beyond chance" for what is actually perfect unanimity. Sweep
+   selection sorts None below any real value so it cannot win.
+4. COMPARABILITY. `manual_pacing_metrics()` no longer claims parity it did not
+   have. Engine-comparable fields (hard_cuts_per_min, mean/median_shot_sec,
+   shot_length_cv, timeline_per_30s) are now computed from HARD CUTS ONLY with
+   ceil binning, matching compute_cut_metrics(). All-transition figures are
+   renamed to inter_transition_* / timeline_all_types_per_30s and documented as
+   having no automated counterpart. The remaining edge difference (manual
+   excludes window-edge shots, the engine includes its first/last scene) is
+   now stated in the docstring rather than glossed.
+5. STANDOFF BUG. The 0.15s minimum in `classify_cut_transitions()` could exceed
+   half the distance to a neighbouring cut on shots under ~0.3s, sampling
+   ACROSS that cut. Clamp reordered so staying inside the shot always wins.
+6. DISSOLVE SCALE. Verified against PySceneDetect 0.7 source: its
+   ContentDetector uses EQUAL component weights (1.0/1.0/1.0), raw 0–255 mean
+   absolute channel differences, averaged. CMAT's dissolve score uses
+   0.28/0.45/0.27 with per-channel normalisation and a ×100 rescale — the
+   scales are NOT comparable and the shared `threshold=27` ceiling was
+   meaningless. Documented; moot in practice since the dissolve pass is now
+   superseded by TransNetV2 and the ceiling was never binding (dissolve peaks
+   sit at 4–9, far below 27).
+
+REGENERATED NUMBERS (tolerance ±2s, same windows):
+
+| run | boundary F1 | previously | typed F1 |
+|---|---|---|---|
+| CB ContentDetector | 0.753 | 0.753 | 0.612 |
+| CB TransNetV2 | 0.902 | 0.902 | 0.707 |
+| LB ContentDetector | 0.910 | 0.910 | 0.846 |
+| LB TransNetV2 | 0.942 | 0.942 | 0.890 |
+
+Boundary F1 is UNCHANGED on all four: greedy happened to find the optimal
+matching on this data, so no previously reported figure was wrong — it was
+correct by luck rather than by guarantee. It is now guaranteed.
+
+The typed column is the newly visible truth. TransNetV2's large gap
+(0.902 → 0.707) is expected and not a defect: it emits untyped boundaries, so
+every dissolve it correctly LOCATED is counted as mislabelled. That is exactly
+why both numbers must be reported, and why "hard-cut F1" was the wrong name
+for the boundary figure.
+
+Tests: 39 passed, 13 skipped.
+
+## 2026-08-08 — Second review round: three material issues fixed
+
+Codex confirmed the first-round fixes to matching, typed scoring, kappa
+handling and short-gap crossing, and found three that still blocked reliance
+on the revised claims. All confirmed by reproducing the counterexamples.
+
+1. OFFSET CLAIM WAS FALSE (and now fixed, not just retracted). Nearest-first
+   edge traversal does NOT minimise total offset — an augmenting path can
+   displace an earlier good pairing. Verified: manual (0,1) vs detections
+   (0,2) at tolerance 2 produced total offset 3 where 1 is achievable.
+   Cardinality (and therefore TP/FP/FN) was never affected, but the
+   `offset_sec` values shown in the match-detail CSV — which the coder reads
+   while annotating — were wrong. Added a swap-refinement pass after matching:
+   exchanges partners between matched pairs where that lowers total offset and
+   both stay in tolerance. Counterexample now yields offset 1.0 at full
+   cardinality.
+
+2. MANUAL SHOT LENGTHS STILL DID NOT MATCH THE ENGINE. The previous fix
+   aligned rates and timelines but left interval statistics measuring only the
+   C−1 interior gaps between C hard cuts, while compute_cut_metrics() measures
+   the C+1 PySceneDetect scenes INCLUDING both edges. This was not "slight" as
+   the docstring claimed: one cut at 10s in a 100s episode gave manual
+   mean/median/CV of 0.0 against an engine mean of 50.0. Manual shot stats are
+   now bounded by the window (or 0..duration), giving C+1 intervals; verified
+   50.0 and 33.3 against Codex's two examples. A `shot_edges_included` flag
+   reports when the span end is unknown and the figure falls back to interior
+   gaps.
+
+3. AGGREGATION AND PROVENANCE WERE UNRELIABLE.
+   - aggregate_summary() summed EVERY dated rerun, double-counting episodes and
+     over-weighting whichever was re-run most. Now keeps only the newest
+     comparison per (episode, detector-config) via new _latest_comparisons().
+   - A present-but-blank `scoring` cell was treated as boundary; now only an
+     ABSENT column means legacy-boundary, malformed values are skipped.
+   - provenance selected files by `detector_tag in filename`, which would match
+     an episode titled "Contentment" and merged different thresholds and
+     dissolve settings into one supposedly-single configuration. Replaced with
+     structural parsing (parse_comparison_name) plus per-episode dedupe.
+   - provenance published the per-type `hard_cut` boundary row, which is a
+     HYBRID: TPs stratified by the human label, FPs by the tool's label, so its
+     precision mixes denominators. Only the ALL row is a clean detector-level
+     figure; provenance now uses it.
+
+Also: type_confusion() gained a `<missed>` column and `<spurious>` row so the
+matrix is self-contained (a detector could otherwise look perfect while missing
+most of the episode). classify_cut_transitions() no longer samples past the
+final frame (the old `max(duration, last_cut+1)` bound let a cut at 99.8s in a
+100s video sample ~100.3s) and returns `unknown` where no strictly-interior
+standoff exists rather than sampling at the cut itself.
+
+PUBLISHED FIGURE CHANGED as a result — this supersedes earlier entries:
+  self-reported accuracy was F1 0.91 over "9 comparison runs"
+  it is now  F1 0.85 over 2 episodes  (ContentDetector; TransNetV2 is 0.93)
+The drop is not a regression. It comes from removing double-counted reruns and
+from quoting the clean ALL row instead of the hybrid hard_cut row. The
+reference range moved from 0.84–0.96 (hard-cut basis) to 0.75–0.91 (all coded
+transition types), which is the honest basis given the tool is scored against
+everything a human coded, not just hard cuts.
+
+Per-episode boundary/typed F1 are unchanged: CB 0.753/0.612, CB-transnet
+0.902/0.707, LB 0.910/0.846, LB-transnet 0.942/0.890.
+
+Tests: 39 passed, 13 skipped.
+
+## 2026-08-08 — Count/rate reasoning reviewed; terminology corrected
+
+Independent review of the claim that per-event F1 and cut-RATE accuracy are
+distinct estimands. Verdict: legitimate, but only framed as an estimand-specific
+calibration check, never as a substitute for event-level validation.
+
+KEY IDENTITY (verified exactly on all 9 comparison runs on disk):
+
+    predicted_count / actual_count  ==  recall / precision
+
+so recall > precision predicts an OVERCOUNT and precision > recall an
+UNDERCOUNT. This is the exact form of the pattern noted informally earlier.
+Charlie Brown: P .762, R .744 → ratio .976 (measured .977). Little Bear:
+P .947, R .877 → .926 (measured .926).
+
+WHEN CANCELLATION FAILS (both plausible in real video):
+  - Poor F1, perfect count: 50 TP / 50 FN / 50 FP → count exact, F1 = .50.
+    In the limit FP = FN = all, F1 = 0 with an exactly correct count.
+  - Good F1, large rate error: 100 TP / 0 FN / 11 FP → F1 ≈ .948 but +11%.
+    Especially likely AFTER threshold tuning, which trades precision against
+    recall and therefore moves the count in a predictable direction.
+
+TERMINOLOGY CORRECTION (supersedes earlier entries): a single episode's +3.0%
+is a signed relative count error, NOT a "bias". Bias is a property of an
+estimator across a representative held-out sample. Earlier log entries used "count
+bias" for single episodes; read those as "count error". Across episodes the
+correct terms are mean percentage error / relative bias (signed) and MAPE
+(absolute). Computer vision calls the raw difference DiC (difference in count).
+
+NOT METRIC-SHOPPING IF: pre-specified as co-primary outcomes, computed on
+held-out episodes, and reported as per-episode distributions rather than a
+single pooled figure that hides cancellation. It becomes metric-shopping if the
+favourable rate result is foregrounded while event-level failures are buried,
+or if episodes/thresholds are chosen after seeing results.
+
+IMPLEMENTED: compare_detections() now returns and records count_ratio and
+signed_relative_count_error in the comparison manifest, and the CLI prints them
+under a "Rate calibration" heading that states explicitly that it is a
+different property from the F1 above, shows the recall-vs-precision direction,
+and labels the single-episode figure an error rather than a bias.
+
+STILL TO DO for the paper: report per-episode rate errors (table or plot, not
+just pooled), stratify by production style and cut density, and give
+uncertainty intervals clustered by episode. For zero-count windows report an
+absolute count difference, since percentage error is undefined.
+
+Suggested wording: "On held-out coded windows, CMAT's boundary-detection F1 was
+X; its cut-rate ratio was Y (signed relative rate error Z%). These assess
+distinct properties: boundary localisation and aggregate rate calibration."
+
 ## Planned validation sample (fill in)
 
 | Episode | Show | Era/style | Pacing regime | Set (tuning/test) | Coded | Re-coded |

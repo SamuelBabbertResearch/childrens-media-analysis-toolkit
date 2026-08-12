@@ -23,7 +23,66 @@ not to declare what "sensory load" is.
 
 ---
 
+## Positioning against existing tools
+
+The nearest neighbours are **QualCoder**, BORIS, ELAN, Datavyu, and NVivo:
+mature qualitative-coding environments. The temptation is to compete with them
+feature for feature. That is the wrong move, and worth writing down so it does
+not get relitigated.
+
+**Why not to compete head-on.** QualCoder is a general-purpose QDA application
+— text, image, audio and video coding, hierarchical code trees, memos,
+journals, cases and attributes, co-occurrence queries, REFI-QDA exchange —
+built over roughly a decade with that as its entire goal. Reaching parity means
+years of generic qualitative infrastructure, ending as the worse choice, while
+starving the thing nothing else does.
+
+**What none of them do.** Automated measurement of formal features; validation
+of that automation against human coding on the same episodes; reproducible
+sampling with manifests; measurement fingerprints that make results
+comparable. A QualCoder user who wants to know whether their impression of a
+show's pace matches its actual cut rate has no path at all. That gap is the
+reason CMAT exists and the reason anyone cites it.
+
+**The actual defection risk is narrower than "their coding is better".** CMAT's
+A/V coding is already competitive: `gui_coding_editor.py` embeds libVLC, has a
+fast pass-1 entry bar, dropdown vocabularies bound to the parser constants, and
+autosave. The problem is that the coding *schemes* are hardcoded —
+`_TRANSITION_CHOICES` asserted against `analyzer.validation.TRANSITION_TYPES`,
+and `EVENT_TYPES` for events. Excellent for data integrity, fatal for
+adoption: a researcher coding prosocial behaviour, gender representation, or
+advertising breaks cannot express their scheme and has to leave. That is one
+contained fix, not a decade of catch-up.
+
+### Ordered response
+
+1. **User-definable codebooks.** Coding schemes become data rather than Python:
+   the researcher declares codes, categories, and allowed values, and the
+   editor, parsers, and agreement maths all read from that declaration. Keep
+   the current integrity guarantee — coded values still cannot drift from the
+   declared vocabulary — but let the vocabulary be theirs. This is the only
+   item that stops real defection.
+2. **REFI-QDA import/export.** The QDA world's interchange standard. Turns the
+   competitor into a distribution channel: code the measurement layer in CMAT,
+   hand off to QualCoder/NVivo/ATLAS.ti for thematic work. "Use both" is a
+   stronger story than "pick one", and CMAT is the only side that can produce
+   the automated measures.
+3. **Keep widening the moat** — validation, sampling, provenance, norms
+   (Priorities 2 and 4 below).
+
+### Deliberately not building
+
+Memos, journals, code co-occurrence matrices, text-document coding, image
+coding. Each is a re-implementation of something QualCoder already does better,
+and none of them is why a media researcher would choose this tool.
+
+---
+
 ## Priority 1 — Make composites genuinely customizable
+
+**Status: 1a and 1b are built** (`analyzer/measurements.py` registry, engine
+dispatch, and the Measurement Settings editor, with cache fingerprinting so a
+settings change marks affected episodes stale). **1c is not.**
 
 **This is the top development priority.** Today users can adjust *weights* and
 normalization ranges per preset. That is the shallowest of the three axes that
@@ -98,17 +157,45 @@ external criterion). See the validation log for the current state.
 
 ## Priority 3 — Correctness fixes from code review
 
-Tracked in the validation log; all affect numbers that would appear in a paper.
+**Status: all done.** Kept here as a record of what changed and why, since each
+affected numbers that would appear in a paper. Details in the validation log.
 
-- Per-type F1 is currently boundary detection stratified by human label, not
-  type classification — relabel it and report a type confusion matrix
-- Replace greedy matching with maximum-cardinality assignment
-- Manual and automated shot-length definitions differ despite a docstring
-  claiming otherwise
-- Cohen's kappa returns 0.0 where it is mathematically undefined
-- Scene-classifier sampling standoff can cross an adjacent cut on very short shots
+- ~~Per-type F1 was boundary detection stratified by human label, not type
+  classification~~ — relabelled, with a type confusion matrix reported
+- ~~Greedy matching~~ — replaced with maximum-cardinality assignment plus a
+  swap refinement that minimises total offset
+- ~~Manual and automated shot-length definitions differed despite a docstring
+  claiming otherwise~~ — manual now includes the window edges, matching the
+  engine
+- ~~Cohen's kappa returned 0.0 where it is mathematically undefined~~ — returns
+  None, and callers report "not defined"
+- ~~Scene-classifier standoff could cross an adjacent cut on very short shots~~
+  — clamped, returns `unknown` when no interior standoff exists
 
 ---
+
+## Priority 4 — The study spine
+
+Two independent first-use audits reached the same conclusion: the capabilities
+are there but the *study* that joins them is not. A researcher can find
+folders, sampling, analysis, coding, validation, and export without being able
+to tell how they relate, or protect themselves from scope mistakes.
+
+- **Cohort / study export.** One analysis-ready package — episode table, show
+  table, sample membership, metadata, protocol and fingerprint columns,
+  validation evidence, data dictionary, checksums — instead of exports scoped
+  to whatever result happens to be selected. Currently the largest gap between
+  "CMAT computed it" and "the data are in R".
+- **Sampler → run handoff.** `Send Sample to CMAT` reports routing, not
+  whether anything is running. Lock the manifest, queue, start, and record the
+  run as one continuous flow with a single run manifest tying selected files to
+  settings and outcomes.
+- **Metadata as a pre-analysis stage.** Air dates and season/episode numbers
+  determine sampling and chronology but are currently edited after analysis, so
+  longitudinal work is built on an appendix.
+- **Library import review.** Filesystem layout silently defines what a "show"
+  and a "season" are. Historical and multi-part holdings do not fit that, and
+  a registry-first import should be a first-class route, not a sampler option.
 
 ## Later
 

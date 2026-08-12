@@ -64,6 +64,17 @@ Pilot Trial Files/
 # Docs wiki (managed separately)
 docs/
 
+# Private paper notes — unpublished results and draft framings. NEVER push.
+FOR_PAPER.txt
+
+# Per-user preferences: last opened folder (an absolute local path), startup
+# window choices. config.json is versioned and shared; this is not.
+user_prefs.json
+
+# User-created pipeline documents (personal project data, not part of the app).
+# Written next to the library when a root folder is set; this is the fallback.
+pipelines/
+
 # Validation detection caches — regenerable machine outputs (the .npz are large
 # binaries); the coding, annotations, manifests, and .md docs ARE versioned.
 *_framescores.npz

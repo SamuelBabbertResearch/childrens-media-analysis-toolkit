@@ -177,27 +177,30 @@ class SamplerWindow(tk.Toplevel):
         lf = tk.LabelFrame(parent, text="1. Input", padx=6, pady=4)
         lf.pack(fill=tk.X, pady=(0, 2))
 
-        # Folder row
+        # Folder row.
+        # side=RIGHT widgets MUST be packed before the expand=True path label:
+        # Tkinter satisfies the expanding widget first and leaves the buttons
+        # zero width, which is what made Browse... invisible here.
         row = tk.Frame(lf)
         row.pack(fill=tk.X, pady=2)
         tk.Label(row, text="Entry root folder:", width=20, anchor="w").pack(side=tk.LEFT)
-        self._folder_var = tk.StringVar(value="(none)")
-        tk.Label(row, textvariable=self._folder_var, anchor="w",
-                 fg="navy", wraplength=400).pack(side=tk.LEFT, fill=tk.X, expand=True)
         tk.Button(row, text="Browse...", command=self._browse_folder,
                   padx=4).pack(side=tk.RIGHT, padx=(4, 0))
         _tip_btn(row, "entry_root").pack(side=tk.RIGHT)
+        self._folder_var = tk.StringVar(value="(none)")
+        tk.Label(row, textvariable=self._folder_var, anchor="w",
+                 fg="navy", wraplength=400).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # Registry CSV row
+        # Registry CSV row — same ordering rule.
         row2 = tk.Frame(lf)
         row2.pack(fill=tk.X, pady=2)
         tk.Label(row2, text="  or registry CSV:", width=20, anchor="w").pack(side=tk.LEFT)
-        self._csv_var = tk.StringVar(value="(none)")
-        tk.Label(row2, textvariable=self._csv_var, anchor="w",
-                 fg="navy", wraplength=400).pack(side=tk.LEFT, fill=tk.X, expand=True)
         tk.Button(row2, text="Load CSV...", command=self._load_csv,
                   padx=4).pack(side=tk.RIGHT, padx=(4, 0))
         _tip_btn(row2, "load_registry").pack(side=tk.RIGHT)
+        self._csv_var = tk.StringVar(value="(none)")
+        tk.Label(row2, textvariable=self._csv_var, anchor="w",
+                 fg="navy", wraplength=400).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # Summary label
         self._scan_summary_var = tk.StringVar(value="No episodes loaded.")
