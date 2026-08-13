@@ -5,6 +5,12 @@ Real decisions and why they were made. Bugs and mistakes belong in
 
 Format: **decision** · reason · date · what was rejected.
 
+**Companion log.** `validation/VALIDATION_LOG.md` is the *research* diary —
+kept contemporaneously since 2026-07-02, with dated coding sessions, result
+corrections, and codebook changes. Methodology decisions belong there; product
+and architecture decisions belong here. When a change is both, log it in both
+and say so.
+
 Sections: [Foundations](#foundations-june--august-2026) (chronological, how the
 project got its shape) · [Product identity](#product-identity) ·
 [Architecture](#architecture) · [Interface](#interface) ·

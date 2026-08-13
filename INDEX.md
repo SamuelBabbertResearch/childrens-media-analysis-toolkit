@@ -41,7 +41,8 @@ Retrieval table of contents. Load what the task needs; do not load everything.
 
 | Document | Covers |
 |---|---|
-| [validation/CODEBOOK.md](validation/CODEBOOK.md) | transition hand-coding definitions |
+| [validation/VALIDATION_LOG.md](validation/VALIDATION_LOG.md) | **the research diary** — dated coding sessions, result corrections, codebook changes |
+| [validation/CODEBOOK.md](validation/CODEBOOK.md) | transition hand-coding definitions, including the `other` subtypes |
 | [validation/EVENT_CODEBOOK.md](validation/EVENT_CODEBOOK.md) | fantastical-event hand-coding definitions |
 | `validation/*.csv`, `*_manifest_*.json` | hand coding and trial manifests — authoritative data a person typed |
 | `docs/wiki` | long-form documentation |

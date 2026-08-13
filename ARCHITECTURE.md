@@ -184,6 +184,36 @@ This surprises people. A show with violent volume swings and a show with
 constant loudness score identically on audio, because only `rms_mean` counts.
 Say "sensory load" when you mean the composite and name the metric otherwise.
 
+### 8.1a What the composite's shape is NOT justified by — an open gap
+
+Three choices are load-bearing and **have no recorded rationale anywhere**.
+They are listed here so nobody mistakes silence for justification, and because
+a Methods section or a reviewer will ask about each one first.
+
+1. **Why a weighted linear sum at all.** The composite is
+   `Σ(weight × normalised value)`. Nothing records why an additive model was
+   chosen over standardised z-scores, a principal component, or a factor
+   score. A linear sum assumes the components are commensurable and
+   independently additive; neither has been tested.
+2. **Why these default weights** — pacing 25%, saturation 5%, contrast 10%,
+   motion 25%, flashing 15%, audio 20%. Pacing and motion carry five times the
+   weight of saturation. That is a substantive theoretical claim about what
+   drives sensory load, and it is written down nowhere. The per-preset
+   `description` fields in `config.json` explain each preset's *emphasis*, not
+   the base weighting.
+3. **Where the ceilings came from.** `cuts_per_min` max 60, contrast max 0.35,
+   flashing max 30/min, audio RMS max 0.2. No source, derivation, or corpus is
+   recorded for any of them, and they set the scale every score sits on.
+
+The theoretical grounding is named — Huston & Wright's formal features, Lang's
+LC4MP (`CLAUDE.md` §2.2) — but **nothing maps a specific metric to a specific
+construct**, which is the step that would justify 1 and 2.
+
+Until this is written down, the composite is best described as *a configurable
+weighted index whose defaults are a working judgement*, not as an operational
+measure of a construct. That framing is honest and defensible; claiming more
+would not be. See `TODO.md`.
+
 ### 8.2 Normalization, and the ceiling that discards information
 
 ```python

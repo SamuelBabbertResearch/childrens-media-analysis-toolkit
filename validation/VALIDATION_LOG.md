@@ -15,6 +15,47 @@ Entry format:
 
 ---
 
+## 2026-08-11 — CODEBOOK: `other` subtypes given operational definitions
+
+The `other` row listed "wipes, iris transitions, whip-pan disguised cuts, page
+turns" with **no definitions**. Four named categories a coder was expected to
+recognise but that the codebook never described.
+
+Added a **Subtypes of `other`** table defining each: what it is, how to tell it
+from the thing it is most often confused with, and where to place the
+timestamp. The confusions each definition targets:
+
+- **wipe vs dissolve** — a wipe has a hard travelling edge and the shots are
+  never superimposed; a dissolve superimposes them.
+- **iris vs fade** — a fade changes the whole frame's brightness uniformly; an
+  iris has a travelling aperture edge.
+- **whip-pan cut vs camera movement** — frame-step it. A real join shows a
+  single-frame discontinuity; continuous motion is not a transition (Rule 3).
+- **page turn vs wipe** — a wipe moves an *edge* across a static image; a page
+  turn moves the *image itself*.
+
+**Why now.** These matter for this corpus specifically: irises are common in the
+1965 *A Charlie Brown Christmas* material, shaped wipes in the SpongeBob
+episodes, and page turns in storybook-framed shows. A second coder — which
+inter-rater reliability requires — had no shared definition to work from, so
+disagreement on these would have measured the codebook's vagueness rather than
+coder judgement.
+
+**Effect on already-coded episodes.** The category boundary has **not** moved:
+anything that was `other` is still `other`, and no coded row changes type by
+this edit alone. But the definitions make one prior risk visible — a
+**whip-pan disguised cut may previously have been coded `hard_cut`**, since the
+join is real and a coder not looking for the disguise would call it what it
+looks like.
+
+- [ ] **Spot-check outstanding.** Re-check the coded episodes for whip-pan
+      joins coded as `hard_cut`. Not yet done; this is the only subtype whose
+      definition could reclassify existing rows.
+
+**Codebook status.** Still DRAFT, still not frozen. This is the third mid-study
+addition (Rules 6 and 7 preceded it). Freezing before the next coding session is
+overdue — see the 2026-07-04 entry, which said the same thing.
+
 ## 2026-07-02 — Study infrastructure created
 
 - Built `validate_cuts.py` (template / export / compare / sweep / summary) and this
