@@ -4,7 +4,7 @@ Previously-on, for a session starting with zero memory. Read this, then
 `TODO.md`, then `DECISIONS.md` and `LEARNINGS.md`. `INDEX.md` points at
 everything else.
 
-**Last updated:** 2026-08-11
+**Last updated:** 2026-08-11 (end of the long UI session)
 
 ---
 
@@ -17,10 +17,10 @@ gets used. **`python cmat_qt.py` (Qt) is the replacement being built** — it ha
 all six top-level tabs but several Tk screens have no Qt equivalent at all, so
 it is not yet a substitute. Do not describe it as the current build.
 
-**Branch:** work happens on `feature/language-analysis`, which is **70 commits
-ahead of `master`** — the entire Qt port, the index dedup fix, the Trials tab
-and these documents are all on it. `master` has none of it. Whether to merge is
-an open question (`TODO.md`).
+**Branch:** work happens on `feature/language-analysis`, **pushed** and backed
+up on GitHub. It is ~75 commits ahead of `master`, whose last commit is
+2026-06-30 — and `master` is what GitHub shows visitors. Merging forward is a
+clean fast-forward and is still an open decision (`TODO.md`).
 
 | Screen | In Qt yet? | Notes |
 |---|---|---|
@@ -60,7 +60,45 @@ Six weeks, three phases. Read `DECISIONS.md` § Foundations for the detail.
    registry, separate automated and hand-coding tracks, the visual pipeline,
    and the move to Qt.
 
-## What happened last session (2026-08-10)
+## The plan agreed at the end of this session
+
+**Finish the GUI transition first, then build the new pipeline system in Qt** —
+rather than building the pipeline in the Tk build and then porting it. That is
+a deliberate ordering decision: doing it the other way means building something
+new and immediately migrating it.
+
+The order to work in, which is `TODO.md`'s order:
+
+1. **Make the pipeline a control surface** (item 7). Selecting a node shows
+   static registry text and cannot reach the screen that does the stage's work.
+   `analyzer/pipeline.py` already computes `Stage.headline`, `Stage.details`
+   and `Stage.next_action` and **nothing displays any of them**. Do this before
+   porting more screens — it changes what those screens need to expose.
+2. **Port the Language screen** (item 8) — a pipeline node that leads nowhere
+   is incoherent once nodes are clickable.
+3. Then Validate tool / Agreement (10), then the Episode Sampler (11).
+
+Everything else in `TODO.md` is real but blocks nothing: the F1 contradiction
+and the composite rationale are **paper** blockers, not code blockers.
+
+## What happened in this session (2026-08-10 → 08-11)
+
+Late additions, after the Qt port:
+
+- **Documentation layer built** — the nine files `INDEX.md` points at,
+  reconstructed from six weeks of transcripts.
+- **Three timestamp defects found and fixed in both coding editors.** libvlc's
+  `next_frame()` advances the picture but freezes the clock, and corrupts the
+  next seek. Frame-stepping is now a seek of one frame duration in both
+  `ui/player.py` and `gui_coding_editor.py`; backward stepping now works.
+  **Timestamps already collected are unaffected by the fix** — assessing them
+  is `TODO.md` item 3.
+- **Codebook `other` subtypes defined** — wipe, iris, whip-pan cut, page turn.
+- **`ARCHITECTURE.md` §8 rewritten from the metric source**, plus §8.1a naming
+  the composite's unjustified choices, §9 validation status, §10 config
+  defaults, §11 test inventory.
+
+## What happened before that (2026-08-10)
 
 A long UI session that ported the whole interface to Qt. In order:
 
