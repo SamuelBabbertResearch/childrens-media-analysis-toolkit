@@ -639,6 +639,27 @@ control is worse than an honest one.
 
 ## Data and reporting
 
+### The headline accuracy figure is the `ALL`-row boundary F1, not hard-cut only
+**Decision.** The published figure is **F1 0.85 aggregate, range 0.75–0.91**,
+type-agnostic at ±2 s, on the shipped `content-t27-diss` detector over two
+coded episodes (CB 0.753, LB 0.910; pooled 103 TP / 14 FP / 21 FN). The
+competing "0.84–0.96, aggregate ~0.91" is **superseded and deleted from the
+code comments.** TransNetV2 (0.902 / 0.942, pooled 0.928) is reported
+separately and never pooled with it.
+**Reason.** The two figures were never rival measurements of one quantity: the
+old pair is the **hard_cut-type-only** basis for the *same two runs* (0.841 and
+0.964), and its aggregate additionally double-counted reruns across mixed
+detector configs. Scoring on `ALL` is the honest basis because the tool is
+scored against everything a coder marked, not just the category it handles
+best — and it is the *lower* number. Settled by recomputing from the comparison
+CSVs on disk rather than by choosing between notes; `local_hard_cut_f1()`
+returns `('0.85', 2)`, reproducing the constants exactly.
+**Date.** Basis changed 2026-08-08; contradiction traced and closed 2026-08-14.
+**Rejected.** Quoting the higher 0.91; averaging the two detectors.
+**Both logs.** Methodology in `validation/VALIDATION_LOG.md` (2026-08-08);
+`ARCHITECTURE.md` §9 now names which runs the aggregate covers. The constants
+remain *misnamed* `REFERENCE_HARD_CUT_F1_*` — see `TODO.md` item 1.
+
 ### A show aggregate weights every episode equally
 **Decision.** Every episode counts once regardless of length, **and the choice
 is labelled on screen** rather than left to be inferred.

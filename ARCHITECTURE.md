@@ -398,6 +398,28 @@ Everything in that sentence is load-bearing:
   larger sample are outstanding.
 - Weakest on dissolve-heavy, low-contrast and visually noisy footage.
 
+**Which runs the aggregate covers** (confirmed 2026-08-14 by recomputing from
+the comparison CSVs; `local_hard_cut_f1` reproduces it):
+
+| Episode | Detector | TP | FP | FN | F1 |
+|---|---|---|---|---|---|
+| A Charlie Brown Christmas 1965 | `content-t27-diss` | 32 | 10 | 11 | 0.753 |
+| Little Bear 1x01 | `content-t27-diss` | 71 | 4 | 10 | 0.910 |
+| **pooled** | `content-t27-diss` | **103** | **14** | **21** | **0.855** |
+
+Two episodes, one detector — the shipped ContentDetector configuration. The
+range endpoints are those two episodes, not a distribution. TransNetV2
+(`transnet-t0.5-solo`) scores 0.902 / 0.942, pooled **0.928**, and is reported
+separately; the two detectors are never pooled.
+
+**The figure is misnamed.** It is scored on the `ALL` row — every transition
+type a human coded — not on `hard_cut` alone. The hard_cut-only figures for the
+same two runs are 0.841 and 0.964, and that pair is the superseded "0.84–0.96"
+reference range. Both numbers are correct; they answer different questions. The
+2026-08-08 log entry moved the published basis to `ALL` because the tool is
+scored against everything a coder marked. `REFERENCE_HARD_CUT_F1_*` and the
+prose above still carry the old name.
+
 ### Two different accuracy claims
 
 Event-level accuracy and **count** accuracy are different estimands. A detector

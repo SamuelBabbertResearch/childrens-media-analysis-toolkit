@@ -7,13 +7,22 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
 
 ## Now
 
-1. **Resolve the headline F1 contradiction.** `analyzer/provenance.py` has a
-   comment saying per-episode hard-cut F1 spanned **0.84–0.96, aggregate
-   ~0.91**, directly above constants saying **0.75–0.91, aggregate 0.85**. The
-   validation log shows runs at 0.836 and 0.964. `CLAUDE.md` and
-   `ARCHITECTURE.md` both quote the constants. This is the number the product's
-   honesty claim rests on — decide which is current, delete the other, and say
-   in `ARCHITECTURE.md` §9 which runs the aggregate covers. **Do not guess.**
+1. **Rename the headline F1 constants — they are not hard-cut figures.**
+   The 2026-08-14 recomputation settled which number is current (see
+   `DECISIONS.md`): **0.75–0.91, aggregate 0.85**, two episodes on the shipped
+   `content-t27-diss` detector, scored on the `ALL` row. What is left is the
+   misnomer that caused the contradiction in the first place —
+   `REFERENCE_HARD_CUT_F1_RANGE` / `_AGG` in `analyzer/provenance.py`,
+   `local_hard_cut_f1()`, the `"hard_cut_f1"` key in the provenance dict, and
+   the prose in `ARCHITECTURE.md` §9 and `CLAUDE.md` §2.2 all say *hard-cut*
+   for a figure scored type-agnostically across every coded transition type.
+   The genuine hard_cut-only figures are 0.841 / 0.964, so the name currently
+   points at real but *different* numbers — the worst kind of wrong name.
+   Rename to `REFERENCE_BOUNDARY_F1_*`, and grep for the shape: the
+   `"hard_cut_f1"` / `"hard_cut_f1_source"` keys go into `validation_dict()`,
+   which both front-ends write into **JSON exports** (`gui.py:2373`,
+   `ui/main_window.py:463`). Renaming them changes the export schema for files
+   already written, so it needs a migration decision, not a find-and-replace.
 
 2. **Write down why the composite is shaped as it is.** Three choices have no
    recorded rationale: why a weighted linear sum rather than z-scores or a

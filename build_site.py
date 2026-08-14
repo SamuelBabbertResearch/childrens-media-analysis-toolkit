@@ -626,8 +626,11 @@ def _build_show_page(entry: dict, agg: dict | None, episodes: list[dict], lang: 
             # claim that flashing is a deterministic measurement needing no
             # validation — which the measurement registry contradicts. Both
             # were being published. Reading the statement means the site
-            # follows automatically when TODO item 1 settles which figure is
-            # current.
+            # follows automatically. Settled 2026-08-14: the hard-coded
+            # ~0.84-0.96 was the hard_cut-type-only basis for the same two
+            # runs; the published basis is the ALL row, F1 0.85 (0.75-0.91).
+            # The site now emits that via validation_short(). Do not
+            # reintroduce a literal figure here.
             + '<p class="tbl-note"><strong>Unlike black-box tools, CMAT '
               'measures its own error rate against human coding.</strong> '
               'That validation is currently a small, single-coder pilot, so '

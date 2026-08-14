@@ -116,8 +116,9 @@ pipeline is a control surface rather than a picture. What is left is not
 porting but proving: use the Qt build for real work, then retire the Tk
 modules and decide what `master` and `README.md` should say.
 
-Everything else in `TODO.md` is real but blocks nothing: the F1 contradiction
-and the composite rationale are **paper** blockers, not code blockers.
+Everything else in `TODO.md` is real but blocks nothing. The **F1
+contradiction is now closed** (2026-08-14, see below); the composite rationale
+remains a **paper** blocker, not a code blocker.
 
 ## What happened in this session (2026-08-14)
 
@@ -187,9 +188,9 @@ defects:
    14 show pages.
 2. **A third F1 figure, also published.** `build_site.py` hard-coded
    "~0.84 … ~0.96", contradicting the constants `CLAUDE.md` quotes. It now
-   reads `validation_short()`, so the site follows automatically when
-   `TODO.md` item 1 settles which figure is current. **No number was chosen
-   here** — that decision is still yours.
+   reads `validation_short()`, so the site follows automatically.
+   **Settled 2026-08-14** — see *The F1 contradiction, closed* below. The site
+   now publishes F1 **0.85**, sourced from local validation runs.
 3. **The report's unvalidated flag never fired on real data.** It keyed off
    `measurement_tools`, which 11 of 13 cached results do not carry. It now
    falls back to the registry and says the tool selection was not recorded.
@@ -404,6 +405,46 @@ unknown. Measurement settings now reports both numbers.
   ("Language only", "New Pipeline 2"). They now say so and name the fix; relink
   them from Manage → Link to Episode Sample. Nothing measured is affected.
 
+## The F1 contradiction, closed (2026-08-14, later session)
+
+`TODO.md` item 1 — the top item, and the number the product's honesty claim
+rests on — is **resolved**, by recomputation rather than by picking a side.
+
+**What was wrong:** `analyzer/provenance.py` carried a comment quoting
+"0.84–0.96, aggregate ~0.91" directly above constants saying "0.75–0.91,
+aggregate 0.85", with no record of which pass produced either.
+
+**How it was settled:** re-scored the comparison CSVs already on disk, using
+the project's own `_latest_comparisons` / `prf` helpers. Result, for the
+shipped `content-t27-diss` detector, `ALL` row, ±2 s:
+
+| Episode | TP | FP | FN | F1 |
+|---|---|---|---|---|
+| A Charlie Brown Christmas 1965 | 32 | 10 | 11 | 0.753 |
+| Little Bear 1x01 | 71 | 4 | 10 | 0.910 |
+| **pooled** | **103** | **14** | **21** | **0.855** |
+
+That is the constants, exactly. `local_hard_cut_f1()` returns `('0.85', 2)`.
+
+**The finding that actually explains it:** the two figures were never rival
+measurements. "0.84–0.96" is the **hard_cut-type-only** basis for the *same two
+runs* (0.841 and 0.964); "0.75–0.91" is the **`ALL`-row** basis for those runs.
+Both are correct; they answer different questions. The 2026-08-08 log entry had
+already moved the published basis to `ALL` and said it superseded earlier
+entries — the code comment had simply never been updated. `LEARNINGS.md` §4
+independently records the same pooled 0.855 / 0.928.
+
+**What remains:** the constants are **misnamed**. `REFERENCE_HARD_CUT_F1_*`,
+`local_hard_cut_f1()` and the exported `"hard_cut_f1"` key all say *hard-cut*
+for a type-agnostic figure — and the hard-cut name points at real but different
+numbers (0.841 / 0.964). That is `TODO.md` item 1 now, and it touches the JSON
+export schema, so it is a migration. **The prose everywhere is already
+correct**; only the identifiers lie.
+
+Updated: `analyzer/provenance.py`, `ARCHITECTURE.md` §9 (now names which runs
+the aggregate covers), `build_site.py` comment, `DECISIONS.md`, `TODO.md`,
+`FOR_PAPER.txt`. Tests: 322 passed, 13 skipped.
+
 ## What happened before that (2026-08-10 → 08-11)
 
 Late additions, after the Qt port:
@@ -441,8 +482,11 @@ A long UI session that ported the whole interface to Qt. In order:
 
 ## What is in progress
 
-Nothing is half-finished. The working tree is clean apart from seven untracked
-root files (see `TODO.md` item 12) and this documentation set.
+Nothing is half-finished. The seven formerly-untracked root files were swept
+into the Qt-migration commit by a `git add -A` on 2026-08-14; `TODO.md` item 13
+(where each belongs — `docs/`, `ui/reference/`, or deleted) is therefore still
+open, but they are now versioned rather than at risk. Note `docs/` is
+gitignored, so "move it to `docs/`" would untrack it — decide that explicitly.
 
 ## What is blocked
 

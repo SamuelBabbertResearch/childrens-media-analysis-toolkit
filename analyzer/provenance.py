@@ -28,19 +28,28 @@ from typing import Any
 
 # Reference figures from CMAT's validation study (see validation/VALIDATION_LOG.md).
 #
-# UNRESOLVED - do not quote either figure in a paper until this is settled.
-# An earlier comment here read: "per-episode hard-cut F1 spanned 0.84
-# (dissolve-heavy 1960s cel under snowfall) to 0.96 (clean modern cel);
-# aggregate ~0.91 across coded episodes." That contradicts the constants below
-# (0.75-0.91, aggregate 0.85), and VALIDATION_LOG.md records runs at 0.836 and
-# 0.964. The constants are what CLAUDE.md and ARCHITECTURE.md quote and what the
-# interface shows, so they are treated as current - but which pass produced 0.75
-# is recorded nowhere, and that gap is the problem.
+# RESOLVED 2026-08-14 by recomputing from the comparison CSVs on disk. The
+# constants below are current. They cover TWO episodes scored against the
+# SHIPPED detector (`content-t27-diss`), ALL row, type-agnostic boundary
+# matching at +/-2s:
 #
-# Resolving it means deciding which scoring pass is authoritative, deleting the
-# other figure, and stating in ARCHITECTURE.md section 9 which runs the
-# aggregate covers. See TODO.md item 1. Guessing here would be worse than the
-# ambiguity: this is the number the product's honesty claim rests on.
+#   A Charlie Brown Christmas 1965   TP  32 FP 10 FN 11  -> F1 0.753
+#   Little Bear 1x01                 TP  71 FP  4 FN 10  -> F1 0.910
+#   pooled                           TP 103 FP 14 FN 21  -> F1 0.855
+#
+# That is the 0.75-0.91 range and the 0.85 aggregate exactly. TransNetV2
+# (`transnet-t0.5-solo`) scores 0.902 / 0.942, pooled 0.928, and is reported
+# separately - never blended into these.
+#
+# The superseded "0.84 to 0.96, aggregate ~0.91" figure was NOT a different
+# measurement of the same thing. It was the hard_cut-TYPE-ONLY basis for the
+# same two runs (CB 0.841, LB 0.964), and its aggregate additionally
+# double-counted reruns across mixed detector configs. The 2026-08-08 log entry
+# changed the published basis to the clean ALL row and says it supersedes the
+# earlier entries; this comment had simply not been updated to match.
+#
+# The name is the trap that produced the contradiction: these constants are NOT
+# hard_cut-only despite REFERENCE_HARD_CUT_F1_*. See TODO.md for the rename.
 REFERENCE_HARD_CUT_F1_RANGE = "0.75–0.91"
 REFERENCE_HARD_CUT_F1_AGG = "0.85"
 
