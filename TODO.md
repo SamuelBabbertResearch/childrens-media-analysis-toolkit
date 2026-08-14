@@ -40,14 +40,38 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
    the join as `hard_cut`. The only subtype whose new definition could
    reclassify existing rows. See `validation/VALIDATION_LOG.md` 2026-08-11.
 
-5. **Freeze the codebook.** Still DRAFT after three mid-study additions. The
+5. **Cite the transition typology, or say it is ours.** `CODEBOOK.md` defines
+   five transition types and four `other` subtypes and cites **no source for
+   any of them** — including `hard_cut` and `dissolve`. The `other` subtype
+   definitions added 2026-08-11 were written from general editing vocabulary,
+   unverified. There is also a live tension: the shot-boundary-detection
+   literature generally bins transitions as CUT vs GRADUAL, so this scheme is
+   finer-grained than the field it will be compared against, which needs
+   justifying rather than assuming. Per `CLAUDE.md` §2.2, verify against
+   primary sources before formal citation — or state plainly that the typology
+   is the study's own and give the reasoning.
+
+6. **Freeze the codebook.** Still DRAFT after three mid-study additions. The
    2026-07-04 log entry already said to freeze it before the second episode.
 
-6. **Port the Language screen.** Tk's Automated coding has a *Language*
+7. **Make the pipeline a control surface, not a picture.** This is the gap
+   between the pipeline *existing* and being *finished*. Right now selecting a
+   node shows static registry text — description, port counts, `stage_key` —
+   and there is **no way to get from a node to the screen that does its work**.
+   Two changes:
+   (a) double-clicking a node opens its tab (`NodeType.stage_key` already maps
+   the stage, so this is wiring, not new logic);
+   (b) the inspector shows the stage's **derived** state — `Stage.headline`,
+   `Stage.details` and especially `Stage.next_action`, which
+   `analyzer/pipeline.py` already computes and nothing displays.
+   Without these the pipeline cannot do the job `CLAUDE.md` §4 gives it — being
+   how a researcher sees what the software is doing.
+
+8. **Port the Language screen.** Tk's Automated coding has a *Language*
    sub-tab (Speech + Vocabulary, `gui.py` ~line 3521) with **no Qt equivalent**.
    The docs previously implied the port was complete; it is not.
 
-7. **Decide about `master`.** The branch is pushed (done 2026-08-11), so the
+9. **Decide about `master`.** The branch is pushed (done 2026-08-11), so the
    work is backed up. But `feature/language-analysis` is 71 commits ahead of
    `master`, whose last commit is 2026-06-30 — and `master` is what GitHub
    shows visitors. Merging forward is a clean fast-forward.
@@ -55,19 +79,19 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
    `README.md` needs no change on this point — it describes the Tk build
    because the Tk build *is* the software. That was checked, not assumed.
 
-8. **Port Human coding's remaining two screens.**
+10. **Port Human coding's remaining two screens.**
    *Validate tool* (tool vs. human scoring) and *Agreement* (Cohen's kappa
    between coders) are still Tk-only. Both are table screens over existing
    engine functions — `analyzer/validation.py` and
    `event_coding.inter_coder_agreement` — so no new analysis logic is needed.
    Add them as sub-views of the Human coding tab in `ui/handcoding.py`.
 
-9. **Port the Episode Sampler.**
+11. **Port the Episode Sampler.**
    The last Tk-only action. Its toolbar button in `ui/main_window.py` is
    disabled with a tooltip pointing at `python gui.py`. Engine side is
    `analyzer/sampler.py`; the Tk screen is `gui_sampler.py`.
 
-10. **Decide the startup wizard's default action.**
+12. **Decide the startup wizard's default action.**
    The wizard opens on every launch with *Create Pipeline* as the default
    button, so dismissing it with Enter creates a pipeline — this project
    accumulated several that way. Options: make Skip the default when pipelines
@@ -76,14 +100,14 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
 
 ## Ready when the above are done
 
-11. **Retire Tk modules that have reached parity.**
+13. **Retire Tk modules that have reached parity.**
    Fifteen `gui*.py` files are still on disk and both builds read the same
    project, so there is a real risk of editing the wrong one. Delete only
-   after items 6, 8 and 9 land — `gui_sampler.py`, `gui_validation.py` and
+   after items 8, 10 and 11 land — `gui_sampler.py`, `gui_validation.py` and
    `gui_handcoding.py` are still the only home of those screens. Not
    reversible in a hurry; do it deliberately.
 
-12. **Commit or remove the four untracked root files.**
+14. **Commit or remove the four untracked root files.**
    `CMAT_FIRST_TIME_UX_AUDIT.md`, `cmat_positioning_for_claude.md`,
    `GeminiPipelineSample.qss`, `preview_ui.py`. Each is either a document that
    belongs in `docs/`, a reference that belongs in `ui/reference/`, or scratch
