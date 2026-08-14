@@ -119,6 +119,31 @@ it recurred after a restart.
 of a path, normalised at the choke point.** Any new component that writes a
 path into a file is a candidate for this bug.
 
+### The video clock lies in three different ways
+**What.** The coding timer visibly stuttered — 00:01.0 → 00:01.2 → 00:01.4 →
+00:01.7 — which turned out to be the least of it. Measured on 23.976fps
+material:
+
+| | Behaviour |
+|---|---|
+| **Playing** | libvlc's clock advances in jumps of **0.25–0.5s**, not per frame. A mark made while playing can be half a second stale. |
+| **Frame stepping** | `next_frame()` advances the picture but **leaves the clock frozen** — three steps from 30.000s all still reported 30000ms. Every step was invisible to the recorded timestamp. |
+| **Seeking after a step** | The next seek is applied wrongly and **never corrects**: a seek to 45.0s landed at 40.040s and stayed there through 1.4s of polling. |
+
+**Why it mattered.** The codebook's timestamp target is **±1 second**, tightening
+to ±1.0s tolerance for fast-cut content. The playback lag alone spends half that
+budget, and the frame-step bug is silent and systematic — the coder sees the
+right frame and records a different time.
+
+**The fix.** Do not use `next_frame()`. Step by seeking one frame duration:
+`seek(position + 1/fps)`. Verified — steps land within a millisecond of the
+frame boundary, the clock follows, later seeks stay exact in both directions,
+and stepping *backwards* becomes possible, which `next_frame()` cannot do.
+
+**Avoid.** Never trust a media library's clock without measuring it. "The player
+shows the right frame" and "the API reports the right time" are different
+claims, and the gap between them is invisible from the interface.
+
 ## Reporting and correctness
 
 ### Unanalysed episodes were reported as failures

@@ -24,40 +24,50 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
    exists. See `ARCHITECTURE.md` §8.1a. **Do not invent a justification** — if
    the defaults were judgement, say so.
 
-3. **Spot-check for whip-pan cuts coded as `hard_cut`.** The codebook now
+3. **Assess the frame-step timestamp defect against the coded data.** The Tk
+   coding editor (`gui_coding_editor.py`, the one the validation study was
+   coded in) uses `next_frame()`, which does not move the clock — so any mark
+   placed after frame-stepping is early by one frame per step. Marks placed by
+   seeking or nudging are unaffected. Estimate how much stepping the coded
+   episodes involved: if routine, the timestamps are biased early and the F1
+   figures need recomputing; if rare, note it as a limitation. **Do not assume
+   either.** Then decide whether to fix the Tk editor — it is the shipping
+   software. Fixed already in `ui/player.py`; see
+   `validation/VALIDATION_LOG.md` 2026-08-11.
+
+4. **Spot-check for whip-pan cuts coded as `hard_cut`.** The codebook now
    defines whip-pan disguised cuts; a coder not looking for them may have coded
    the join as `hard_cut`. The only subtype whose new definition could
    reclassify existing rows. See `validation/VALIDATION_LOG.md` 2026-08-11.
 
-4. **Freeze the codebook.** Still DRAFT after three mid-study additions. The
+5. **Freeze the codebook.** Still DRAFT after three mid-study additions. The
    2026-07-04 log entry already said to freeze it before the second episode.
 
-5. **Port the Language screen.** Tk's Automated coding has a *Language*
+6. **Port the Language screen.** Tk's Automated coding has a *Language*
    sub-tab (Speech + Vocabulary, `gui.py` ~line 3521) with **no Qt equivalent**.
    The docs previously implied the port was complete; it is not.
 
-6. **Push the branch, and decide about `master`.** 54 commits exist **only on
-   this machine** — six weeks of work with no backup. `feature/language-analysis`
-   is 71 commits ahead of `master`, whose last commit is 2026-06-30, and
-   `master` is what GitHub shows visitors. Pushing is the urgent half; merging
-   forward is the decision.
+7. **Decide about `master`.** The branch is pushed (done 2026-08-11), so the
+   work is backed up. But `feature/language-analysis` is 71 commits ahead of
+   `master`, whose last commit is 2026-06-30 — and `master` is what GitHub
+   shows visitors. Merging forward is a clean fast-forward.
 
    `README.md` needs no change on this point — it describes the Tk build
    because the Tk build *is* the software. That was checked, not assumed.
 
-7. **Port Human coding's remaining two screens.**
+8. **Port Human coding's remaining two screens.**
    *Validate tool* (tool vs. human scoring) and *Agreement* (Cohen's kappa
    between coders) are still Tk-only. Both are table screens over existing
    engine functions — `analyzer/validation.py` and
    `event_coding.inter_coder_agreement` — so no new analysis logic is needed.
    Add them as sub-views of the Human coding tab in `ui/handcoding.py`.
 
-8. **Port the Episode Sampler.**
+9. **Port the Episode Sampler.**
    The last Tk-only action. Its toolbar button in `ui/main_window.py` is
    disabled with a tooltip pointing at `python gui.py`. Engine side is
    `analyzer/sampler.py`; the Tk screen is `gui_sampler.py`.
 
-9. **Decide the startup wizard's default action.**
+10. **Decide the startup wizard's default action.**
    The wizard opens on every launch with *Create Pipeline* as the default
    button, so dismissing it with Enter creates a pipeline — this project
    accumulated several that way. Options: make Skip the default when pipelines
@@ -66,14 +76,14 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
 
 ## Ready when the above are done
 
-10. **Retire Tk modules that have reached parity.**
+11. **Retire Tk modules that have reached parity.**
    Fifteen `gui*.py` files are still on disk and both builds read the same
    project, so there is a real risk of editing the wrong one. Delete only
-   after items 5, 7 and 8 land — `gui_sampler.py`, `gui_validation.py` and
+   after items 6, 8 and 9 land — `gui_sampler.py`, `gui_validation.py` and
    `gui_handcoding.py` are still the only home of those screens. Not
    reversible in a hurry; do it deliberately.
 
-11. **Commit or remove the four untracked root files.**
+12. **Commit or remove the four untracked root files.**
    `CMAT_FIRST_TIME_UX_AUDIT.md`, `cmat_positioning_for_claude.md`,
    `GeminiPipelineSample.qss`, `preview_ui.py`. Each is either a document that
    belongs in `docs/`, a reference that belongs in `ui/reference/`, or scratch

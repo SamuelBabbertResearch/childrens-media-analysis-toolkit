@@ -56,6 +56,47 @@ looks like.
 addition (Rules 6 and 7 preceded it). Freezing before the next coding session is
 overdue — see the 2026-07-04 entry, which said the same thing.
 
+## 2026-08-11 — Timestamp accuracy defect in the coding player (affects collected data)
+
+Investigating a stuttering timer in the Qt coding screen found three defects in
+how the video clock is read. Measured on *A Charlie Brown Christmas* (23.976fps):
+
+1. **During playback the clock is coarse** — it advances in 0.25–0.5s jumps, not
+   per frame. A mark made while playing can be up to ~0.5s stale.
+2. **Frame stepping did not move the clock at all.** `libvlc next_frame()`
+   advances the picture but leaves `get_time()` and `get_position()` frozen:
+   three steps from 30.000s all still reported 30000ms. A coder stepping to the
+   exact frame of a transition recorded the timestamp of wherever they paused.
+3. **A seek issued after frame-stepping is wrong and stays wrong** — a seek to
+   45.0s landed at 40.040s and did not correct over 1.4s of polling.
+
+**Fixed in the Qt player** (`ui/player.py`): stepping is now a seek of one frame
+duration rather than `next_frame()`. Verified — steps land within a millisecond
+of the frame boundary, later seeks are exact in both directions, and backward
+stepping now works.
+
+**NOT fixed, and this is the part that affects existing data.** The coding used
+for the validation study was done in the **Tk** editor, `gui_coding_editor.py`,
+which has the same two calls: `frame_step()` → `next_frame()` (line 254) and
+`current_time` → `get_time()` (line 270). It has defects 2 and 3.
+
+**What this does and does not imply.**
+
+- Marks placed by seeking or by the ±1s nudge buttons are **unaffected** — those
+  use `set_time`, which is exact.
+- Marks placed *after frame-stepping* are early by one frame per step
+  (0.042s each at 23.976fps). Ten steps is 0.42s — under the ±1s target, but
+  systematic and in one direction.
+- The size of the effect depends entirely on how often frame-stepping was used
+  before marking, which only the coder knows.
+
+- [ ] **Assess and decide.** Estimate how much frame-stepping the coded episodes
+      involved. If it was routine, the affected timestamps are biased early and
+      the hard-cut F1 figures should be recomputed after correction. If it was
+      rare, note it as a limitation. **Do not assume either.**
+- [ ] **Decide whether to fix the Tk editor.** It is the shipping software and
+      the only one used for real coding. Not changed here without a decision.
+
 ## 2026-07-02 — Study infrastructure created
 
 - Built `validate_cuts.py` (template / export / compare / sweep / summary) and this
