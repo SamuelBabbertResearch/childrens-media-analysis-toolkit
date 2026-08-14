@@ -75,10 +75,18 @@ duration rather than `next_frame()`. Verified — steps land within a millisecon
 of the frame boundary, later seeks are exact in both directions, and backward
 stepping now works.
 
-**NOT fixed, and this is the part that affects existing data.** The coding used
-for the validation study was done in the **Tk** editor, `gui_coding_editor.py`,
-which has the same two calls: `frame_step()` → `next_frame()` (line 254) and
-`current_time` → `get_time()` (line 270). It has defects 2 and 3.
+**Also fixed, same day, in the Tk editor** (`gui_coding_editor.py`) — the one
+the validation study was actually coded in. Same approach: stepping is a seek
+of one frame duration, and a back-step (W) is now possible alongside forward
+(E). Verified end to end on the workflow the button's own tooltip describes —
+nudge back 0.5s, frame-step forward four times, Stamp:
+
+    before the fix   stamped 29.490s  (the nudge position; the four steps were
+                     invisible to the clock)
+    after the fix    stamped 29.658s  vs 29.657s expected — within 1.2ms
+
+So the defect is closed going forward. **It does not undo timestamps already
+collected.**
 
 **What this does and does not imply.**
 

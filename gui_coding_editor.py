@@ -196,8 +196,13 @@ class VideoPane(tk.Frame):
                           command=lambda d=delta: self.jump(d))
             b.pack(side=tk.LEFT, padx=2)
             _Tip(b, tip)
+        b_back = tk.Button(ctl, text="◂ frame", width=7,
+                           command=lambda: self.frame_step(-1))
+        b_back.pack(side=tk.LEFT, padx=2)
+        _Tip(b_back, "Back exactly one frame, paused (W). Useful when you "
+                     "step past the boundary.")
         b_step = tk.Button(ctl, text="frame ▸", width=7,
-                           command=self.frame_step)
+                           command=lambda: self.frame_step(1))
         b_step.pack(side=tk.LEFT, padx=2)
         _Tip(b_step, "Advance exactly one frame, paused (E, like VLC). Use "
                      "for pinning transition boundaries: nudge back 0.5s, "
@@ -250,9 +255,36 @@ class VideoPane(tk.Frame):
         self._player.set_time(t)
         self._update_clock()
 
-    def frame_step(self) -> None:
-        self._player.next_frame()   # pauses implicitly
-        self._btn_play.config(text="▶ Play")
+    def frame_duration(self) -> float:
+        """Seconds per frame from the media's own rate; 0.0 if unknown."""
+        if getattr(self, "_fps", 0.0) <= 0:
+            try:
+                self._fps = float(self._player.get_fps() or 0.0)
+            except Exception:
+                self._fps = 0.0
+        return 1.0 / self._fps if self._fps > 0 else 0.0
+
+    def frame_step(self, frames: int = 1) -> None:
+        """Move by whole frames.
+
+        NOT libvlc's next_frame(). Measured 2026-08-11: next_frame() advances
+        the picture but leaves get_time() frozen — three steps from 30.000s
+        all still reported 30000ms — so a coder who steps to the first frame
+        of the incoming shot and then presses Stamp records the timestamp of
+        wherever they paused, silently and always early. It also corrupts the
+        next seek (a seek to 45.0s landed at 40.040s and never corrected).
+
+        Seeking one frame duration has neither problem and works backwards.
+        See validation/VALIDATION_LOG.md 2026-08-11.
+        """
+        frame = self.frame_duration()
+        if frame <= 0:
+            return
+        if self._player.is_playing():
+            self._player.pause()
+            self._btn_play.config(text="▶ Play")
+        target = max(self._player.get_time() + int(round(frames * frame * 1000)), 0)
+        self._player.set_time(target)
         self.after(60, self._update_clock)
 
     def seek_to(self, sec: float, pause: bool = True) -> None:
@@ -704,7 +736,9 @@ class CodingSheetEditor(tk.Toplevel):
         elif key == "right":
             self._video.jump(3.0)
         elif key == "e":
-            self._video.frame_step()
+            self._video.frame_step(1)
+        elif key == "w":
+            self._video.frame_step(-1)
         elif key == "s":
             self._video.stamp()
 

@@ -31,9 +31,9 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
    seeking or nudging are unaffected. Estimate how much stepping the coded
    episodes involved: if routine, the timestamps are biased early and the F1
    figures need recomputing; if rare, note it as a limitation. **Do not assume
-   either.** Then decide whether to fix the Tk editor — it is the shipping
-   software. Fixed already in `ui/player.py`; see
-   `validation/VALIDATION_LOG.md` 2026-08-11.
+   either.** The defect itself is **fixed** in both editors as of 2026-08-11,
+   so no new coding is affected; this item is only about the timestamps already
+   collected. See `validation/VALIDATION_LOG.md` 2026-08-11.
 
 4. **Spot-check for whip-pan cuts coded as `hard_cut`.** The codebook now
    defines whip-pan disguised cuts; a coder not looking for them may have coded
