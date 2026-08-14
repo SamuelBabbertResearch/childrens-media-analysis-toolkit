@@ -17,7 +17,7 @@ Retrieval table of contents. Load what the task needs; do not load everything.
 | Read | When |
 |---|---|
 | [DECISIONS.md](DECISIONS.md) | before revisiting a settled choice — the reason is recorded |
-| [LEARNINGS.md](LEARNINGS.md) | before debugging; several traps here look like new bugs |
+| [LEARNINGS.md](LEARNINGS.md) | before debugging **and before calling work finished** — it opens with the five recurring shapes of defect on this project, and how to test for each |
 | [navigation.md](navigation.md) | to find the file that owns a behaviour |
 
 ## Reference
@@ -65,6 +65,7 @@ Retrieval table of contents. Load what the task needs; do not load everything.
 | What do the tests protect? | `ARCHITECTURE.md` §11 |
 | Why is it built this way? | `DECISIONS.md` |
 | Why did this break before? | `LEARNINGS.md` |
+| How do I know this actually works? | `LEARNINGS.md` § The shape most of these share; `CLAUDE.md` §6 |
 | Which file do I edit? | `navigation.md` |
 | What is authoritative vs rebuildable? | `ARCHITECTURE.md` §2 |
 | Can I change this dependency? | `STACK.md` — ask first |

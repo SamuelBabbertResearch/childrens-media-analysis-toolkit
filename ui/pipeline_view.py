@@ -215,6 +215,7 @@ class Canvas(QGraphicsView):
     """The graph canvas: 16px grid, drag to pan, scroll to zoom."""
 
     selection_changed = Signal(object)
+    node_activated = Signal(object)          # double-click: go to the stage's screen
     connect_requested = Signal(str, str)     # src node id, dst node id
     doc_changed = Signal()
 
@@ -376,6 +377,21 @@ class Canvas(QGraphicsView):
             return
         super().mouseReleaseEvent(event)
         self.setDragMode(QGraphicsView.RubberBandDrag)
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        """Double-clicking a stage asks to open the screen that does its work.
+
+        The base class would otherwise treat this as another press and start
+        dragging the node, which is not what a double click means anywhere on
+        this platform.
+        """
+        item = self._node_item_at(event.pos())
+        if item is not None and event.button() == Qt.LeftButton:
+            item.setSelected(True)
+            self.node_activated.emit(item.node)
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
 
 
 class ZoomPill(QWidget):

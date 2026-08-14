@@ -350,6 +350,17 @@ def publish_manual_metrics(
         data = json.loads(jpath.read_text(encoding="utf-8"))
         data.setdefault("fantastical_events", {})
 
+    # "Coded and found none" and "never coded" produce identical numbers: an
+    # empty template rates out at 0 events/min just as a genuinely
+    # event-free episode does. Publishing puts that figure on the public site
+    # as a measurement, so say something before it goes — the caller decides,
+    # but not unknowingly.
+    if warn_cb and not manifest.get("n_events"):
+        warn_cb(
+            f"{stem} has ZERO coded events. Publishing records 0.0 events/min "
+            f"as a finding, which is indistinguishable from an episode nobody "
+            f"coded. Publish only if you watched it and found none.")
+
     window = manifest.get("window")
     episode_entry = {
         "episode": stem,

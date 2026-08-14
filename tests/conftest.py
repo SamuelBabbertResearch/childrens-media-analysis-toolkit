@@ -11,6 +11,8 @@ which is worse than a failure because nobody notices.
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 
@@ -32,6 +34,20 @@ def tk_root():
         root.destroy()
     except Exception:
         pass
+
+
+@pytest.fixture(scope="session")
+def qapp():
+    """One offscreen QApplication for the whole session.
+
+    Session-scoped for a harder reason than the Tk root: Qt permits exactly one
+    QApplication per process and destroying it leaves widgets pointing at freed
+    state, so it cannot be per-test. Offscreen so the suite needs no display.
+    """
+    widgets = pytest.importorskip("PySide6.QtWidgets")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    yield app
 
 
 @pytest.fixture

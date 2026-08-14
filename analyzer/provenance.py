@@ -4,8 +4,17 @@ accuracy, shown on every results view, export, and the public site.
 
 This is the claim NVivo and every other coding tool structurally cannot make:
 CMAT states how far to trust its own automated detection, measured against
-blind human coding. The statement is honest per-metric — validated, experimental,
-or "deterministic (no detection step to validate)" — never a single blanket F1.
+blind human coding. The statement is honest per-metric — validated,
+experimental, unvalidated, or "deterministic (no detection step to validate)"
+— never a single blanket F1.
+
+KEEP THIS IN STEP WITH THE REGISTRY. `analyzer/measurements.py` holds each
+tool's validation status and is the authority; `METRIC_STATUS` below is the
+prose the reader sees. When the two disagreed — flashing was described here as
+deterministic while the registry marked it unvalidated — the wrong claim went
+into every PDF, every CSV provenance sidecar and the public site, because this
+is the module all of them read. `tests/test_provenance.py` now pins them
+together.
 
 When local validation runs exist (comparison CSVs under validation/), the
 hard-cut figure is computed live from them; otherwise the reference figure from
@@ -120,11 +129,32 @@ METRIC_STATUS: dict[str, dict[str, str]] = {
         "status": "experimental",
         "note": "similarity threshold not yet validated against human labels",
     },
-    "color_motion_flashing_audio": {
-        "label": "Color, motion, flashing, audio",
+    "color_motion_audio": {
+        "label": "Color, motion, audio",
         "status": "deterministic",
         "note": "direct signal measurements — no detection/classification step "
-                "to validate",
+                "to validate. Motion is deterministic with the shipped "
+                "frame-differencing tool; the optional Farneback optical-flow "
+                "tool is unvalidated",
+    },
+    # Flashing was lumped in with colour and audio as "deterministic — no
+    # detection step to validate". The COMPUTATION is deterministic, but that
+    # phrasing claims the measure needs no validation, and this one does: it
+    # is a whole-frame luminance mean that implements neither the area
+    # threshold nor the red-flash criterion broadcast photosensitivity
+    # guidance specifies. `analyzer/measurements.py` marks it UNVALIDATED and
+    # `CLAUDE.md` §2.2 names it as such; this module feeds every PDF, every
+    # CSV provenance sidecar and the public site, so the mismatch was
+    # published rather than merely internal.
+    "flashing": {
+        "label": "Flashing",
+        "status": "unvalidated",
+        "note": "a whole-frame luminance mean, never graded against human "
+                "coding. It implements NEITHER the area threshold NOR the "
+                "red-flash criterion that broadcast photosensitivity guidance "
+                "specifies, so it is not a safety assessment and must not be "
+                "read as one. It compares episodes measured the same way — "
+                "nothing more",
     },
     "fantastical_events": {
         "label": "Fantastical events",
@@ -150,8 +180,9 @@ def validation_short(validation_dir: Path | None = None) -> str:
                 f"figure the pacing RATE depends on; type classification is "
                 f"scored separately and is lower. Accuracy is "
                 f"content-dependent. Dissolve/scene-change detection "
-                f"experimental; color/motion/flashing/audio are deterministic "
-                f"measurements.")
+                f"experimental. Colour, motion and audio are deterministic "
+                f"measurements; FLASHING is unvalidated and is not a safety "
+                f"assessment.")
     return (f"Detection accuracy (preliminary): transition-BOUNDARY detection "
             f"on human-coded hard cuts — whether a transition was found there, "
             f"not whether it was labelled correctly — agreed with human coding "
@@ -160,8 +191,9 @@ def validation_short(validation_dir: Path | None = None) -> str:
             f"footage. Single-coder pilot; larger sample and inter-rater "
             f"reliability in progress. Type classification is scored "
             f"separately and is lower. Dissolve/scene-change detection "
-            f"experimental; color/motion/flashing/audio are deterministic "
-            f"measurements.")
+            f"experimental. Colour, motion and audio are deterministic "
+            f"measurements; FLASHING is unvalidated and is not a safety "
+            f"assessment.")
 
 
 def validation_statement(validation_dir: Path | None = None) -> str:
@@ -182,8 +214,12 @@ def validation_statement(validation_dir: Path | None = None) -> str:
         "on dissolve-heavy / low-contrast / visually noisy footage.\n"
         "  • Dissolve detection & within-scene/scene-change classification: "
         "EXPERIMENTAL, not yet validated — exploratory only.\n"
-        "  • Color, motion, flashing, audio: deterministic signal measurements "
-        "(no detection step to validate).\n"
+        "  • Colour, motion, audio: deterministic signal measurements (no "
+        "detection step to validate).\n"
+        "  • Flashing: UNVALIDATED. A whole-frame luminance mean that "
+        "implements neither the area threshold nor the red-flash criterion "
+        "broadcast photosensitivity guidance specifies. It is NOT a safety "
+        "assessment; it compares episodes measured the same way.\n"
         "  • Fantastical events: human-coded (the tool structures coding, it "
         "does not detect fantasy)."
     )

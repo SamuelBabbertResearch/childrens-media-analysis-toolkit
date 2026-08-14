@@ -1,0 +1,6 @@
+{
+  "enabledPlugins": {
+    "diagram-design@diagram-design": true,
+    "claude-md-management@claude-plugins-official": true
+  }
+}

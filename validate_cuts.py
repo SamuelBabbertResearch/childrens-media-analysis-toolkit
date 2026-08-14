@@ -201,13 +201,36 @@ def cmd_sweep(args: argparse.Namespace) -> None:
 
 
 def cmd_summary(args: argparse.Namespace) -> None:
-    res = aggregate_summary(Path(args.directory) if args.directory else None)
-    if not res["n_files"]:
-        sys.exit(f"No *_comparison_*.csv files found.")
-    print(f"\nAggregating {res['n_files']} comparison file(s):\n")
-    for cf in res["files"]:
-        print(f"  {cf.name}")
-    _print_score_table(res["rows"])
+    """One table PER DETECTOR, not one table across all of them.
+
+    Summing ContentDetector and TransNetV2 runs over the same episodes gave a
+    single figure describing neither — 0.891, against 0.855 and 0.928 for the
+    two detectors that actually exist.
+    """
+    directory = Path(args.directory) if args.directory else None
+    wanted = getattr(args, "detector", None)
+    probe = aggregate_summary(directory, detector_tag=wanted)
+    if not probe["n_files"] and not probe["detector_tags"]:
+        sys.exit("No *_comparison_*.csv files found.")
+
+    tags = [wanted] if wanted else probe["detector_tags"]
+    if wanted and wanted not in probe["detector_tags"]:
+        sys.exit(f"No comparisons for detector {wanted!r}. "
+                 f"On disk: {', '.join(probe['detector_tags'])}")
+
+    for tag in tags:
+        res = aggregate_summary(directory, detector_tag=tag)
+        if not res["n_files"]:
+            continue
+        print(f"\nDetector: {tag}   "
+              f"({res['n_files']} comparison file(s), latest per episode)\n")
+        for cf in res["files"]:
+            print(f"  {cf.name}")
+        _print_score_table(res["rows"])
+    if len(tags) > 1:
+        print("\nThese are separate detectors and their scores are NOT "
+              "combined: a figure averaged across configurations describes no "
+              "detector you can actually run.")
 
 
 def cmd_classify(args: argparse.Namespace) -> None:
@@ -341,6 +364,9 @@ def main() -> None:
 
     p_sum = sub.add_parser("summary", help="Aggregate comparison CSVs across episodes")
     p_sum.add_argument("directory", nargs="?", default=None)
+    p_sum.add_argument("--detector", default=None,
+                       help="Only this detector config, e.g. content-t27-diss. "
+                            "Default: one table per detector found.")
 
     p_cls = sub.add_parser("classify",
                            help="Label each hard cut within_scene vs "

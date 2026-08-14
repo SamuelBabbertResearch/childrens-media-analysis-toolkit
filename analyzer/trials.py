@@ -27,6 +27,25 @@ from .config_loader import _base_dir
 from .validation import get_validation_dir
 
 
+def _detector_tag(data: dict, manifest_path: Path) -> str:
+    """The detector configuration a comparison graded, e.g. "content-t27-diss".
+
+    Read from the detections filename the manifest records, falling back to the
+    manifest's own name. Both encode it as `<episode>__<tag>_...`.
+    """
+    for candidate in (data.get("detections_file"), manifest_path.name):
+        if not candidate:
+            continue
+        stem = Path(str(candidate)).stem
+        for suffix in ("_detections", "_comparison"):
+            if suffix in stem:
+                stem = stem.split(suffix)[0]
+                break
+        if "__" in stem:
+            return stem.split("__", 1)[1]
+    return "unrecorded"
+
+
 def _read_json(path: Path) -> dict | None:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -180,6 +199,12 @@ def discover_trials(
                 "kind": "transition_validation",
                 "window": _fmt_window(data.get("window")),
                 "result": _comparison_result(mf),
+                # WHICH DETECTOR produced this. Without it the registry lists
+                # two runs of the same episode on the same date with different
+                # F1s and no way to tell them apart — 0.91 from ContentDetector
+                # and 0.942 from TransNetV2 read as a contradiction rather than
+                # a comparison. The tag was in the filename all along.
+                "detector": _detector_tag(data, mf),
                 "detail": (f"±{data.get('tolerance_sec','?')}s tolerance · "
                            f"{data.get('n_manual','?')} manual vs "
                            f"{data.get('n_detections','?')} detected"),

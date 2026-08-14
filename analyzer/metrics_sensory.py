@@ -32,6 +32,38 @@ def _normalize(value: float, ref: dict[str, float]) -> float:
     return _clamp01((value - lo) / (hi - lo))
 
 
+VISUAL_KEYS = ["pacing", "saturation", "color_contrast", "motion",
+               "flashing"]
+
+
+def effective_weights(config: dict[str, Any],
+                      audio_available: bool) -> dict[str, float]:
+    """The weights actually used to produce a score, audio absence included.
+
+    When an episode has no audio track its weight is redistributed
+    proportionally across the visual metrics, so the nominal 25/5/10/25/15/20
+    in config.json is NOT what produced the number — pacing's 25% becomes
+    31.25%. Anything DISPLAYING a weight or a contribution has to use these,
+    or it shows a breakdown that does not add up to the score printed above
+    it. That was a 0.057 discrepancy on a silent episode, in both the report
+    table and the stacked chart whose bar height claims to BE the composite.
+
+    Exposed here rather than recomputed in the interface: `cli.py` and the GUI
+    are thin layers over one engine, and redistribution is engine arithmetic.
+    """
+    weights = dict(config.get("sensory_load_weights", {}))
+    audio_weight = weights.get("audio", 0.0)
+    if audio_available or audio_weight <= 0:
+        return weights
+    visual_sum = sum(weights.get(k, 0.0) for k in VISUAL_KEYS)
+    if visual_sum > 0:
+        for key in VISUAL_KEYS:
+            weights[key] = (weights.get(key, 0.0)
+                            + audio_weight * (weights.get(key, 0.0) / visual_sum))
+    weights["audio"] = 0.0
+    return weights
+
+
 def compute_sensory_load(
     pacing: ScenePacingMetrics,
     color: ColorSaturationMetrics,
@@ -62,14 +94,9 @@ def compute_sensory_load(
     else:
         n_audio = 0.0
         audio_available = False
-        # Redistribute the audio weight proportionally among visual metrics
-        if audio_weight > 0:
-            visual_keys = ["pacing", "saturation", "color_contrast", "motion", "flashing"]
-            visual_sum = sum(w.get(k, 0.0) for k in visual_keys)
-            if visual_sum > 0:
-                for k in visual_keys:
-                    w[k] = w.get(k, 0.0) + audio_weight * (w.get(k, 0.0) / visual_sum)
-            w["audio"] = 0.0
+    # One implementation of the redistribution, shared with whatever displays
+    # the breakdown — see effective_weights().
+    w = effective_weights(config, audio_available)
 
     score = (
         w.get("pacing",        0.0) * n_pacing

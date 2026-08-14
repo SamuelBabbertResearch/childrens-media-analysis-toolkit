@@ -7,6 +7,79 @@ Format: **what went wrong** · why · how to avoid it.
 
 ---
 
+## The shape most of these share
+
+Read this before adding to the list, and before believing a piece of work is
+finished.
+
+Nineteen defects were found in four audit passes on 2026-08-14, two of them
+already published to OpenChildrensMediaIndex.org. They look unrelated — a
+crash, a sampler, an F1, a startup cost — but almost all of them are one of
+five shapes, and every one was **invisible from the interface**. The control
+was present, the button worked, the tests passed, and the record described the
+design that was *asked for* rather than the one that ran.
+
+**1. The display and the calculation disagreed.**
+The composite is derived. Four separate readers took the stored copy instead
+of re-deriving it, so the Library, the CLI, the index backfill and the batch
+runner gave four answers for one episode. The report and the chart read
+nominal weights while the engine used redistributed ones, so a silent
+episode's breakdown was 0.057 short of the score printed above it.
+*Test:* does the breakdown add up to the headline?
+
+**2. The control existed; the data path did not.**
+"Stratify by era" was offered for months while `Episode.extra` was populated by
+nothing. `load_registry_csv` dropped every column it did not recognise, so the
+documented "group by any column" could never work.
+*Test:* run it and look at the strata, not at the dropdown.
+
+**3. A claim was restated instead of read.**
+`provenance.py` calls itself the single source of truth for accuracy;
+`build_site.py` hard-coded its own F1 and its own validation statuses, and
+published both. The registry marks flashing unvalidated; provenance called it
+deterministic. Five surfaces each decided independently whether to flag
+unvalidated measures and most decided "not at all".
+*Test:* grep for the claim's text, not for the function name.
+
+**4. Two things were averaged that are not comparable.**
+"AGGREGATE F1 0.891" was ContentDetector and TransNetV2 summed over the same
+episodes; the real figures are 0.855 and 0.928. `local_hard_cut_f1` guards
+against exactly this and says so in its docstring — its neighbour in the same
+module did not.
+*Test:* when one function in a module guards against a mistake, that guard is
+a specification for its neighbours.
+
+**5. The same one-line mistake, repeated.**
+Because each site was written by reasoning locally, and each was correct on
+its own reading. Fixing the first instance is the least useful response.
+*Test:* grep for the shape before fixing the instance.
+
+### Why they survived
+
+- **Verification stopped at "it ran".** Rendering, passing tests and a
+  responsive button are all compatible with a wrong number.
+- **The port was audited by SCREEN.** That finds a missing screen. It cannot
+  find a control whose data path is empty, and it scores a feature broken in
+  *both* builds as present in both.
+- **The tests were written alongside the code, so they shared its blind
+  spots.** The suite went 221 → 315 passing while every one of these was
+  live. The tests that actually caught things assert on artefacts — drawn
+  strata, manifest notes, whether a breakdown reconciles — not on which
+  widgets exist.
+- **Completion was declared from the builder's side** three times: "migration
+  complete", then "feature gap closed", then "closed" again. Each time it
+  meant "I finished what I set out to build", which is a different claim.
+
+### What to do instead
+
+Run the thing and read what it produced. For anything that makes a research
+artefact — a sample, an export, a report, a published page — the test is the
+artefact. `tests/test_eras.py`, `tests/test_provenance.py`,
+`tests/test_composite_display.py` and `tests/test_derived_consistency.py` are
+written that way and exist because nothing else caught these.
+
+---
+
 ## Measurement and calibration
 
 These are the recurring ways the numbers have been wrong. Every one was caught
@@ -108,8 +181,9 @@ them under the **parent** name, so the index shows one show with a season
 number.
 **Avoid.** Know which layer you are looking at. Selecting `Arthur` in the
 Library reporting "groups shows" is the tree layer; the Index showing one
-`Arthur` is the database layer. A cross-season aggregate in the Qt Library does
-not exist yet — the Tk build's **Full Series Aggregate** is the only one.
+`Arthur` is the database layer. **Full Series Aggregate** is the cross-season
+view, and as of 2026-08-14 it exists in both builds — it goes around the tree
+layer entirely, aggregating every cached episode under the root.
 
 ### The sampler's CSV paths did not match the cache's keys
 **What.** Loading a sampling template failed to find already-analysed episodes;
@@ -181,6 +255,263 @@ before playback has actually begun does nothing. Every mark would have been late
 by however long the coder took to notice.
 **Avoid.** `set_pause(1)`, retried until the player reports stopped. Measure the
 timestamp rather than watching the window: the defect was invisible on screen.
+
+### A PySide6 wrapper can read as "already deleted" while the object is fine
+**What.** `menubar.actions()[0].menu()` raised "Internal C++ object
+(QMenu) already deleted", which looked like the File menu had been destroyed —
+a serious bug, since it would mean the menu stopped working after startup.
+**Why.** It had not. `actions()` returns a temporary Python list of QAction
+wrappers; indexing it and immediately calling `.menu()` lets the temporary go
+before the returned QMenu wrapper is used. Holding the list first —
+`acts = list(bar.actions())` — works, and the menu had all 14 items.
+**Avoid.** Before believing a Qt lifetime error, re-test holding every
+intermediate wrapper in a named variable. Chasing this one also produced a
+*wrong* fix — stashing the QMenu on `self`, which creates a second wrapper
+that really does go stale when the bar is reparented. The wrong fix reproduced
+the same error, which made it look confirmed.
+
+### Dropping a QThread reference inside its own signal handler crashes Qt
+**What.** Three new screens — Vocabulary, Validate tool, Optional tools — set
+`self._worker = None` in the slot connected to that worker's finished signal.
+**Why.** That drops the last Python reference to the QThread while it is still
+inside `emit`, so the C++ object is freed underneath itself. The process dies
+with **no traceback and no Python exception** — it just disappears, which is
+why it does not look like a code bug at all.
+**Avoid.** Never rebind or delete a QThread from a slot connected to it. Keep
+the reference and let `isRunning()` answer "is it busy" — the pattern
+`AutomatedTab` already used correctly, and which the three new screens were
+written without looking at. When adding a worker, copy the existing one.
+
+### An import at module scope is a cost paid on every launch
+**What.** `python cmat_qt.py` took 2.4s to import its main window before
+drawing anything, and Measurement settings took **4.2 seconds** to open.
+**Why.** Three module-level imports of heavy libraries, none of them needed to
+start:
+
+| Cost | Import | Reached from | Needed for |
+|---|---|---|---|
+| ~1.13s | `pandas` in `analyzer/aggregate.py` | `compute_show_aggregate`, used building the Library | CSV export only |
+| ~0.64s | `scenedetect` in `metrics_cuts.py` and `validation.py` | `analyzer.pipeline` -> `trials` -> `validation` | running detection only |
+| ~3.6s | PyTorch, via `OptionalTool.is_available()` calling `import_module` | greying out a combo-box entry | never, for that question |
+
+**Avoid.** A module that the interface touches at startup must not import a
+heavy dependency at module scope — put it inside the function that needs it,
+as `analyzer/validation.py` already did for the optional TransNetV2 detector.
+And to ask "is this package installed", use `importlib.util.find_spec`, which
+answers without executing the package. Measured after: import 2362ms -> 433ms,
+Measurement settings 4179ms -> 93ms.
+
+### An aggregate F1 was averaged across two different detectors
+**What.** `validate_cuts.py summary` and the Validate tool screen both showed
+"AGGREGATE F1 0.891" over four comparison files. Those four were two episodes
+scored twice — once with ContentDetector, once with TransNetV2. The real
+figures are 0.855 and 0.928; 0.891 describes no detector that exists. It also
+hid the most interesting number in the set: dissolve F1 is **0.133** for the
+shipped detector and **1.000** for TransNetV2.
+**Why.** `provenance.local_hard_cut_f1` filters by detector tag and its
+docstring explains exactly why — "aggregating across detectors would blend …
+into one meaningless average". `aggregate_summary`, written for the same data,
+did not, and it is what the CLI and the interface display.
+**Avoid.** When one function in a module already guards against a mistake, the
+guard is a specification for its neighbours, not a local detail. `aggregate_summary`
+now takes a `detector_tag` and returns which one it used, so a caller cannot
+show the number without being able to say what it is OF.
+
+### A maintenance script pointed at a stale copy of the data
+**What.** `patch_speech_cache.py` set `ROOT = Path(__file__).parent` and looked
+for `<project>/.analysis`. That stopped being the library when the shows moved
+into `Shows/`. Both directories exist here — 82 cached episodes in the stale
+one, 28 in the live one — so the script ran happily against data the
+application never reads, and reported success.
+**Also, on process:** I ran it before inspecting it. It is additive and did no
+damage, but "look at the target before writing" applies to running someone
+else's script as much as to a delete.
+**Avoid.** A script that mutates research data should name the directory it is
+about to touch, take the root as an argument, default to the same remembered
+root the interface uses, and offer `--dry-run`. It now does all four.
+
+### The same one-line mistake, in four independent places
+**What.** Reading a cached episode without re-deriving its composite. Found in
+the Qt Library (fixed first), then `cli.py _analyze_single` (printed the
+cached JSON verbatim), `cli.py _db_backfill` (wrote stale scores into the
+index — it would have silently undone the index re-score fix), and
+`analyzer/batch.py`'s cached-episode skip (so a batch that re-analysed some
+episodes and skipped others mixed two scoring scales in one run).
+**Why.** Each site was written at a different time by someone reasoning
+locally, and each is correct on its own reading: "load the cache, use it". The
+rule that makes it wrong — the composite is derived, so a stored one is a
+cache of a derivation — lived only in a comment in `metrics_sensory.py`.
+**Avoid.** When a rule has to hold at every call site, put it IN the call, not
+in a comment near it. `analyzer.cache.load_scored()` is now the only sanctioned
+way to read a cached result, and a test enumerates every reader. Fixing one
+instance of a repeated mistake is the least useful response to finding it —
+grep for the shape.
+
+### A derived value stored in two places drifted between them
+**What.** After "Apply & Re-score" the Library showed 0.107 for an episode and
+the Index showed 0.132, with nothing marking either as stale.
+**Why.** The composite is derived, and the SQLite index stores it. Fixing the
+Library to re-score on read — correct in itself — made the two disagree,
+because nothing rewrote the stored copy. The Index is the cross-episode
+comparison screen, so its Tukey outlier fences were also being computed over
+scores from a mix of weightings. The Tk build has `_backfill_index` for
+exactly this; the Qt port never got it.
+**Avoid.** When a derived value is cached anywhere, list every cache before
+changing how it is derived. Fixing one reader is not fixing the derivation.
+
+### Two trials of one episode looked like a contradiction
+**What.** The Trials tab listed the same episode on the same date with F1 0.91
+and F1 0.942, and no way to tell them apart.
+**Why.** They graded DIFFERENT DETECTORS — ContentDetector and TransNetV2. The
+tag was in the manifest filename and in the manifest's `detections_file` all
+along; `discover_trials` never extracted it, so the registry whose whole
+purpose is answering "where did this number come from?" could not answer it.
+**Avoid.** When two records can legitimately disagree, the field that explains
+the disagreement is not optional metadata — it is the point of the record.
+
+### The provenance module contradicted the registry, and it was published
+**What.** `analyzer/provenance.py` described flashing as a "deterministic
+signal measurement — no detection step to validate", while
+`analyzer/measurements.py` marked it UNVALIDATED and `CLAUDE.md` §2.2 names it
+explicitly as unvalidated and *not a safety assessment*. Provenance is read by
+the PDF export, the CSV sidecar, the JSON export and the public site, so the
+wrong claim was not internal — it was published on 14 show pages.
+**Also found.** `build_site.py` hard-coded a THIRD variant of the headline F1
+("~0.84 … ~0.96") that contradicts the constants `CLAUDE.md` and
+`ARCHITECTURE.md` quote — the very contradiction `TODO.md` item 1 exists to
+settle — while the provenance docstring called itself "the single source of
+truth … shown on every results view, export, and the public site".
+**Why.** Prose describing status was written in one module and the machine
+status in another, with nothing tying them. A module that CLAIMS to be the
+single source of truth is not one until the other places actually read it.
+**Avoid.** Derive the prose from the registry, and make the consumers call the
+source rather than restate it. `tests/test_provenance.py` now fails if a tool
+the registry marks unvalidated is described here as deterministic, and if
+`build_site.py` restates a figure instead of reading it.
+
+### The composite's own breakdown did not add up to the composite
+**What.** On an episode with no audio track, the report's contribution column
+summed to 0.2265 under a headline score of 0.2832 — and the stacked chart,
+whose docstring promises "the bar's height is the composite", was short by the
+same amount.
+**Why.** `compute_sensory_load` redistributes audio's weight across the visual
+metrics when there is no audio, but it redistributes into a LOCAL copy and
+returns only the score and the normalised components. The report and the chart
+read the nominal weights from `config`, so they explained the number with
+weights that had not produced it.
+**Avoid.** If a calculation adjusts its own inputs, the adjusted inputs are
+part of the result — expose them. `effective_weights()` is now the single
+implementation, called by the engine to compute and by the interface to
+explain, and a test asserts the breakdown reconciles in both the audio and
+no-audio cases.
+
+### Auditing by output found four more defects in one pass
+**What.** Told to re-check the sampler by running it rather than by comparing
+controls, one afternoon turned up four:
+
+1. **`sort_key` crashed on a partial timeline.** It returned `(season,
+   air_date)` for dated episodes and `(season, episode)` for undated ones, so
+   sorting a mixed list raised `TypeError: '<' not supported between int and
+   str`. The normal case after a metadata import is *some* episodes dated —
+   and the crash only became reachable because the era fix had just started
+   filling air dates.
+2. **A silent fallback where a date was missing.** With no dates at all,
+   "order by air date" quietly became episode order while the manifest still
+   recorded `sort_col: air_date`.
+3. **`load_registry_csv` dropped every column it did not recognise**, so the
+   documented `stratify_by = any column in Episode.extra` could never work
+   from a registry.
+4. **A derived era overwrote a declared one.** Once registry columns were
+   read, the date-range pass ran over the top of them and collapsed eight
+   correctly-labelled episodes into one `(no era)` stratum.
+
+**Why they survived so long.** Every one of them is invisible from the
+interface: the control is present, the button works, and the manifest still
+describes the design that was *asked for* rather than the one that ran. Only
+looking at the drawn strata shows the difference.
+**Avoid.** For anything producing a research artefact, the test is the
+artefact: draw the sample and read the strata, export the CSV and read the
+columns. Write the test at that level too — `tests/test_eras.py` asserts on
+`manifest.strata`, not on which widgets exist.
+
+### A control that exists is not a feature that works
+**What.** The Tk sampler offers "By era / custom column" and a column-name
+box. Porting the screen, that option was dropped as "season or nothing" — and
+the omission was only caught when it was pointed out. Checking properly then
+showed the Tk control had never worked either: `Episode.extra` is populated by
+neither `scan_entry_root` nor `load_registry_csv`, and a folder scan leaves
+`air_date` as None, so stratifying by any column put every episode in one
+`(none)` stratum. The design line still read "stratified", and the manifest
+still recorded a stratified design.
+**Why.** The audit that found the other sixteen gaps compared MENUS AND
+BUTTONS between the two builds. That finds missing controls; it cannot find a
+control whose data path is empty, and it scores a broken feature as present on
+both sides.
+**Avoid.** For anything that produces a research artefact, check the OUTPUT,
+not the control: draw the sample and look at the strata. A feature is working
+when its result is right, and "the button is there in both builds" is not
+evidence about the result. The same question is worth asking of every other
+`Episode.extra` consumer and every field a folder scan cannot fill.
+
+### "Every screen is ported" was true and still left sixteen gaps
+**What.** The Qt migration was reported complete on the basis that every Tk
+SCREEN had a Qt equivalent. Asked to keep going, an audit of `gui.py`'s menus
+and buttons against `ui/` found sixteen missing FEATURES — including all three
+exports, both settings axes' second half, the optional-tools registry, episode
+notes and metadata, and the analysis queue.
+**Why.** The migration was tracked by screen because the screens were the
+visible unit of work. Menu commands, per-panel buttons and dialogs opened from
+other dialogs are not screens, so they were never on the list — and a
+tab-by-tab comparison shows all six tabs present and reveals none of them.
+**Avoid.** Track a port by the ENTRY POINTS the old build offers — every menu
+item, every button, every dialog — not by the screens it draws. The audit that
+found these was one `grep` over `add_command` and `tk.Button` and took a
+minute; it should have been the first thing done, not the fourteenth.
+
+### A staleness count can be honest and still mislead
+**What.** Measurement settings reported "1 cached episode would become stale"
+for a threshold change, in a working copy with 12 cached episodes.
+**Why.** Correct, and incomplete. `analyzer.cache.is_stale` GRANDFATHERS
+results written before measurement fingerprinting existed — with no
+fingerprint to compare it returns False. That is the right engine default, or
+one upgrade would invalidate an entire corpus. But only 1 of the 12 cached
+results here carries a fingerprint, so the honest-looking "1" sat on top of 11
+whose settings cannot be determined at all.
+**Avoid.** When a check can return "no" and "cannot tell", report both. The
+dialog now says "1 would become stale; 11 predate fingerprinting and cannot be
+checked" — the second number is the one that actually describes this library.
+
+### "Apply & Re-score" re-scored nothing in the Qt build
+**What.** The Settings dialog's primary button promises to re-score every
+episode from cache with the new weights. In the Qt build it changed the
+weights, called `populate()`, and every screen went on showing the composite
+the cache file had been written with.
+**Why.** `rescore_episode` exists in `analyzer/metrics_sensory.py` and the Tk
+build calls it on every read. The Qt build was written by porting the *screens*
+and each one loaded `EpisodeResult.from_dict(cached)` directly, so the call
+was never carried across. Nothing looked wrong: the numbers were real numbers,
+just scored under the previous weights.
+**Avoid.** A derived value must be derived at one choke point —
+`MainWindow._cached` — and a test now fails if a screen calls `load_cached`
+around it. More generally: when porting, list the *transformations* the old
+code applied on read, not only the screens it drew.
+
+### The pipeline's derived status was not undisplayed — it was unreachable
+**What.** `TODO.md` item 7 read "`analyzer/pipeline.py` already computes
+`Stage.headline`, `Stage.details` and `Stage.next_action` and nothing displays
+any of them". Displaying them showed nothing: every node of every *linked*
+pipeline still reported "no derived status".
+**Why.** *Link to Episode Sample* wrote a **show** key (`Show/Season 1`) into
+`PipelineDoc.source_key`, while `build_pipelines()` keys its results
+`sample:<folder>`. Two namespaces that can never match, so
+`self._derived.get(doc.source_key)` was always `None`. The failure had an
+honest message on every node card — "no derived status" — which read as "there
+is nothing to report yet" rather than "this look-up cannot succeed".
+**Avoid.** When a feature is described as *built but not shown*, run the
+look-up before writing the display. And when two halves of a system are joined
+by a string key, check a real value from each side against the other — the
+comment in `pipeline_graph.py` says the two meet at `NodeType.stage_key`, and
+they do; what did not meet was the key naming the *sample*.
 
 ---
 

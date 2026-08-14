@@ -28,7 +28,13 @@ from typing import Any, Callable
 
 import cv2
 import numpy as np
-from scenedetect import detect, ContentDetector, AdaptiveDetector
+
+# PySceneDetect is imported inside load_hard_cuts, not here. It costs ~0.64s to
+# load and is needed only when detection actually runs, but this module is
+# reached from analyzer.pipeline (via trials) while the interface builds its
+# first screen — so a module-level import made it part of application STARTUP.
+# The optional TransNetV2 detector in the same function is deferred for the
+# same reason.
 
 from .metrics_cuts import (_compute_frame_scores, _find_dissolves,
                            classify_cut_transitions)
@@ -456,6 +462,7 @@ def load_hard_cuts(
         cut_times = _tn_cuts(video_path, threshold=threshold,
                              status_cb=status_cb)
     else:
+        from scenedetect import AdaptiveDetector, ContentDetector, detect
         det = (ContentDetector(threshold=threshold) if detector == "content"
                else AdaptiveDetector(adaptive_threshold=threshold))
         scene_list = detect(str(video_path), det)
@@ -1226,13 +1233,27 @@ def available_detector_tags(vdir: Path | None = None) -> list[str]:
     return sorted(tags)
 
 
-def aggregate_summary(directory: Path | None = None) -> dict[str, Any]:
-    """Combine all comparison CSVs (recursively) into one P/R/F1 table."""
+def aggregate_summary(directory: Path | None = None,
+                      detector_tag: str | None = None) -> dict[str, Any]:
+    """Combine comparison CSVs into one P/R/F1 table, for ONE detector config.
+
+    *detector_tag* None means "every config on disk", which is almost never
+    what a reader wants: this working copy holds runs of ContentDetector and
+    TransNetV2 over the same two episodes, and summing them produced a single
+    "AGGREGATE F1 0.891" describing no detector that exists.
+    `local_hard_cut_f1` has always filtered for exactly this reason — its
+    docstring calls the unfiltered version "one meaningless average" — but
+    this function, which the CLI's `summary` command and the Validate tool
+    screen both display, did not.
+
+    The returned dict now carries `detector_tag` and `detector_tags` so a
+    caller cannot show the number without being able to say what it is OF.
+    """
     vdir = directory or get_validation_dir()
     # Keep only the LATEST comparison per (episode, detector-config). Summing
     # every dated rerun double-counts episodes and silently over-weights
     # whichever one was re-run most often.
-    comparison_files = _latest_comparisons(vdir)
+    comparison_files = _latest_comparisons(vdir, detector_tag=detector_tag)
     totals: dict[str, dict] = {}
     for cf in comparison_files:
         with cf.open(newline="", encoding="utf-8") as fh:
@@ -1266,7 +1287,9 @@ def aggregate_summary(directory: Path | None = None) -> dict[str, Any]:
     rows.append({"type": "AGGREGATE", "TP": all_tp, "FP": all_fp, "FN": all_fn,
                  "precision": round(p, 3), "recall": round(r, 3), "F1": round(f, 3)})
     return {"rows": rows, "n_files": len(comparison_files),
-            "files": comparison_files}
+            "files": comparison_files,
+            "detector_tag": detector_tag,
+            "detector_tags": available_detector_tags(vdir)}
 
 
 # ── Match-detail annotation I/O ───────────────────────────────────────────────

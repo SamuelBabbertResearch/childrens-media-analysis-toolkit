@@ -32,8 +32,8 @@ from analyzer.trials import (
     KIND_EXPLANATIONS, KIND_LABELS, discover_trials, get_validation_dir,
 )
 
-COLUMNS = ("Kind", "Episode or sample", "Date", "Result", "Episodes",
-           "Published")
+COLUMNS = ("Kind", "Episode or sample", "Detector", "Date", "Result",
+           "Episodes", "Published")
 KEY_W = 140
 
 
@@ -126,12 +126,16 @@ class TrialsTab(QWidget):
             item = QTreeWidgetItem([
                 KIND_LABELS.get(trial.get("kind", ""), trial.get("kind", "—")),
                 trial.get("name") or trial.get("episode") or "—",
+                # Two runs of one episode on one date with different F1s are a
+                # comparison of detectors, not a contradiction — but only if
+                # the column saying which is on screen.
+                trial.get("detector") or "—",
                 str(trial.get("date") or "—"),
                 trial.get("result") or "—",
                 str(trial.get("n_episodes") or "—"),
                 "yes" if trial.get("published") else "—",
             ])
-            for col in (4, 5):
+            for col in (5, 6):
                 item.setTextAlignment(col, Qt.AlignRight | Qt.AlignVCenter)
             item.setData(0, Qt.UserRole, trial)
             self._table.addTopLevelItem(item)
@@ -175,6 +179,7 @@ class TrialsTab(QWidget):
         if KIND_EXPLANATIONS.get(kind):
             rows.append(("What this is", KIND_EXPLANATIONS[kind]))
         for label, key in (("Episode", "episode"), ("Sample", "name"),
+                           ("Detector", "detector"),
                            ("Date", "date"), ("Result", "result"),
                            ("Detail", "detail"), ("Window", "window"),
                            ("Episodes", "n_episodes"),

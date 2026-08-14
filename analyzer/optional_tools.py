@@ -8,12 +8,28 @@ and degrades gracefully when absent. Nothing here is required for CMAT's
 validated measurements.
 
 Add a tool by appending an OptionalTool to OPTIONAL_TOOLS. Availability is
-probed by import, so a tool the user installed by hand is picked up too.
+probed by INSTALLATION, not by import, so a tool the user installed by hand is
+picked up too — and probing costs nothing.
+
+WHY PRESENCE RATHER THAN IMPORT
+-------------------------------
+`is_available()` used to call `import_module()`. That is the strictest check —
+it proves the package actually loads — but for TransNetV2 it imports PyTorch,
+which takes **3.6 seconds** and pulls a deep-learning runtime into the process.
+The interface asks this question to decide whether to grey out a combo-box
+entry, and it asked it once per tool while building a settings dialog, so
+opening Measurement settings froze for four seconds.
+
+`find_spec` answers "is this installed" without executing anything. The cost is
+that a package present but broken now reads as available; when it is actually
+used the engine raises the real import error, which is a better place to
+discover a broken install than a greyed-out menu item anyway.
 """
 
 from __future__ import annotations
 
-import importlib
+import importlib.metadata
+import importlib.util
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -36,18 +52,19 @@ class OptionalTool:
     disk_estimate: str = ""
 
     def is_available(self) -> bool:
+        """True when the package is installed. Does not import it."""
         try:
-            importlib.import_module(self.import_name)
-            return True
-        except Exception:
+            return importlib.util.find_spec(self.import_name) is not None
+        except (ImportError, ValueError):
+            # A missing parent package raises rather than returning None.
             return False
 
     def version(self) -> str:
+        """The installed version, read from package metadata, not by import."""
         try:
-            mod = importlib.import_module(self.import_name)
-            return str(getattr(mod, "__version__", "installed"))
+            return importlib.metadata.version(self.pip_package)
         except Exception:
-            return ""
+            return "installed" if self.is_available() else ""
 
 
 TRANSNETV2 = OptionalTool(

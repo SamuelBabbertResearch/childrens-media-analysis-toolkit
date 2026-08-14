@@ -54,44 +54,56 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
 6. **Freeze the codebook.** Still DRAFT after three mid-study additions. The
    2026-07-04 log entry already said to freeze it before the second episode.
 
-7. **Make the pipeline a control surface, not a picture.** This is the gap
-   between the pipeline *existing* and being *finished*. Right now selecting a
-   node shows static registry text — description, port counts, `stage_key` —
-   and there is **no way to get from a node to the screen that does its work**.
-   Two changes:
-   (a) double-clicking a node opens its tab (`NodeType.stage_key` already maps
-   the stage, so this is wiring, not new logic);
-   (b) the inspector shows the stage's **derived** state — `Stage.headline`,
-   `Stage.details` and especially `Stage.next_action`, which
-   `analyzer/pipeline.py` already computes and nothing displays.
-   Without these the pipeline cannot do the job `CLAUDE.md` §4 gives it — being
-   how a researcher sees what the software is doing.
+7. **Two data decisions the audit surfaced.** The output-audit passes on
+   2026-08-14 found nineteen defects across four rounds, all fixed; see
+   `LEARNINGS.md` and `FOR_PAPER.txt`. Every path listed for auditing has now
+   been run and its artefact inspected. What is left is not defects but
+   choices:
 
-8. **Port the Language screen.** Tk's Automated coding has a *Language*
-   sub-tab (Speech + Vocabulary, `gui.py` ~line 3521) with **no Qt equivalent**.
-   The docs previously implied the port was complete; it is not.
+   - **There are TWO caches in this working copy.** `<project>/.analysis` has
+     82 cached episodes (stale — from when the root was the project folder);
+     `<project>/Shows/.analysis` has 28 (live). `patch_speech_cache.py` was
+     reading the stale one. Archive or delete the stale copy before the
+     paper's numbers are finalised, so nothing can read it by mistake.
+   - **`Episode.label()` concatenates without a separator** —
+     `S01E02Birthday Soup`. It is the manual-selection lookup key *and* the
+     episode list recorded in every written manifest, so changing it needs a
+     migration decision, not just an edit.
+   - `Episode.runtime` is read by nothing. Remove it if duration-weighted
+     sampling is never planned.
+
+   The audit method itself is worth keeping: **run the thing and read what it
+   produced.** Every one of the nineteen was invisible from the interface —
+   the control was present, the button worked, and the record described the
+   design that was asked for rather than the one that ran.
+
+8. **One Qt decision, not a port.** **Watch Analysis (Live)** (`gui_live.py`).
+   The Qt Automated coding tab already shows a progress bar, the current
+   episode, and a per-episode results table as the run proceeds. Decide
+   whether a separate live window still earns its place before porting it.
+
+   Smaller and also decisions: Settings has **Save as Preset** but not *Save
+   as Default*; and the Episode Sampler can send a draw to the analysis queue
+   but not to a hand-coding worklist, because the Qt Human coding tab has no
+   worklist — it takes one episode at a time.
 
 9. **Decide about `master`.** The branch is pushed (done 2026-08-11), so the
-   work is backed up. But `feature/language-analysis` is 71 commits ahead of
+   work is backed up. But `feature/language-analysis` is far ahead of
    `master`, whose last commit is 2026-06-30 — and `master` is what GitHub
    shows visitors. Merging forward is a clean fast-forward.
 
-   `README.md` needs no change on this point — it describes the Tk build
-   because the Tk build *is* the software. That was checked, not assumed.
+   `README.md` **now needs a change on this point.** It describes the Tk build
+   because the Tk build *was* the software; as of 2026-08-14 every screen
+   exists in Qt, so the sentence naming `gui.py` as the product is no longer
+   true. Decide which build the README describes before merging.
 
-10. **Port Human coding's remaining two screens.**
-   *Validate tool* (tool vs. human scoring) and *Agreement* (Cohen's kappa
-   between coders) are still Tk-only. Both are table screens over existing
-   engine functions — `analyzer/validation.py` and
-   `event_coding.inter_coder_agreement` — so no new analysis logic is needed.
-   Add them as sub-views of the Human coding tab in `ui/handcoding.py`.
+10. **Try the Qt build as the daily driver, then retire `gui.py`.**
+   Every Tk screen now has a Qt equivalent, but "exists" is not "proven": the
+   Qt Language, Validate tool, Agreement and Sampler screens have each been
+   driven once, headless. Use them for real work before deleting anything —
+   see item 12.
 
-11. **Port the Episode Sampler.**
-   The last Tk-only action. Its toolbar button in `ui/main_window.py` is
-   disabled with a tooltip pointing at `python gui.py`. Engine side is
-   `analyzer/sampler.py`; the Tk screen is `gui_sampler.py`.
-
-12. **Decide the startup wizard's default action.**
+11. **Decide the startup wizard's default action.**
    The wizard opens on every launch with *Create Pipeline* as the default
    button, so dismissing it with Enter creates a pipeline — this project
    accumulated several that way. Options: make Skip the default when pipelines
@@ -100,15 +112,18 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
 
 ## Ready when the above are done
 
-13. **Retire Tk modules that have reached parity.**
+12. **Retire Tk modules that have reached parity.**
    Fifteen `gui*.py` files are still on disk and both builds read the same
    project, so there is a real risk of editing the wrong one. Delete only
-   after items 8, 10 and 11 land — `gui_sampler.py`, `gui_validation.py` and
-   `gui_handcoding.py` are still the only home of those screens. Not
-   reversible in a hurry; do it deliberately.
+   after item 10 — the Qt equivalents of `gui_sampler.py`, `gui_validation.py`
+   and `gui_handcoding.py` exist as of 2026-08-14 but have not yet been used
+   for real work. Not reversible in a hurry; do it deliberately.
 
-14. **Commit or remove the four untracked root files.**
-   `CMAT_FIRST_TIME_UX_AUDIT.md`, `cmat_positioning_for_claude.md`,
-   `GeminiPipelineSample.qss`, `preview_ui.py`. Each is either a document that
-   belongs in `docs/`, a reference that belongs in `ui/reference/`, or scratch
-   that should go.
+13. **Commit or remove the seven untracked root files.**
+   `CMAT_FIRST_TIME_UX_AUDIT.md`, `CMAT_GITHUB_PIPELINE_POSITIONING.md`,
+   `CMAT_PIPELINE_INTERACTION_MODEL.md`, `CMAT_PYSIDE6_MIGRATION_STRATEGY.md`,
+   `cmat_positioning_for_claude.md`, `GeminiPipelineSample.qss`,
+   `preview_ui.py`. Each is either a document that belongs in `docs/`, a
+   reference that belongs in `ui/reference/`, or scratch that should go.
+   `CMAT_PIPELINE_INTERACTION_MODEL.md` is the north-star specification the
+   pipeline work is being measured against and should not stay untracked.

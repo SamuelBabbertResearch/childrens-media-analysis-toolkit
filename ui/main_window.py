@@ -5,9 +5,21 @@ The first screen ported for real. Reads the same library, the same cache, and
 the same preferences as the Tk front-end, so both can be run against one
 project and compared directly.
 
-All six tabs are ported. The Episode Sampler is the one action still only on
-the Tk build; its button is disabled and says so, because during a migration
-an unavailable control and a broken one must not look alike.
+**Every screen the Tk build has now exists here** (2026-08-14). That is
+coverage, not mileage — see `onboarding.md` before calling the Qt build the
+product.
+
+Two things here are load-bearing beyond the shell:
+
+* `STAGE_TABS` / `STAGE_ACTIONS` map a pipeline stage to the screen that does
+  its work. Without them a pipeline node is a picture of the workflow rather
+  than a way into it. `STAGE_UNPORTED` is the escape hatch for a stage type
+  added before its screen exists — an unavailable control must not look like a
+  broken one, so the control stays and says why.
+* `MainWindow._cached` is the single place a cached result is read, because it
+  is also the single place the composite is re-scored with the settings in
+  force. Read the cache around it and Settings' "Apply & Re-score" silently
+  stops working. A test enforces this.
 """
 
 from __future__ import annotations
@@ -15,15 +27,16 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QAction, QFont, QIcon, QKeySequence,
     QPainter, QPixmap, QShortcut, QStandardItem, QStandardItemModel,
 )
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QDialog, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
+    QAbstractItemView, QButtonGroup, QComboBox, QDialog, QFileDialog, QFrame,
+    QHBoxLayout, QHeaderView,
     QInputDialog, QLabel, QMainWindow, QMenu, QMenuBar, QMessageBox,
-    QPushButton, QSplitter, QTabWidget,
+    QPushButton, QSplitter, QStackedWidget, QTabWidget,
     QTextBrowser, QToolBar, QTreeView, QVBoxLayout, QWidget,
 )
 
@@ -49,6 +62,7 @@ from ui.report import episode_html, show_html
 from ui.automated import AutomatedTab
 from ui.handcoding import HandCodingTab
 from ui.index_tab import IndexTab
+from ui.language import LanguageTab
 from ui.settings import SettingsDialog
 from ui.trials_tab import TrialsTab
 from ui.tokens import METRICS, color
@@ -60,10 +74,32 @@ FILE = "📄"
 # Column order for the library grid.
 COL_NAME, COL_STATUS, COL_LENGTH, COL_ADDED = range(4)
 
-# Every tab is ported. Kept because _placeholder still reads it, and because
-# a screen added ahead of its implementation should say so rather than open
-# empty — an unported screen and a broken screen must not look alike.
-UNPORTED: dict[str, str] = {}
+# Which screen does a stage's work: (tab title, sub-view or None). The
+# pipeline is a control surface only if a node can reach the screen that does
+# its job; without this a node is a picture. Keyed by NodeType.stage_key, so a
+# new stage type is still a registry entry plus one line here.
+STAGE_TABS: dict[str, tuple[str, str | None]] = {
+    "selection": ("Library", None),
+    "automated": ("Automated coding", None),
+    "language": ("Language", "Speech"),
+    "measurement": ("Automated coding", None),
+    "handcode_transitions": ("Human coding", "Code"),
+    "handcode_events": ("Human coding", "Code"),
+    "validation": ("Human coding", "Validate tool"),
+    "results": ("Index", None),
+}
+
+# Stages whose work is done in a dialog rather than a tab: (button label,
+# MainWindow method).
+STAGE_ACTIONS: dict[str, tuple[str, str]] = {
+    "sampling": ("Episode Sampler", "open_sampler"),
+}
+
+# Stages whose screen is not in this front-end. The control stays, disabled
+# and saying why — an unavailable control must not look like a broken one.
+# Empty now that every stage has a screen; the mechanism stays because the
+# next stage type added will need it before its screen exists.
+STAGE_UNPORTED: dict[str, str] = {}
 
 
 def _fmt_duration(seconds: float) -> str:
@@ -179,6 +215,51 @@ class SubToolBar(QFrame):
         self.row.setSpacing(6)
 
 
+class SubViews(QObject):
+    """Named screens inside one tab, switched from the sub-toolbar.
+
+    The reference has a tab strip and a `.sub-toolbar`; it has no nested tab
+    strip, and a second row of tabs inside the first is not a Windows
+    convention either. So the sub-bar carries a group of checkable buttons —
+    the platform's segmented control — over a `QStackedWidget`.
+    """
+
+    changed = Signal(str)
+
+    def __init__(self, bar, stack: QStackedWidget) -> None:
+        super().__init__(stack)
+        self._bar = bar
+        self._stack = stack
+        self._buttons: dict[str, QPushButton] = {}
+        self._group = QButtonGroup(self)
+        self._group.setExclusive(True)
+
+    def add(self, name: str, widget: QWidget) -> None:
+        button = QPushButton(name)
+        button.setCheckable(True)
+        button.setProperty("segment", "true")
+        index = self._stack.count()
+        self._stack.addWidget(widget)
+        self._group.addButton(button, index)
+        self._bar.row.addWidget(button)
+        self._buttons[name] = button
+        button.clicked.connect(lambda _=False, n=name: self.show(n))
+        if index == 0:
+            button.setChecked(True)
+
+    def show(self, name: str) -> None:
+        button = self._buttons.get(name)
+        if button is None:
+            return
+        button.setChecked(True)
+        self._stack.setCurrentIndex(self._group.id(button))
+        self.changed.emit(name)
+
+    def current(self) -> str:
+        checked = self._group.checkedButton()
+        return checked.text() if checked else ""
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -236,6 +317,12 @@ class MainWindow(QMainWindow):
             self, METRICS["titlebar_h"], self._title_bar.is_caption)
         if not attached:
             self._title_bar = None
+            # Drop the strip's menu bar too. It is only ever parented in the
+            # holder below, so keeping it here left `_build_menu` filling a
+            # QMenuBar that is never added to the window — no File menu, no
+            # Help menu, on any platform where the Win32 hook does not attach.
+            # Falling back to None sends `_build_menu` to self.menuBar().
+            self._menubar = None
             return
 
         # The strip has to sit ABOVE the menu bar, and QMainWindow keeps the
@@ -251,17 +338,57 @@ class MainWindow(QMainWindow):
 
     def _build_menu(self) -> None:
         bar = getattr(self, "_menubar", None) or self.menuBar()
+        # Do NOT also stash these on self. addMenu() returns a QMenu owned by
+        # the bar; a second Python wrapper held on the window goes stale when
+        # the bar is reparented into the title-strip holder, and then reads as
+        # "C++ object already deleted" while the real menu is perfectly fine.
+        # Reach a menu through bar.actions()[i].menu() if you need it later.
         file_menu = bar.addMenu("&File")
         act_open = QAction("Choose Root Folder…", self)
         act_open.triggered.connect(self.choose_root)
         file_menu.addAction(act_open)
-        act_settings = QAction("Settings…", self)
+        act_sampler = QAction("Episode Sampler…", self)
+        act_sampler.triggered.connect(self.open_sampler)
+        file_menu.addAction(act_sampler)
+        file_menu.addSeparator()
+
+        act_settings = QAction("Scoring settings…", self)
         act_settings.triggered.connect(self.open_settings)
         file_menu.addAction(act_settings)
+        act_measure = QAction("Measurement settings…", self)
+        act_measure.setToolTip(
+            "Which detector measures what, and with which parameters. These "
+            "change the raw numbers, so they make cached results stale.")
+        act_measure.triggered.connect(self.open_measurement_settings)
+        file_menu.addAction(act_measure)
+        act_tools = QAction("Optional tools…", self)
+        act_tools.triggered.connect(self.open_optional_tools)
+        file_menu.addAction(act_tools)
+        act_meta = QAction("Import Episode Metadata…", self)
+        act_meta.setToolTip(
+            "Air dates and episode numbers from Wikipedia or TVMaze. They "
+            "drive era stratification in the sampler.")
+        act_meta.triggered.connect(self.open_metadata_import)
+        file_menu.addAction(act_meta)
         act_new = QAction("New Pipeline from Layout…", self)
         act_new.triggered.connect(self.show_welcome)
         file_menu.addAction(act_new)
         file_menu.addSeparator()
+
+        # Export acts on whatever the Results pane is currently showing, which
+        # is why the three are disabled until it shows something. The pipeline's
+        # Results stage tells the user to come here, so they have to exist.
+        self._act_json = QAction("Export Results as JSON…", self)
+        self._act_json.triggered.connect(self.export_json)
+        self._act_csv = QAction("Export Results as CSV…", self)
+        self._act_csv.triggered.connect(self.export_csv)
+        self._act_pdf = QAction("Export Report as PDF…", self)
+        self._act_pdf.triggered.connect(self.export_pdf)
+        for act in (self._act_json, self._act_csv, self._act_pdf):
+            act.setEnabled(False)
+            file_menu.addAction(act)
+        file_menu.addSeparator()
+
         act_quit = QAction("E&xit", self)
         act_quit.triggered.connect(self.close)
         file_menu.addAction(act_quit)
@@ -290,10 +417,239 @@ class MainWindow(QMainWindow):
         if dialog.exec() != QDialog.Accepted or not dialog.rescore:
             return
         self._cfg = dialog.config
+        # The index stores the composite, so it has to be rewritten too or the
+        # Library and the Index disagree about the same episode.
+        rows = self.rescore_index()
         self.populate()
         self.statusBar().showMessage(
-            "Re-scored from cache with the new weights. No episode needs "
-            "re-analysing — these are scoring settings.", 8000)
+            f"Re-scored {rows} episode{'s' if rows != 1 else ''} from cache "
+            f"with the new weights, in the Library and the Index. No episode "
+            f"needs re-analysing — these are scoring settings.", 8000)
+
+    # ---- exports ----
+    #
+    # Every export carries the accuracy statement with it. A CSV of numbers
+    # with no provenance is exactly the artefact `CLAUDE.md` §2.2 exists to
+    # prevent: the figures leave the tool and the qualifiers do not.
+
+    def _set_export_source(self, episode=None, show=None) -> None:
+        """Record what the Results pane is showing, for the export actions.
+
+        *show* is (name, results). Exactly one of the two is set; both None
+        means the pane is showing prose rather than a result, and the three
+        export actions go grey rather than exporting whatever was last seen.
+        """
+        self._export_episode = episode
+        self._export_show = show
+        for act in (getattr(self, "_act_json", None),
+                    getattr(self, "_act_csv", None),
+                    getattr(self, "_act_pdf", None)):
+            if act is not None:
+                act.setEnabled(episode is not None or show is not None)
+
+    def _export_stem(self) -> str:
+        if self._export_episode is not None:
+            return Path(self._export_episode.file).stem
+        return self._export_show[0] if self._export_show else "results"
+
+    def _export_results(self) -> list:
+        if self._export_episode is not None:
+            return [self._export_episode]
+        return list(self._export_show[1]) if self._export_show else []
+
+    def export_json(self) -> None:
+        """The result plus the provenance block, in one file."""
+        import json
+        from analyzer.provenance import validation_dict
+        results = self._export_results()
+        if not results:
+            return
+        path, _f = QFileDialog.getSaveFileName(
+            self, "Export results as JSON",
+            f"{self._export_stem()}_analysis.json", "JSON (*.json)")
+        if not path:
+            return
+        payload = {"validation_provenance": validation_dict()}
+        if self._export_episode is not None:
+            payload["episode"] = self._export_episode.to_dict()
+        else:
+            payload["show"] = self._export_show[0]
+            payload["episodes"] = [r.to_dict() for r in results]
+        try:
+            Path(path).write_text(json.dumps(payload, indent=2),
+                                  encoding="utf-8")
+        except OSError as exc:
+            QMessageBox.warning(self, "Export failed", str(exc))
+            return
+        self.statusBar().showMessage(
+            f"Exported {Path(path).name}, with the validation provenance "
+            f"block.", 8000)
+
+    def export_csv(self) -> None:
+        """One row per episode, plus a provenance sidecar.
+
+        The statement goes in a sidecar rather than a comment row so the CSV
+        stays machine-readable — but it goes, every time.
+        """
+        from analyzer.aggregate import results_to_dataframe
+        from analyzer.provenance import validation_statement
+        results = self._export_results()
+        if not results:
+            return
+        path, _f = QFileDialog.getSaveFileName(
+            self, "Export results as CSV",
+            f"{self._export_stem()}_analysis.csv", "CSV (*.csv)")
+        if not path:
+            return
+        try:
+            results_to_dataframe(results).to_csv(path, index=False)
+            sidecar = Path(path).with_name(Path(path).stem + "_PROVENANCE.txt")
+            sidecar.write_text(validation_statement(), encoding="utf-8")
+        except Exception as exc:            # noqa: BLE001 — shown, not hidden
+            QMessageBox.warning(self, "Export failed", str(exc))
+            return
+        self.statusBar().showMessage(
+            f"Exported {Path(path).name} and {sidecar.name} — keep the two "
+            f"together.", 8000)
+
+    def export_pdf(self) -> None:
+        results = self._export_results()
+        if not results:
+            return
+        try:
+            from analyzer.report_pdf import export_episode_pdf, export_show_pdf
+        except ImportError as exc:
+            QMessageBox.information(
+                self, "PDF export unavailable",
+                f"The PDF exporter needs reportlab: {exc}\n\n"
+                f"Install it with:  pip install reportlab")
+            return
+        path, _f = QFileDialog.getSaveFileName(
+            self, "Export report as PDF",
+            f"{self._export_stem()}_report.pdf", "PDF (*.pdf)")
+        if not path:
+            return
+        try:
+            if self._export_episode is not None:
+                export_episode_pdf(self._export_episode, self._cfg,
+                                   Path(path))
+            else:
+                aggregate = compute_show_aggregate(self._export_show[0],
+                                                   results)
+                export_show_pdf(aggregate, results, self._cfg, Path(path))
+        except Exception as exc:            # noqa: BLE001 — shown, not hidden
+            QMessageBox.warning(self, "PDF export failed", str(exc))
+            return
+        self.statusBar().showMessage(f"PDF saved: {Path(path).name}", 8000)
+
+    # ---- the other settings axis ----
+
+    def rescore_index(self) -> int:
+        """Rewrite the index's derived scores from cache. Returns rows written.
+
+        The composite is DERIVED, and the index stores it. When the weights
+        change, the stored value is stale — so after "Apply & Re-score" the
+        Library showed 0.107 for an episode while the Index still showed
+        0.132, with nothing marking either as out of date. The Index is the
+        cross-episode comparison screen, so it was also computing its outlier
+        fences from scores under a mix of weightings.
+
+        Raw metrics are untouched; only the composite is recomputed, which is
+        what makes this instant rather than a re-analysis. The Tk build does
+        the same in `_backfill_index`.
+        """
+        conn = self._db()
+        if conn is None or not self._root:
+            return 0
+        from analyzer.db import auto_set_season, upsert_episode, upsert_show
+        from analyzer.show_index import db_show_key, display_show_name
+
+        written = 0
+        for show_dir in list_shows(self._root):
+            key = show_key(self._root, show_dir)
+            stable = db_show_key(self._root, show_dir)
+            name, season = display_show_name(self._root, show_dir)
+            results = []
+            for episode in list_episodes(show_dir):
+                result = self._cached(key, episode.stem)
+                if result is None or result.status != "ok":
+                    continue
+                try:
+                    upsert_episode(conn, result, name, str(episode),
+                                   show_key=stable)
+                    if season is not None:
+                        auto_set_season(conn, str(episode), season)
+                except Exception:
+                    continue
+                results.append(result)
+                written += 1
+            if results:
+                try:
+                    upsert_show(conn, compute_show_aggregate(name, results),
+                                name, show_key=stable)
+                except Exception:
+                    pass
+        return written
+
+    def open_measurement_settings(self) -> None:
+        """Which tool measures what. Changing these makes cached results stale.
+
+        Kept apart from Settings on purpose: scoring settings re-score from
+        cache, measurement settings invalidate it. See `ARCHITECTURE.md` §3.
+        """
+        from ui.measurements import MeasurementsDialog
+        dialog = MeasurementsDialog(self._cfg, self._root, self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        self._cfg = dialog.config
+        self.populate()
+        message = "Measurement settings applied."
+        if dialog.stale_count:
+            message += (f" {dialog.stale_count} cached episode"
+                        f"{'s are' if dialog.stale_count != 1 else ' is'} now "
+                        f"stale — re-analyze to compare like with like.")
+        if dialog.unknown_count:
+            message += (f" {dialog.unknown_count} predate measurement "
+                        f"fingerprinting and cannot be checked either way.")
+        self.statusBar().showMessage(message, 12000)
+
+    def open_optional_tools(self) -> None:
+        from ui.optional_tools import OptionalToolsDialog
+        OptionalToolsDialog(self).exec()
+
+    def open_metadata_import(self) -> None:
+        """Air dates and episode numbers from Wikipedia or TVMaze."""
+        if not self._root:
+            QMessageBox.information(
+                self, "Import Episode Metadata",
+                "Choose a root folder first — the fetched list is matched "
+                "against the episode files in it.")
+            return
+        from ui.metadata_import import MetadataImportDialog
+        dialog = MetadataImportDialog(self, self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        self._index.refresh()
+        # The panel for the selected episode may now have an air date in it.
+        self._show_episode_details(self._details_episode)
+        self.statusBar().showMessage(
+            f"Imported metadata for {dialog.applied} episode"
+            f"{'s' if dialog.applied != 1 else ''}. Air dates feed era "
+            f"stratification in the Episode Sampler.", 10000)
+
+    def open_sampler(self) -> None:
+        """Draw an episode sample.
+
+        Refreshes the Trials tab and the pipeline afterwards: a new draw is a
+        new recorded run and a new thing a pipeline can bind to, and having to
+        press Refresh to see work you just did is how a screen looks broken.
+        """
+        from ui.sampler import SamplerDialog
+        dialog = SamplerDialog(self, self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        self._trials.refresh()
+        self._refresh_canvas()
 
     def _build_status_bar(self) -> None:
         """Message on the left, state on the right."""
@@ -331,17 +687,14 @@ class MainWindow(QMainWindow):
         tb.addWidget(self._preset)
 
         sampler = QPushButton("Episode Sampler...")
-        sampler.setEnabled(False)
-        sampler.setToolTip("Still on the Tkinter build — run python gui.py")
+        sampler.setToolTip(
+            "Draw a documented episode sample: the design is recorded with "
+            "the result, so the draw can be re-run and reviewed.")
+        sampler.clicked.connect(self.open_sampler)
         tb.addWidget(sampler)
         settings = QPushButton("Settings...")
         settings.clicked.connect(self.open_settings)
         tb.addWidget(settings)
-        for label in ():
-            b = QPushButton(label)
-            b.clicked.connect(lambda _=False, n=label: self._not_yet(n))
-            tb.addWidget(b)
-
     def _build_tabs(self) -> None:
         self._tabs = QTabWidget()
         self.setCentralWidget(self._tabs)
@@ -359,6 +712,11 @@ class MainWindow(QMainWindow):
         self._index.episode_chosen.connect(self._show_indexed_episode)
         self._tabs.addTab(self._index, "Index")
         self._tabs.addTab(self._automated, "Automated coding")
+        # Language is its own tab, not a screen inside Automated coding: the
+        # pipeline gives it a separate stage and a "Language only" template
+        # because a language study needs no sensory pass at all.
+        self._language = LanguageTab(self)
+        self._tabs.addTab(self._language, "Language")
         self._handcoding = HandCodingTab(self)
         self._tabs.addTab(self._handcoding, "Human coding")
         self._trials = TrialsTab(self)
@@ -430,13 +788,18 @@ class MainWindow(QMainWindow):
 
         self._btn_fit.clicked.connect(self._zoom.fit)
         self._canvas.selection_changed.connect(self._on_node_selected)
+        self._canvas.node_activated.connect(self._open_stage_screen)
         self._canvas.connect_requested.connect(self._connect_nodes)
         self._canvas.doc_changed.connect(self._save_current)
         self._pipe_pick.currentIndexChanged.connect(self._load_pipeline)
         self._inspector.link_requested.connect(self._link_to_sample)
+        self._inspector.open_requested.connect(
+            lambda: self._open_stage_screen(self._canvas.selected_node()))
 
         self._undo_stack: list[dict] = []
         self._redo_stack: list[dict] = []
+        self._derived: dict = {}
+        self._source_label: str | None = None
 
         # Keyboard alongside the on-screen controls, using the platform
         # sequences so Ctrl+Z / Ctrl+Y / Ctrl+- are whatever Windows says.
@@ -555,7 +918,97 @@ class MainWindow(QMainWindow):
 
     def _on_node_selected(self, node) -> None:
         self._btn_del.setEnabled(node is not None)
-        self._inspector.show_node(node)
+        if node is None:
+            self._inspector.show_node(None)
+            return
+        stage, reason = self._stage_for(node)
+        self._inspector.show_node(node, stage, reason,
+                                  self._target_for(node))
+
+    # -- pipeline as a control surface --
+
+    def _stage_for(self, node):
+        """(Stage, reason) for a node — the derived state behind the box.
+
+        analyzer/pipeline.py computes a headline, details and a next action for
+        every stage from what is on disk. A node that cannot reach one says
+        why rather than showing nothing.
+        """
+        doc = self._doc()
+        if doc is None:
+            return None, "no pipeline is open"
+        kind = node_type(node.type)
+        if not kind.stage_key:
+            return None, "this stage type has no derived status"
+        if not doc.source_key:
+            return None, ("this pipeline is not linked to an episode sample, "
+                          "so there is nothing to report progress against")
+        pipeline = getattr(self, "_derived", {}).get(doc.source_key)
+        if pipeline is None:
+            return None, (
+                f"linked to “{doc.source_key}”, which is not one of the "
+                "episode samples found under the root folder — use Manage → "
+                "Link to Episode Sample to relink it")
+        stage = pipeline.stage(kind.stage_key)
+        if stage is None:
+            return None, f"no derived stage named {kind.stage_key}"
+        return stage, ""
+
+    def _target_for(self, node):
+        """(label, reason) for the node's screen; None if it has none.
+
+        The label is what the button says, so a stage that lands on a screen
+        inside a tab names that screen: "Open Human coding → Validate tool"
+        tells the user where they are about to end up.
+        """
+        kind = node_type(node.type)
+        if not kind.stage_key:
+            return None
+        route = STAGE_TABS.get(kind.stage_key)
+        if route:
+            title, view = route
+            return (f"{title} → {view}" if view else title), None
+        action = STAGE_ACTIONS.get(kind.stage_key)
+        if action:
+            return action[0], None
+        return None, STAGE_UNPORTED.get(
+            kind.stage_key, "No screen in this build does this stage's work.")
+
+    def _open_stage_screen(self, node) -> None:
+        """Go to the screen that does this stage's work."""
+        if node is None:
+            return
+        target = self._target_for(node)
+        if target is None:
+            self.statusBar().showMessage(
+                f"“{node.title}” is an annotation, not a stage with a screen.",
+                6000)
+            return
+        label, reason = target
+        if not label:
+            self.statusBar().showMessage(reason, 8000)
+            return
+        stage_key = node_type(node.type).stage_key
+        if stage_key in STAGE_ACTIONS:
+            getattr(self, STAGE_ACTIONS[stage_key][1])()
+            return
+        title, view = STAGE_TABS[stage_key]
+        page = self._tab_named(title)
+        if page is None:                     # a tab that was never added
+            self.statusBar().showMessage(
+                f"The {title} tab is not available in this window.", 6000)
+            return
+        self._tabs.setCurrentWidget(page)
+        if view and hasattr(page, "show_view"):
+            page.show_view(view)
+        self.statusBar().showMessage(
+            f"{label} — the screen for “{node.title}”.", 4000)
+
+    def _tab_named(self, title: str):
+        for i in range(self._tabs.count()):
+            if self._tabs.tabText(i) == title:
+                return self._tabs.widget(i)
+        return None
 
     # -- pipeline documents --
 
@@ -577,7 +1030,7 @@ class MainWindow(QMainWindow):
             save_doc(doc, self._root)
             self._pipe_pick.setItemText(self._pipe_pick.currentIndex(),
                                         doc.name)
-            self._inspector.show_doc(doc)
+            self._inspector.show_doc(doc, getattr(self, "_source_label", None))
 
     def _duplicate_pipeline(self) -> None:
         doc = self._doc()
@@ -614,29 +1067,44 @@ class MainWindow(QMainWindow):
             self._new_pipeline()
 
     def _link_to_sample(self) -> None:
-        """Bind the pipeline to a show, so stages can report derived status."""
+        """Bind the pipeline to a discovered episode sample.
+
+        It must be a sample, not a show: the derived stages in
+        analyzer/pipeline.py are keyed by the sample they were computed for.
+        This offered a list of SHOWS, whose keys are a different namespace
+        entirely, so every link made here resolved to nothing and no node has
+        ever shown a derived status.
+        """
         doc = self._doc()
         if doc is None:
             return
         if not self._root:
             QMessageBox.information(
                 self, "Link to Episode Sample",
-                "Choose a root folder first — the sample is a show "
-                "inside it.")
+                "Choose a root folder first — the samples are found inside "
+                "it.")
             return
-        keys = sorted({show_key(self._root, path)
-                       for kind, path in list_top_level(self._root)
-                       for path in ([path] if kind == "show"
-                                    else list_category_shows(path))})
-        if not keys:
-            QMessageBox.information(self, "Link to Episode Sample",
-                                    "No shows were found under the root "
-                                    "folder.")
+        try:
+            found = build_pipelines(self._root)
+        except Exception:
+            found = []
+        if not found:
+            QMessageBox.information(
+                self, "Link to Episode Sample",
+                "No episode samples were found under the root folder.\n\n"
+                "Draw one with the Episode Sampler, on the toolbar. Episodes "
+                "worked on without a formal draw appear here as “Unsampled "
+                "work” once they have been analysed or coded.")
             return
-        key, ok = QInputDialog.getItem(
-            self, "Link to Episode Sample", "Show:", keys, 0, False)
-        if ok and key:
-            doc.source_key = key
+        labels = [f"{p.name}  ({p.episode_count} episode"
+                  f"{'s' if p.episode_count != 1 else ''})" for p in found]
+        current = next((i for i, p in enumerate(found)
+                        if p.key == doc.source_key), 0)
+        choice, ok = QInputDialog.getItem(
+            self, "Link to Episode Sample", "Episode sample:", labels,
+            current, False)
+        if ok and choice:
+            doc.source_key = found[labels.index(choice)].key
             save_doc(doc, self._root)
             self._refresh_canvas()
 
@@ -658,6 +1126,8 @@ class MainWindow(QMainWindow):
                                  for p in build_pipelines(self._root)}
             except Exception:
                 self._derived = {}
+        source = self._derived.get(doc.source_key)
+        self._source_label = source.name if source else None
         self._canvas.load(doc, self._stage_status)
         self._zoom.refresh()
         plural_n = "s" if len(doc.nodes) != 1 else ""
@@ -665,7 +1135,7 @@ class MainWindow(QMainWindow):
         self._pipe_count.setText(
             f"{len(doc.nodes)} node{plural_n} · "
             f"{len(doc.connections)} link{plural_l}")
-        self._inspector.show_doc(doc)
+        self._inspector.show_doc(doc, self._source_label)
 
     def _discover_pipelines(self) -> None:
         """Load this root's pipelines, or offer the default shape if none."""
@@ -699,20 +1169,9 @@ class MainWindow(QMainWindow):
             return ""
         pipeline = getattr(self, "_derived", {}).get(doc.source_key)
         if pipeline is None:
-            return "— no derived status"
+            return "— sample not found"
         stage = pipeline.stage(kind.stage_key)
         return f"— {stage.status_label}" if stage is not None else ""
-
-    def _placeholder(self, name: str) -> QWidget:
-        page = QWidget()
-        lay = QVBoxLayout(page)
-        lay.setContentsMargins(12, 12, 12, 12)
-        lay.addWidget(Ambox(
-            f"{name} — not yet ported",
-            UNPORTED.get(name, "") + "  Run the Tkinter build (python gui.py) "
-            "to use it; both read the same project.", "warn"))
-        lay.addStretch(1)
-        return page
 
     # ---- library ----
 
@@ -736,6 +1195,30 @@ class MainWindow(QMainWindow):
         self._count = QLabel("no library loaded")
         self._count.setProperty("role", "dim")
         left.add_header_widget(self._count)
+        self._btn_series = QPushButton("Full Series Aggregate")
+        self._btn_series.setToolTip(
+            "One aggregate over every analysed episode under the root "
+            "folder, across season folders. Each episode counts once.")
+        self._btn_series.clicked.connect(self._show_full_series)
+        left.add_header_widget(self._btn_series)
+        self._btn_sample = QPushButton("Sample Aggregate…")
+        self._btn_sample.setToolTip(
+            "Results for one drawn sample: pick its manifest.json and see the "
+            "aggregate over exactly the episodes that sample selected.")
+        self._btn_sample.clicked.connect(self._show_sample_aggregate)
+        left.add_header_widget(self._btn_sample)
+        self._btn_pin = QPushButton("Pin for Compare")
+        self._btn_pin.setEnabled(False)
+        self._btn_pin.clicked.connect(self._pin_for_compare)
+        left.add_header_widget(self._btn_pin)
+        self._btn_compare = QPushButton("Compare with Pinned")
+        self._btn_compare.setEnabled(False)
+        self._btn_compare.clicked.connect(self._open_compare)
+        left.add_header_widget(self._btn_compare)
+        # (kind, path) for the current selection and the pinned one. Compare is
+        # only meaningful like for like, so the kinds have to match.
+        self._selected: tuple[str, Path] | None = None
+        self._pinned: tuple[str, Path] | None = None
 
         self._model = QStandardItemModel()
         self._model.setHorizontalHeaderLabels(
@@ -749,7 +1232,11 @@ class MainWindow(QMainWindow):
         self._tree.setAlternatingRowColors(False)
         self._tree.setUniformRowHeights(True)
         self._tree.setIndentation(METRICS["row_h"] - 2)
-        self._tree.setSelectionMode(QAbstractItemView.SingleSelection)
+        # Extended, so a batch can be queued in one gesture. The report still
+        # follows the CURRENT item — selecting five episodes shows the last
+        # one's report and queues all five, which is what the tree's own
+        # conventions already imply.
+        self._tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self._tree.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._tree.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self._tree.setProperty("inPanel", "true")
@@ -760,6 +1247,10 @@ class MainWindow(QMainWindow):
             hv.setSectionResizeMode(col, QHeaderView.ResizeToContents)
         self._tree.setFrameShape(QFrame.NoFrame)
         self._tree.selectionModel().selectionChanged.connect(self._on_select)
+        # Right-click is the platform's "act on this item" gesture, and it is
+        # how an episode reaches another tab without hunting for the tab.
+        self._tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._tree.customContextMenuRequested.connect(self._library_menu)
         left.body_layout.addWidget(self._tree)
         split.addWidget(left)
 
@@ -784,13 +1275,353 @@ class MainWindow(QMainWindow):
         self._report.setHtml(
             f"<p style='color:{color('text_dim')}'>Choose a show or episode "
             f"on the left.</p>")
+        self._export_episode = None
+        self._export_show = None
         right.body_layout.addWidget(self._report)
+        right.body_layout.addWidget(self._details_panel())
         split.addWidget(right)
 
         # 46 / 54, matching the reference layout.
         split.setStretchFactor(0, 46)
         split.setStretchFactor(1, 54)
         return page
+
+    # ---- sending a selection to another tab ----
+    #
+    # One reader and one send path, used by the context menu and by anything
+    # added later. Selecting an episode already pushed it to two tabs; what
+    # was missing was any way to GET to those tabs, and any way to act on more
+    # than one episode at a time.
+
+    def _selected_paths(self) -> list[Path]:
+        """Every selected row as a path — episodes as files, shows as folders.
+
+        Category rows resolve to nothing: they group shows and have no
+        episodes of their own.
+        """
+        out: list[Path] = []
+        for index in self._tree.selectionModel().selectedRows(COL_NAME):
+            item = self._model.itemFromIndex(index)
+            if item is None:
+                continue
+            payload = item.data(Qt.UserRole)
+            if payload:
+                out.append(Path(payload))
+            else:
+                show_dir = self._show_dir_for(item)
+                if show_dir is not None:
+                    out.append(show_dir)
+        # Stable and de-duplicated: selecting a show and one of its episodes
+        # should not queue that episode twice.
+        seen, unique = set(), []
+        for path in out:
+            if path not in seen:
+                seen.add(path)
+                unique.append(path)
+        return unique
+
+    def _episode_count(self, paths: list[Path]) -> int:
+        return sum(len(list_episodes(p)) if p.is_dir() else 1 for p in paths)
+
+    def _send_to(self, destination: str, paths: list[Path]) -> None:
+        """Hand the selection to another screen and go there.
+
+        `destination` is a key in SEND_TARGETS. Everything routes through here
+        so the menu, the pipeline nodes and any future button cannot drift
+        apart about what "send to Human coding" means.
+        """
+        if not paths:
+            return
+        first = paths[0]
+        episodes = self._episode_count(paths)
+
+        if destination == "queue":
+            added = self._automated.enqueue(paths)
+            self._tabs.setCurrentWidget(self._automated)
+            self.statusBar().showMessage(
+                f"Queued {added} entr{'y' if added == 1 else 'ies'} "
+                f"({episodes} episode{'s' if episodes != 1 else ''}). "
+                f"Press Analyze to start.", 8000)
+            return
+
+        if destination == "analyze":
+            self._automated.set_target(first)
+            self._tabs.setCurrentWidget(self._automated)
+            self.statusBar().showMessage(
+                f"{first.name} is the analysis target. Press Analyze to "
+                f"measure it.", 8000)
+            return
+
+        if destination == "transcribe":
+            self._automated.enqueue(paths)
+            self._tabs.setCurrentWidget(self._automated)
+            self.statusBar().showMessage(
+                f"{episodes} episode{'s' if episodes != 1 else ''} queued. "
+                f"Press Transcribe Missing Subtitles to run Whisper on the "
+                f"ones with no captions.", 10000)
+            return
+
+        if destination in ("code", "validate"):
+            self._handcoding.set_target(first)
+            self._tabs.setCurrentWidget(self._handcoding)
+            self._handcoding.show_view(
+                "Code" if destination == "code" else "Validate tool")
+            self.statusBar().showMessage(
+                f"{first.name} is ready in Human coding. "
+                + ("Press Open Episode to load the video."
+                   if destination == "code" else
+                   "Run the detector, then Compare against your coding."),
+                10000)
+            return
+
+        if destination == "index":
+            self._tabs.setCurrentWidget(self._index)
+            self._index.focus_episode(str(first))
+            return
+
+        if destination == "language":
+            self._tabs.setCurrentWidget(self._language)
+            self._language.show_view("Speech")
+            self.statusBar().showMessage(
+                "Language → Speech lists every episode with speech data. "
+                "Press Refresh if this one is missing.", 8000)
+            return
+
+    def _reveal(self, paths: list[Path]) -> None:
+        """Show the file in the platform's file manager."""
+        import os
+        import subprocess
+        import sys
+        if not paths:
+            return
+        target = paths[0]
+        if not target.exists():
+            self.statusBar().showMessage(
+                f"{target.name} is listed but no longer on disk.", 6000)
+            return
+        try:
+            if sys.platform == "win32":
+                subprocess.Popen(["explorer", "/select,", str(target)])
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", "-R", str(target)])
+            else:
+                subprocess.Popen(["xdg-open", str(target.parent)])
+        except Exception as exc:            # noqa: BLE001 — shown, not hidden
+            self.statusBar().showMessage(f"Could not open the folder: {exc}",
+                                         6000)
+
+    def _library_menu(self, point) -> None:
+        """Right-click on the Library tree."""
+        self.build_library_menu().exec(
+            self._tree.viewport().mapToGlobal(point))
+
+    def build_library_menu(self) -> QMenu:
+        """The menu for the current selection.
+
+        Built separately from showing it so the entries and their enabled
+        states can be checked without a display — the whole point of this menu
+        is which destinations are offered for which selection.
+        """
+        paths = self._selected_paths()
+        menu = QMenu(self)
+        if not paths:
+            act = menu.addAction("No episode or show selected")
+            act.setEnabled(False)
+            return menu
+
+        episodes = self._episode_count(paths)
+        files = [p for p in paths if p.is_file()]
+        many = len(paths) > 1
+        subject = (f"{len(paths)} items — {episodes} episodes" if many
+                   else paths[0].name)
+
+        header = menu.addAction(subject)
+        header.setEnabled(False)
+        menu.addSeparator()
+
+        # Measurement first: it is what most selections are for.
+        if not many:
+            menu.addAction(
+                "Analyze this now…",
+                lambda: self._send_to("analyze", paths))
+        menu.addAction(
+            f"Add to analysis queue ({episodes} episode"
+            f"{'s' if episodes != 1 else ''})",
+            lambda: self._send_to("queue", paths))
+        menu.addAction(
+            "Queue for Transcribe Missing Subtitles…",
+            lambda: self._send_to("transcribe", paths))
+        menu.addSeparator()
+
+        # Hand coding needs one episode, not a folder.
+        code = menu.addAction("Code by hand…",
+                              lambda: self._send_to("code", files))
+        validate = menu.addAction("Validate the tool against coding…",
+                                  lambda: self._send_to("validate", files))
+        for act in (code, validate):
+            act.setEnabled(len(files) == 1)
+            if len(files) != 1:
+                act.setToolTip("Select a single episode — hand coding is per "
+                               "episode, not per show.")
+        menu.addSeparator()
+
+        show_index = menu.addAction("Show in Index",
+                                    lambda: self._send_to("index", files))
+        show_index.setEnabled(len(files) == 1)
+        menu.addAction("Speech and vocabulary…",
+                       lambda: self._send_to("language", paths))
+        menu.addSeparator()
+        reveal = menu.addAction("Reveal in File Explorer",
+                                lambda: self._reveal(paths))
+        reveal.setEnabled(bool(paths))
+        return menu
+
+    # ---- episode metadata and notes ----
+    #
+    # Both live in the index, not in the cache: they are things a PERSON
+    # recorded, so re-analysing an episode must not wipe them. Air date drives
+    # era stratification in the sampler and the air-date column on the Language
+    # screen, which is why it is editable here rather than only importable.
+
+    def _details_panel(self) -> QWidget:
+        from PySide6.QtWidgets import QLineEdit, QPlainTextEdit
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(0, 6, 0, 0)
+        lay.setSpacing(4)
+
+        meta = QWidget()
+        row = QHBoxLayout(meta)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+        row.addWidget(QLabel("Air date:"))
+        self._meta_air = QLineEdit()
+        self._meta_air.setMaximumWidth(96)
+        self._meta_air.setPlaceholderText("any format")
+        row.addWidget(self._meta_air)
+        row.addWidget(QLabel("Season:"))
+        self._meta_season = QLineEdit()
+        self._meta_season.setMaximumWidth(44)
+        row.addWidget(self._meta_season)
+        row.addWidget(QLabel("Episode:"))
+        self._meta_episode = QLineEdit()
+        self._meta_episode.setMaximumWidth(44)
+        row.addWidget(self._meta_episode)
+        self._btn_meta = QPushButton("Save Metadata")
+        self._btn_meta.clicked.connect(self._save_metadata)
+        row.addWidget(self._btn_meta)
+        row.addStretch(1)
+        lay.addWidget(meta)
+
+        self._notes = QPlainTextEdit()
+        self._notes.setMaximumHeight(56)
+        self._notes.setPlaceholderText(
+            "Notes on this episode — kept in the index, not the cache, so "
+            "re-analysing does not erase them.")
+        lay.addWidget(self._notes)
+        self._btn_note = QPushButton("Save Note")
+        self._btn_note.clicked.connect(self._save_note)
+        note_row = QHBoxLayout()
+        note_row.addStretch(1)
+        note_row.addWidget(self._btn_note)
+        lay.addLayout(note_row)
+
+        self._details_page = page
+        self._details_episode: Path | None = None
+        page.setEnabled(False)
+        return page
+
+    def _db(self):
+        """The index connection, opened once and kept."""
+        if not self._root:
+            return None
+        conn = getattr(self, "_conn", None)
+        if conn is None:
+            try:
+                from analyzer.db import get_db
+                conn = self._conn = get_db(self._root)
+            except Exception:
+                return None
+        return conn
+
+    def _show_episode_details(self, episode: Path | None) -> None:
+        """Fill the metadata and notes fields for the selected episode."""
+        self._details_episode = episode
+        self._details_page.setEnabled(episode is not None)
+        if episode is None:
+            for field in (self._meta_air, self._meta_season,
+                          self._meta_episode):
+                field.clear()
+            self._notes.setPlainText("")
+            return
+        conn = self._db()
+        if conn is None:
+            return
+        try:
+            from analyzer.db import get_episode_metadata, get_note
+            meta = get_episode_metadata(conn, str(episode))
+            note = get_note(conn, str(episode))
+        except Exception:
+            return
+        self._meta_air.setText(meta.get("air_date") or "")
+        season, number = meta.get("season_num"), meta.get("episode_num")
+        self._meta_season.setText("" if season is None else str(season))
+        self._meta_episode.setText("" if number is None else str(number))
+        self._notes.setPlainText(note or "")
+
+    def _save_metadata(self) -> None:
+        conn = self._db()
+        if conn is None or self._details_episode is None:
+            return
+
+        def _number(text: str):
+            text = text.strip()
+            if not text:
+                return None
+            try:
+                return int(text)
+            except ValueError:
+                return None
+
+        season_text = self._meta_season.text().strip()
+        episode_text = self._meta_episode.text().strip()
+        season, number = _number(season_text), _number(episode_text)
+        # Silently storing None for "abc" would look like the save worked.
+        bad = [name for name, text, value in
+               (("Season", season_text, season),
+                ("Episode", episode_text, number))
+               if text and value is None]
+        if bad:
+            QMessageBox.warning(
+                self, "Metadata",
+                f"{' and '.join(bad)} must be a whole number, or blank.")
+            return
+        try:
+            from analyzer.db import upsert_episode_metadata
+            upsert_episode_metadata(
+                conn, str(self._details_episode),
+                self._meta_air.text().strip() or None, season, number)
+        except Exception as exc:            # noqa: BLE001 — shown, not hidden
+            QMessageBox.warning(self, "Could not save metadata", str(exc))
+            return
+        self._index.refresh()
+        self.statusBar().showMessage(
+            f"Saved metadata for {self._details_episode.name}. Air dates feed "
+            f"era stratification in the sampler.", 8000)
+
+    def _save_note(self) -> None:
+        conn = self._db()
+        if conn is None or self._details_episode is None:
+            return
+        try:
+            from analyzer.db import save_note
+            save_note(conn, str(self._details_episode),
+                      self._notes.toPlainText())
+        except Exception as exc:            # noqa: BLE001 — shown, not hidden
+            QMessageBox.warning(self, "Could not save note", str(exc))
+            return
+        self.statusBar().showMessage(
+            f"Saved note for {self._details_episode.name}.", 6000)
 
     # ---- data ----
 
@@ -810,6 +1641,16 @@ class MainWindow(QMainWindow):
         self._root = folder
         self._root_label.setText(str(folder))
         self._hint.setVisible(False)
+        # The index lives under the root, so a cached connection to the
+        # previous project's database would silently answer for this one.
+        conn = getattr(self, "_conn", None)
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        self._conn = None
+        self._show_episode_details(None)
         self.populate()
         # Pipelines live under the root (<root>/.analysis/pipelines), so the
         # list has to be rebuilt when the root changes. Without this the tab
@@ -919,11 +1760,11 @@ class MainWindow(QMainWindow):
                 f"{path.name} is indexed but no longer on disk. "
                 f"Use Remove Stale to clear rows like this.", 8000)
             return
-        cached = load_cached(self._root, show_key(self._root, path.parent),
-                             path.stem)
-        if cached:
-            self._report.setHtml(
-                episode_html(EpisodeResult.from_dict(cached)))
+        result = self._cached(show_key(self._root, path.parent), path.stem)
+        if result is not None:
+            self._report.setHtml(episode_html(result))
+            self._set_export_source(episode=result)
+            self._show_episode_details(path)
             self._tabs.setCurrentWidget(self._library_page)
 
     def _on_select(self, *_args) -> None:
@@ -934,21 +1775,25 @@ class MainWindow(QMainWindow):
         payload = item.data(Qt.UserRole)
         if not payload:
             show_dir = self._show_dir_for(item)
+            self._selected = ("show", show_dir) if show_dir else None
+            self._sync_compare()
             self._automated.set_target(show_dir)
             self._show_report(show_dir, item.text())
             return
         ep = Path(payload)
+        self._selected = ("episode", ep)
+        self._sync_compare()
         self._automated.set_target(ep)
         self._handcoding.set_target(ep)
-        cached = load_cached(self._root, show_key(self._root, ep.parent),
-                             ep.stem)
-        if not cached:
+        result = self._cached(show_key(self._root, ep.parent), ep.stem)
+        if result is None:
             self._report.setHtml(
                 f"<p style='color:#54595d'><b>{ep.name}</b><br>"
                 "Not analyzed yet. Run it from Automated coding; the result "
                 "appears here when it finishes.</p>")
+            self._set_export_source()
+            self._show_episode_details(ep)
             return
-        result = EpisodeResult.from_dict(cached)
         self._chart_source = None
         self._btn_chart.setEnabled(False)
         events = None
@@ -958,6 +1803,8 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         self._report.setHtml(episode_html(result, events=events))
+        self._set_export_source(episode=result)
+        self._show_episode_details(ep)
 
     def _open_chart(self) -> None:
         """The chart for the selected show. matplotlib is imported here, not
@@ -979,6 +1826,22 @@ class MainWindow(QMainWindow):
         # Held so it is not collected the moment this method returns.
         self._chart_window = dialog
 
+    def _cached(self, skey: str, stem: str):
+        """A cached episode, re-scored with the settings in force.
+
+        The composite is a weighted sum over numbers already measured, so it
+        is recomputed on read rather than stored. Without this the Settings
+        dialog's "Apply & Re-score" changed the weights and every screen went
+        on showing the score the cache was written with — the promise that
+        button makes is exactly this call.
+
+        The re-derivation itself lives in the engine — `cli.py` reads cached
+        results too, and two copies of this rule is how they came to print
+        different composites for one episode.
+        """
+        from analyzer.cache import load_scored
+        return load_scored(self._root, skey, stem, self._cfg)
+
     def _show_report(self, show_dir, label: str) -> None:
         """The aggregate for a show row, from whatever is cached for it."""
         self._chart_source = None
@@ -987,13 +1850,15 @@ class MainWindow(QMainWindow):
             self._report.setHtml(
                 f"<p style='color:{color('text_dim')}'>{label} groups shows "
                 f"rather than episodes. Open one of the shows inside it.</p>")
+            self._set_export_source()
+            self._show_episode_details(None)
             return
         skey = show_key(self._root, show_dir)
         results = []
         for episode in list_episodes(show_dir):
-            cached = load_cached(self._root, skey, episode.stem)
-            if cached:
-                results.append(EpisodeResult.from_dict(cached))
+            result = self._cached(skey, episode.stem)
+            if result is not None:
+                results.append(result)
         aggregate = compute_show_aggregate(show_dir.name, results)
         # How many episodes the show HAS, so the report can distinguish the
         # three states that matter: measured, failed, and not analysed yet.
@@ -1002,9 +1867,195 @@ class MainWindow(QMainWindow):
         # work that has not been done as work that went wrong.
         aggregate.episode_count = len(list_episodes(show_dir))
         self._report.setHtml(show_html(aggregate, results, show_dir.name))
+        self._show_episode_details(None)
+        self._set_export_source(
+            show=(show_dir.name, results) if results else None)
         if results:
             self._chart_source = (show_dir.name, results)
             self._btn_chart.setEnabled(True)
+
+    def _show_full_series(self) -> None:
+        """One aggregate over every analysed episode in the whole library.
+
+        A season is a show folder here, so a series split across season
+        folders has no single row in the tree. This is that row: the same
+        `compute_show_aggregate` over everything cached under the root, which
+        is what makes a cross-season comparison possible at all.
+
+        Nothing is written. The Tk build saved the aggregate to disk as a side
+        effect of viewing it; a view should not change the data it is a view
+        of.
+        """
+        if not self._root:
+            self.statusBar().showMessage("Choose a root folder first.", 6000)
+            return
+        shows = list_shows(self._root)
+        results, total = [], 0
+        for show_dir in shows:
+            skey = show_key(self._root, show_dir)
+            episodes = list_episodes(show_dir)
+            total += len(episodes)
+            for episode in episodes:
+                result = self._cached(skey, episode.stem)
+                if result is not None:
+                    results.append(result)
+
+        name = self._root.name
+        self._chart_source = None
+        self._btn_chart.setEnabled(False)
+        if not results:
+            self._report.setHtml(
+                f"<p style='color:{color('text_dim')}'><b>{name}</b><br>"
+                f"{total} episode{'s' if total != 1 else ''} across "
+                f"{len(shows)} folder{'s' if len(shows) != 1 else ''}, none "
+                f"analysed yet. Run some from Automated coding, then try "
+                f"again.</p>")
+            self._set_export_source()
+            self._tabs.setCurrentWidget(self._library_page)
+            return
+        aggregate = compute_show_aggregate(name, results)
+        aggregate.episode_count = total
+        self._report.setHtml(show_html(aggregate, results, name))
+        self._show_episode_details(None)
+        self._set_export_source(show=(name, results))
+        self._chart_source = (name, results)
+        self._btn_chart.setEnabled(True)
+        self._tabs.setCurrentWidget(self._library_page)
+        self.statusBar().showMessage(
+            f"{len(results)} of {total} episodes across {len(shows)} folders, "
+            f"each weighted equally.", 8000)
+
+    # ---- pin and compare ----
+
+    def _sync_compare(self) -> None:
+        self._btn_pin.setEnabled(self._selected is not None)
+        # Like with like only: an episode against a show aggregate would put
+        # one episode's numbers beside a mean of many and call it a difference.
+        self._btn_compare.setEnabled(
+            self._selected is not None and self._pinned is not None
+            and self._selected[0] == self._pinned[0]
+            and self._selected[1] != self._pinned[1])
+
+    def _pin_for_compare(self) -> None:
+        if self._selected is None:
+            return
+        self._pinned = self._selected
+        kind, path = self._pinned
+        self._btn_pin.setText(f"Pinned: {path.name[:24]}")
+        self._sync_compare()
+        self.statusBar().showMessage(
+            f"Pinned {path.name}. Select another {kind} and press Compare "
+            f"with Pinned.", 8000)
+
+    def _open_compare(self) -> None:
+        """Two episodes, or two shows, side by side."""
+        if self._selected is None or self._pinned is None:
+            return
+        kind, path = self._selected
+        _pin_kind, pin_path = self._pinned
+
+        if kind == "episode":
+            left = self._cached(show_key(self._root, pin_path.parent),
+                                pin_path.stem)
+            right = self._cached(show_key(self._root, path.parent), path.stem)
+            if left is None or right is None:
+                QMessageBox.information(
+                    self, "Compare",
+                    "Both episodes have to be analysed before they can be "
+                    "compared. Run the missing one from Automated coding.")
+                return
+            names = (pin_path.name, path.name)
+        else:
+            left = self._show_aggregate(pin_path)
+            right = self._show_aggregate(path)
+            if left is None or right is None:
+                QMessageBox.information(
+                    self, "Compare",
+                    "Both shows need at least one analysed episode before "
+                    "they can be compared.")
+                return
+            names = (pin_path.name, path.name)
+
+        from ui.compare import CompareDialog
+        dialog = CompareDialog(left, right, names[0], names[1], kind, self)
+        dialog.show()
+        self._compare_window = dialog      # keep it alive
+
+    def _show_aggregate(self, show_dir: Path):
+        key = show_key(self._root, show_dir)
+        results = [r for r in
+                   (self._cached(key, e.stem) for e in list_episodes(show_dir))
+                   if r is not None]
+        if not results:
+            return None
+        aggregate = compute_show_aggregate(show_dir.name, results)
+        aggregate.episode_count = len(results)
+        return aggregate
+
+    # ---- one drawn sample ----
+
+    def _show_sample_aggregate(self) -> None:
+        """The aggregate over exactly the episodes one sample drew.
+
+        A show aggregate answers "what is this show like"; this answers "what
+        is the set I actually drew like", which is the set every figure in a
+        write-up is really about. They differ whenever the sample is not a
+        census, so conflating them would misdescribe the study.
+        """
+        chosen, _f = QFileDialog.getOpenFileName(
+            self, "Open a sample manifest", str(self._root or ""),
+            "Sample manifest (manifest.json);;JSON (*.json)")
+        if not chosen:
+            return
+        folder = Path(chosen).parent
+        from analyzer.pipeline import _read_selected
+        episodes = _read_selected(folder)
+        if not episodes:
+            QMessageBox.information(
+                self, "Sample Aggregate",
+                f"No selected.csv with episode paths was found beside "
+                f"{Path(chosen).name}. The sampler writes the two together.")
+            return
+
+        results, missing = [], 0
+        for episode in episodes:
+            if not episode.exists():
+                missing += 1
+                continue
+            result = self._cached(show_key(self._root, episode.parent),
+                                  episode.stem)
+            if result is not None:
+                results.append(result)
+
+        name = folder.name
+        self._chart_source = None
+        self._btn_chart.setEnabled(False)
+        self._show_episode_details(None)
+        if not results:
+            self._report.setHtml(
+                f"<p style='color:{color('text_dim')}'><b>{name}</b><br>"
+                f"{len(episodes)} episode"
+                f"{'s' if len(episodes) != 1 else ''} in this sample, none of "
+                f"them analysed yet. Send the sample to the analysis queue "
+                f"from the Episode Sampler, or analyse them from the "
+                f"Library.</p>")
+            self._set_export_source()
+            self._tabs.setCurrentWidget(self._library_page)
+            return
+        aggregate = compute_show_aggregate(name, results)
+        aggregate.episode_count = len(episodes)
+        self._report.setHtml(show_html(aggregate, results, name))
+        self._set_export_source(show=(name, results))
+        self._chart_source = (name, results)
+        self._btn_chart.setEnabled(True)
+        self._tabs.setCurrentWidget(self._library_page)
+        message = (f"{len(results)} of {len(episodes)} sampled episodes "
+                   f"analysed.")
+        if missing:
+            message += (f" {missing} file"
+                        f"{'s are' if missing != 1 else ' is'} named in the "
+                        f"sample but not on disk.")
+        self.statusBar().showMessage(message, 10000)
 
     def _show_dir_for(self, item):
         """The folder a non-episode row stands for, if it is a show.
@@ -1021,13 +2072,6 @@ class MainWindow(QMainWindow):
             node = node.parent()
         path = self._root.joinpath(*reversed(names))
         return path if path.is_dir() and list_episodes(path) else None
-
-    def _not_yet(self, what: str) -> None:
-        QMessageBox.information(
-            self, "Not yet ported",
-            f"{what.rstrip('.')} is still on the Tkinter build.\n\n"
-            "Run  python gui.py  to use it — both builds read the same "
-            "project folder, cache, and settings.")
 
 
 def run() -> int:

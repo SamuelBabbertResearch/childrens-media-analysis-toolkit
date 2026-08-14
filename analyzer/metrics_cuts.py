@@ -27,7 +27,11 @@ from typing import Any, Callable
 
 import cv2
 import numpy as np
-from scenedetect import detect, AdaptiveDetector, ContentDetector
+
+# PySceneDetect is imported inside the one function that detects, not here. It
+# costs ~0.6s to load, and this module is reached at application startup
+# through analyzer.pipeline -> trials -> validation, so a module-level import
+# was 0.6s of every launch whether or not anything was measured.
 
 from .schema import ShotLengthMetrics, ScenePacingMetrics
 
@@ -301,6 +305,7 @@ def _detect_shots(
         durations = np.array([b - a for a, b in zip(bounds, bounds[1:]) if b > a])
         return durations, list(cut_times)
 
+    from scenedetect import AdaptiveDetector, ContentDetector, detect
     if tool == "pyscenedetect_adaptive":
         detector = AdaptiveDetector(
             adaptive_threshold=float(params.get("adaptive_threshold", 3.0)),

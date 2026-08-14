@@ -70,11 +70,10 @@ audio RMS mean. Shot length, rhythm variability, motion peak, dynamic range,
 speech and hand-coded events are measured and reported but **not scored**.
 Name the metric when you mean the metric.
 
-**Unvalidated measures are flagged wherever their numbers appear.** As of now
-that includes **flashing**, **scene relation** (the 0.55 similarity threshold),
-dissolves, adaptive detection, TransNetV2, Farneback motion, and Whisper
-speech. `analyzer/measurements.py` holds the statuses; `ARCHITECTURE.md` §9
-explains what each one means.
+**Unvalidated measures are flagged wherever their numbers appear.**
+`analyzer.measurements.ungraded_measurements()` computes the current list from
+the registry — call it, never hard-code one, or the copy goes stale silently.
+`ARCHITECTURE.md` §9 explains what each status means.
 
 The grounding is Huston & Wright's formal features and Lang's LC4MP; Lillard &
 Peterson (2011) and Christakis et al. (2004) are the associations usually
@@ -177,11 +176,32 @@ Other terms:
 
 ## 6. Coding constraints
 
-- **Verify, do not assert.** Run it, measure it, read the rendered output. A
-  scripted edit is not done until the new symbol is grepped and found *called*,
-  not merely imported.
-- **State what is not done.** A file that overstates progress is worse than one
-  that says nothing.
+The five recurring failure shapes on this project, each with a test for it,
+are in `LEARNINGS.md` § *The shape most of these share*. Read it before
+believing a piece of work is finished.
+
+- **Verify against the artefact, not the render.** Run it, then read *what it
+  produced* — draw the sample and read the strata, export the CSV and read the
+  columns, extract the PDF's text and check it against the screen. "It
+  rendered", "the tests pass" and "the button works" are all compatible with a
+  wrong number, and on this project a wrong number that displays correctly is
+  the failure mode. A scripted edit is not done until the new symbol is
+  grepped and found *called*, not merely imported.
+- **A control that exists is not a feature that works.** Check the data path
+  reaches it.
+- **Audit a port by ENTRY POINTS, not by screens** — every menu item, every
+  button, every dialog opened from another dialog. A tab-by-tab comparison
+  reveals nothing.
+- **When a rule must hold at every call site, put it IN the call.**
+  `analyzer.cache.load_scored()` is the shape of the fix.
+- **Read the neighbouring implementation before writing a parallel one.**
+- **A module that calls itself the source of truth must be READ, not
+  restated** — by every consumer, or it is not one.
+- **Fixing one instance of a repeated mistake is the least useful response to
+  finding it.** Grep for the shape.
+- **State what is not done, and do not declare completion from the builder's
+  side.** "I built what I set out to build" is not "it works". A file that
+  overstates progress is worse than one that says nothing.
 - **Never write into the working copy's data from a test.** `Shows/`,
   `validation/` and the pipeline documents are real research data.
 - **Do not substitute a dependency** without asking — see `STACK.md`.

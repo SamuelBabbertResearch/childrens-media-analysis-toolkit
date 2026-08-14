@@ -370,10 +370,14 @@ Five statuses, and they mean different things. The table above shows only the fi
 - **validated** — graded against human coding.
 - **unvalidated** — works, ungraded. Flag it wherever its numbers appear.
 - **experimental** — ungraded *and* known to be rough.
-- **deterministic** — colour, motion, flashing and audio are direct signal
-  measurements with no detection or classification step to validate. The
-  *signal* is deterministic; whether `flashing` counts the right events is a
-  separate question, and it is unvalidated.
+- **deterministic** — colour, motion and audio are direct signal measurements
+  with no detection or classification step to validate.
+  **Flashing is NOT in this group**, though `analyzer/provenance.py` described
+  it as such until 2026-08-14 — and that description was published on the
+  site and in every PDF. The *signal* is deterministic; whether the whole-frame
+  luminance mean counts the right events is a separate question and is
+  unvalidated, which is why the registry marks it so and why it is flagged
+  wherever its numbers appear.
 - **human** — fantastical events. The tool structures the coding; it does not
   detect fantasy.
 

@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 from typing import Any, Callable
 
-from .cache import load_cached, save_cache
+from .cache import load_cached, load_scored, save_cache
 from .config_loader import load_config
 from .engine import analyze_episode
 from .schema import EpisodeResult
@@ -64,7 +64,10 @@ def analyze_show_batch(
 
         if cached:
             logger.info("[cache] %s", ep.name)
-            result = EpisodeResult.from_dict(cached)
+            # Re-derived against the config THIS run is using, or a skipped
+            # episode reports the score it had when it was first analysed and
+            # a re-analysed one reports a different scale in the same batch.
+            result = load_scored(root, skey, ep.stem, cfg)
             if progress_cb:
                 progress_cb(ep.name, 1.0, base_overall + episode_span)
             results.append(result)

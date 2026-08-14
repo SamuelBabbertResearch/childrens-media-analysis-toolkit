@@ -198,6 +198,17 @@ QPushButton[primary="true"]:disabled {{
     color: {c['text_disabled']};
 }}
 
+/* A group of these in the sub-toolbar picks the screen inside a tab. Checked
+   is the pressed face plus bold — the platform's own "this one is current",
+   and no second accent. */
+QPushButton[segment="true"]:checked {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['control_pressed_top']},
+                stop:1 {c['control_pressed_bottom']});
+    border: 1px solid {c['control_border']};
+    font-weight: bold;
+}}
+
 /* ------------------------------------------------------------ menu bar -- */
 QMenuBar {{
     background: {c['menu_bg']};
@@ -514,6 +525,12 @@ QLabel#inspectorBanner {{
 QFrame#inspectorTable {{
     background: {c['panel_bg']};
     border: 1px solid {c['panel_border']};
+}}
+/* .inspector-panel is overflow-y:auto; the frame belongs to the table inside,
+   not to the scroller, so the scroller itself draws nothing. */
+QScrollArea#inspectorScroll, QScrollArea#inspectorScroll > QWidget {{
+    background: transparent;
+    border: none;
 }}
 QLabel[kvKey="true"] {{
     background: {c['kv_key_bg']};

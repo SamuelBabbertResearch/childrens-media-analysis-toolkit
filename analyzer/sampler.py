@@ -132,6 +132,23 @@ TOOLTIPS: dict[str, str] = {
 
 @dataclass
 class Episode:
+    """One episode in the sampling frame.
+
+    WHAT A FOLDER SCAN CAN AND CANNOT FILL. `scan_entry_root` knows only what
+    the paths tell it: `season`, `episode` and `filepath`. `title`, `air_date`
+    and `runtime` come from a registry CSV, or — for air dates — from the index
+    via `analyzer.eras.attach_air_dates`. Anything reading those fields must
+    cope with None, because None is the ordinary case for a scanned library.
+
+    `runtime` is currently read by NOTHING: it round-trips through a registry
+    CSV and is otherwise inert. There is no duration-weighted sampling, and
+    the field should not be taken to imply one.
+
+    `extra` carries arbitrary grouping columns from a registry CSV, and the
+    `era` tag `analyzer.eras` derives. It is what `sample(stratify_by=...)`
+    partitions on for anything that is not a season.
+    """
+
     entry_id: str
     season: int | None
     episode: int | None
@@ -142,9 +159,24 @@ class Episode:
     extra: dict = field(default_factory=dict)
 
     def sort_key(self, col: str = "episode") -> tuple:
-        if col == "air_date" and self.air_date:
-            return (self.season or 0, self.air_date)
-        return (self.season or 0, self.episode or 0)
+        """A TOTAL ordering key — every element comparable with every other.
+
+        The previous version returned `(season, air_date)` for episodes that
+        had a date and `(season, episode)` for those that did not, so a list
+        holding both raised TypeError comparing a str with an int. That is the
+        normal case, not an edge one: a metadata import fills some episodes
+        and not others.
+
+        Dated episodes come first in date order; undated ones follow in
+        episode order. `sample()` records how many were undated, because a
+        spread draw chops the run into chunks along this order and a partial
+        timeline changes which episodes land in which chunk.
+        """
+        season = self.season or 0
+        if col == "air_date":
+            has_date = 0 if self.air_date else 1
+            return (season, has_date, self.air_date or "", self.episode or 0)
+        return (season, 0, "", self.episode or 0)
 
     def label(self) -> str:
         parts = []
@@ -323,9 +355,21 @@ def load_registry_csv(path: Path, entry_id: str | None = None) -> list[Episode]:
         raise ValueError(f"Registry CSV missing required columns: {missing}")
 
     eid = entry_id or df["entry_id"].iloc[0] if "entry_id" in df.columns else path.stem
+
+    # Anything that is not one of the known fields becomes a stratification
+    # column. This is what makes the documented "stratify_by = any column in
+    # Episode.extra" real: a prepared registry can carry `era`, `format`,
+    # `producer`, whatever the study groups by. Without it `extra` was always
+    # empty and every custom column resolved to one "(none)" stratum.
+    known = {"entry_id", "season", "episode", "title", "air_date", "runtime",
+             "filepath"}
+    extra_cols = [c for c in df.columns if c not in known]
+
     episodes: list[Episode] = []
     for _, row in df.iterrows():
         fp = Path(row["filepath"]) if "filepath" in df.columns and pd.notna(row.get("filepath")) else None
+        extra = {c: str(row[c]).strip()
+                 for c in extra_cols if pd.notna(row.get(c))}
         episodes.append(Episode(
             entry_id=str(row.get("entry_id", eid)),
             season=int(row["season"]) if "season" in df.columns and pd.notna(row.get("season")) else None,
@@ -334,8 +378,24 @@ def load_registry_csv(path: Path, entry_id: str | None = None) -> list[Episode]:
             air_date=str(row["air_date"]) if "air_date" in df.columns and pd.notna(row.get("air_date")) else None,
             runtime=float(row["runtime"]) if "runtime" in df.columns and pd.notna(row.get("runtime")) else None,
             filepath=fp,
+            extra=extra,
         ))
     return episodes
+
+
+def stratification_columns(episodes: list[Episode]) -> list[str]:
+    """Column names present on these episodes that a draw could group by.
+
+    Sorted, and only columns that actually carry a value — offering a stratum
+    key that resolves to "(none)" for every episode is the failure this whole
+    line of work started from.
+    """
+    seen: set[str] = set()
+    for episode in episodes:
+        for key, value in (episode.extra or {}).items():
+            if str(value).strip():
+                seen.add(key)
+    return sorted(seen)
 
 
 # ---------------------------------------------------------------------------
@@ -505,6 +565,27 @@ def sample(
 
     # Sort episodes within each partition
     episodes = sorted(episodes, key=lambda e: e.sort_key(sort_col))
+
+    # A timeline the frame cannot actually support is worth saying out loud.
+    # "Spread" and "systematic" cut the run into chunks along this order, so
+    # ordering by a date most episodes do not have quietly produces a
+    # different sample from the one the design describes.
+    if sort_col == "air_date":
+        undated = sum(1 for e in episodes if not e.air_date)
+        if undated == len(episodes):
+            notes.append(
+                "Ordered by air date, but NO episode has one — the draw fell "
+                "back to episode-number order. Import episode metadata, or "
+                "record the design as episode order."
+            )
+        elif undated:
+            notes.append(
+                f"Ordered by air date, but {undated} of {len(episodes)} "
+                f"episodes have none. Those are ordered after the dated ones "
+                f"by episode number, which shifts what a spread or systematic "
+                f"draw picks. Import the missing air dates for a true "
+                f"timeline."
+            )
 
     # --- Build strata ---
     if stratify_by is None:

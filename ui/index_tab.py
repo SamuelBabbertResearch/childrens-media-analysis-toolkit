@@ -20,6 +20,8 @@ caption says.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QFrame, QHeaderView, QLabel, QLineEdit,
@@ -30,6 +32,39 @@ from analyzer.db import (
     get_db, query_episodes, query_shows, remove_stale_episodes,
 )
 from ui.tokens import OUTLIER_LEGEND
+
+# Database columns produced by a measurement the registry has never graded.
+# CLAUDE.md §2.2 requires the flag WHEREVER the numbers appear, and a table is
+# where most of them appear. Derived from the registry rather than listed by
+# hand, so a tool that gains or loses validation changes this automatically.
+UNVALIDATED_MARK = "\u2020"                      # dagger
+
+
+def unvalidated_columns() -> dict[str, str]:
+    """{database column: why it is flagged} for the columns shown here."""
+    from analyzer.measurements import MEASUREMENTS, ungraded_measurements
+    # Which measurement each database column comes out of.
+    produced_by = {
+        "cuts_per_min": "transitions",
+        "color_saturation_mean": "color",
+        "motion_mean": "motion",
+        "flashing_events_per_min": "flashing",
+        "audio_rms_mean": "audio",
+        "avg_cuts_per_min": "transitions",
+        "avg_saturation": "color",
+        "avg_motion": "motion",
+        "avg_flashing": "flashing",
+        "avg_audio_rms": "audio",
+    }
+    reasons = dict(ungraded_measurements())
+    by_key = {m.key: m.name for m in MEASUREMENTS}
+    out: dict[str, str] = {}
+    for column, key in produced_by.items():
+        name = by_key.get(key)
+        if name in reasons:
+            out[column] = reasons[name]
+    return out
+
 
 # (heading, database column, formatter). The database column is also the sort
 # key, so a heading cannot be sorted by something it does not show.
@@ -195,10 +230,16 @@ class IndexTab(QWidget):
             return
 
         columns = self._columns()
+        flagged = unvalidated_columns()
         self._table.setColumnCount(len(columns))
         self._table.setHeaderLabels([
-            f"{head} {'▲' if self._ascending else '▼'}" if key == self._sort
-            else head for head, key, _ in columns])
+            (head + (UNVALIDATED_MARK if key in flagged else ""))
+            + (f" {'▲' if self._ascending else '▼'}" if key == self._sort
+               else "")
+            for head, key, _ in columns])
+        for index, (_head, key, _fmt) in enumerate(columns):
+            if key in flagged:
+                self._table.headerItem().setToolTip(index, flagged[key])
 
         load_key = "sensory_load_score" if self._mode == "episodes" \
             else "avg_load"
@@ -231,13 +272,49 @@ class IndexTab(QWidget):
         noun = "episode" if self._mode == "episodes" else "show"
         self._count.setText(
             f"{len(rows)} {noun}{'s' if len(rows) != 1 else ''}")
-        self._legend.setVisible(fences is not None)
+        flagged_here = [head for head, key, _ in columns if key in flagged]
+        lines = []
         if fences is not None:
-            self._legend.setText(
+            lines.append(
                 f"{HIGH} above and {LOW} below the Tukey fences for the "
                 f"{len(rows)} {noun}s listed here. {OUTLIER_LEGEND}")
+        if flagged_here:
+            plural = len(flagged_here) != 1
+            lines.append(
+                f"{UNVALIDATED_MARK} {', '.join(flagged_here)} "
+                f"{'come' if plural else 'comes'} from "
+                f"{'measurements' if plural else 'a measurement'} never "
+                f"graded against hand coding. "
+                f"{'They compare' if plural else 'It compares'} episodes "
+                f"measured the same way; "
+                f"{'they are' if plural else 'it is'} not "
+                f"{'validated figures' if plural else 'a validated figure'}, "
+                f"and flashing in particular is not a safety assessment.")
+        self._legend.setVisible(bool(lines))
+        self._legend.setText("  ".join(lines))
 
     # -- actions ----------------------------------------------------------
+    def focus_episode(self, file_path: str) -> None:
+        """Select and scroll to one episode's row.
+
+        Called when the Library sends an episode here, so "Show in Index"
+        lands on the row rather than on the top of a 13-row table.
+        """
+        if self._mode != "episodes":
+            self._scope.setCurrentText("Episodes")
+        self.refresh()
+        wanted = str(file_path).replace("\\", "/").lower()
+        for row in range(self._table.topLevelItemCount()):
+            item = self._table.topLevelItem(row)
+            stored = str(item.data(0, Qt.UserRole) or "").replace("\\", "/")
+            if stored.lower() == wanted:
+                self._table.setCurrentItem(item)
+                self._table.scrollToItem(item)
+                return
+        self._window.statusBar().showMessage(
+            f"{Path(file_path).name} is not in the index yet — analyse it "
+            f"first.", 6000)
+
     def _open_episode(self, item, _column: int) -> None:
         path = item.data(0, Qt.UserRole)
         if path:
