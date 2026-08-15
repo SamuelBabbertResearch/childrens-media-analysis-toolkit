@@ -218,6 +218,85 @@ and stepping *backwards* becomes possible, which `next_frame()` cannot do.
 shows the right frame" and "the API reports the right time" are different
 claims, and the gap between them is invisible from the interface.
 
+### The Qt counter froze during a scrub drag
+**What.** Reported 2026-08-14 as "the time readout in the Qt player is wrong",
+uncharacterised. Measured 2026-08-17 by driving `ui/player.py`'s `VideoPlayer`
+headless: dragging the seek bar to 764.4s (50%) while the player sat paused at
+10.0s left the digital counter reading `00:00:10.00` — the pre-drag position —
+for the whole drag, only snapping to the real value on release.
+**Why.** `_sync()` only wrote the slider from the player's position when
+**not** scrubbing, but always wrote the *label* from the player's position
+regardless. During a drag the player has not moved yet, so the label was
+stale by however far the thumb had travelled, while the bar itself tracked the
+mouse correctly.
+**The fix.** While scrubbing, derive the displayed time from the slider's own
+value instead of the (unmoved) player position, so the counter previews where
+the thumb points; `_end_scrub()` already performs the real seek on release.
+**What it did not affect.** `handcoding.py`'s `_mark()` calls
+`player.position()` directly, never the label text, so no hand-coded
+timestamp was ever written from the stale display — this was a display-only
+defect. Seeking, frame-stepping and the playing-state jumps documented above
+all measured correct, both before and after this fix.
+**Avoid.** A widget with two derived displays (bar position and digital
+readout) fed by two different guards is a standing invitation for exactly one
+of them to forget the drag-in-progress case. Check both, not the one that
+looked wrong.
+**Superseded 2026-08-17.** `_mark()` no longer calls `player.position()`
+directly — see the next entry. The observation above is still accurate as a
+description of *that day's* code; it is not a description of today's.
+
+### `player.py` claimed pause-before-marking was enforced; nothing enforced it
+**What.** Following the scrub-drag fix above, the user asked why the playing
+state counter still "isn't live and accurate." Measuring `_sync()` against
+wall-clock time (not just watching the window) showed the displayed number
+updates every 0.2–0.5s during playback against a real frame duration of
+0.042s (23.976fps, confirmed independently with `ffprobe` — not a polling
+artifact, not the file's fault). `position()`'s own docstring said
+*"Pause before marking; the coding UI enforces that."* Grepping
+`handcoding.py` for `is_playing`/`pause` found nothing. `_mark()` read
+`player.position()` unconditionally — so a mark taken while playing could be
+stamped with a value up to ~0.5s stale, the exact gap the docstring claimed
+did not exist.
+**Why the claim went unnoticed.** `frame_step()` and `seek()` (the *other*
+precision operations on this player) do the right thing implicitly — a seek
+always leaves the player in an exact state, so nothing about their behaviour
+would have surfaced the missing enforcement. Only marking *while playing*
+exercises the gap, and the codebook's own procedure (`EVENT_CODEBOOK.md`,
+`CODEBOOK.md`) has a coder pause to consider each transition anyway, so the
+gap rarely fires in practice — which is exactly the shape of defect this
+project's `LEARNINGS.md` intro warns about: invisible from normal use.
+**The fix.** `VideoPlayer.stamp(callback)` is now the one path to an exact
+mark: paused -> calls back immediately (today's behaviour, unchanged);
+playing -> pauses first (`set_pause(1)`, the same idiom `_hold_first_frame`
+already uses and for the same reason — not `toggle()`, which assumes the
+caller already knows the state being toggled away from), waits in a bounded
+20ms-interval retry (measured: steady-state pause settles in ~20ms, the
+15-try/300ms cap is a safety margin, not the normal path) until libvlc
+confirms it, then calls back with the now-exact `position()`. `_mark()`
+routes through it instead of reading `position()` directly, capturing
+`etype`/`relevance`/`repeat`/`note` at the click so nothing the coder changes
+during the (usually imperceptible) settle window can leak into a mark still
+in flight.
+**Also fixed, cosmetic only.** `_sync()`'s digital counter is now smoothed
+during playback — extrapolated from the last real libvlc tick using
+wall-clock elapsed time, snapping back into sync the instant a new real tick
+arrives. This never touches `position()` or a stamped value; it exists only
+so a coder watching playback gets live feedback instead of a number that
+visibly sits still for 3-5 ticks at a time. Verified: display advances by
+~0.1s every 100ms tick (previously frozen most ticks), never drifts more
+than ~0.4s from the true value before resyncing.
+**Not fixed here.** `gui_coding_editor.py` (Tk)'s `stamp()` has the identical
+gap — `current_sec()` with no pause check, unlike that file's own
+`frame_step()`/`seek_to()`, which already pause first. Out of scope for this
+session (Qt is the active build per `TODO.md`); recorded here so it is not
+mistaken for new when the Tk build is eventually audited (`TODO.md` item 9).
+**Avoid.** A docstring that describes a guarantee is a claim, not a fact —
+grep for whatever it says enforces the guarantee before trusting it. This is
+the second time on this project a comment described the intended design
+rather than the code that shipped (see *Unanalysed episodes were reported as
+failures* below, "a comment in the same function warned against exactly
+this").
+
 ## Reporting and correctness
 
 ### Unanalysed episodes were reported as failures

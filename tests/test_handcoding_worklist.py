@@ -250,19 +250,113 @@ def test_the_validate_worklist_reports_transition_coding_not_events(
 # --- switching episodes ------------------------------------------------------
 
 class _StubPlayer:
-    """Enough of ui.player.VideoPlayer to drive the load path without VLC."""
+    """Enough of ui.player.VideoPlayer to drive the load path without VLC.
+
+    `playing` and `stamp_at` let a test choose which of VideoPlayer.stamp()'s
+    two paths to exercise: paused (synchronous callback with `stamp_at`) or
+    playing (deferred — `settle()` must be called to fire the callback,
+    mirroring the real settle loop needing the Qt event loop pumped).
+    """
 
     def __init__(self) -> None:
         self.opened: list[Path] = []
+        self.playing = False
+        self.stamp_at = 0.0
+        self._pending: list = []
 
     def open(self, path):
         self.opened.append(Path(path))
 
     def position(self) -> float:
-        return 0.0
+        return self.stamp_at
 
     def seek(self, _seconds) -> None:
         pass
+
+    def is_playing(self) -> bool:
+        return self.playing
+
+    def stamp(self, callback) -> None:
+        if not self.playing:
+            callback(self.stamp_at)
+            return
+        self._pending.append(callback)
+
+    def settle(self) -> None:
+        """Simulates the real pause-settle completing: flips to paused and
+        fires every stamp() call that was waiting on it."""
+        self.playing = False
+        pending, self._pending = self._pending, []
+        for callback in pending:
+            callback(self.stamp_at)
+
+
+def test_marking_while_paused_records_immediately(window, tmp_path):
+    """The common case: no settle needed, the event is there right away."""
+    root, episodes = _library(tmp_path, ["S01 E01"])
+    window.set_root(root)
+    folder = _draw(tmp_path, episodes)
+    window.set_scope(scope_from_draw(f"sample:{folder}", "Pilot", folder))
+
+    code = window._handcoding.code
+    code._player = _StubPlayer()
+    code._player.stamp_at = 12.5
+    code._load_episode(episodes[0])
+
+    code._btn_mark.click()
+
+    assert len(code._events) == 1
+    assert code._events[0]["timestamp_sec"] == 12.5
+
+
+def test_marking_while_playing_waits_for_the_pause_to_settle(
+        window, tmp_path):
+    """_mark() must never record the coarse live clock. While playing, the
+    event must not appear until the stub's pause-settle actually completes
+    — proving _mark() goes through stamp() rather than reading position()
+    at the moment of the click."""
+    root, episodes = _library(tmp_path, ["S01 E01"])
+    window.set_root(root)
+    folder = _draw(tmp_path, episodes)
+    window.set_scope(scope_from_draw(f"sample:{folder}", "Pilot", folder))
+
+    code = window._handcoding.code
+    code._player = _StubPlayer()
+    code._player.playing = True
+    code._player.stamp_at = 75.25
+    code._load_episode(episodes[0])
+
+    code._btn_mark.click()
+    assert code._events == [], \
+        "recorded a mark before the pause was confirmed"
+
+    code._player.settle()
+    assert len(code._events) == 1
+    assert code._events[0]["timestamp_sec"] == 75.25
+
+
+def test_a_mark_taken_while_playing_keeps_the_fields_from_the_click(
+        window, tmp_path):
+    """The dropdowns are read at click time, not when the settle callback
+    fires, so nothing the coder changes during the (usually ~20ms, capped
+    at 300ms) settle window can leak into the mark still in flight."""
+    root, episodes = _library(tmp_path, ["S01 E01"])
+    window.set_root(root)
+    folder = _draw(tmp_path, episodes)
+    window.set_scope(scope_from_draw(f"sample:{folder}", "Pilot", folder))
+
+    code = window._handcoding.code
+    code._player = _StubPlayer()
+    code._player.playing = True
+    code._player.stamp_at = 5.0
+    code._load_episode(episodes[0])
+
+    code._type.setCurrentIndex(code._type.findData("transformation"))
+    code._btn_mark.click()
+    code._type.setCurrentIndex(code._type.findData("physical"))  # changed
+    code._player.settle()
+
+    assert code._events[0]["event_type"] == "transformation"
 
 
 def test_opening_a_second_episode_does_not_carry_the_first_ones_events(

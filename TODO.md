@@ -32,30 +32,12 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
    **Delete the quarantine folder when you are satisfied** — that part is
    yours; nothing in the tool reads it.
 
-1. **Fix the video time counter in the Qt build.** Reported 2026-08-14 from
-   real use: the time readout in the Qt player is wrong. Not yet characterised —
-   before fixing, establish *how* it is wrong (frozen, drifting, wrong format,
-   wrong relative to the seek bar, or disagreeing with the timestamp a mark is
-   written with) and against which of `ui/player.py`'s paths.
-
-   **Why it is not cosmetic.** The counter is what a coder reads while placing
-   a mark. The 2026-08-14 assessment closed the *old* timestamp question — the
-   frame-step defect never touched the collected data, because those marks were
-   hand-typed rather than stamped — but it also showed the hand coding carries
-   a ~0.55 s early bias from whole-second entry, and that ±2 s tolerance is
-   already a floor. A counter that misreads by a comparable amount would push
-   the reference below the resolution the validation claim depends on. **Check
-   the written mark, not just the display**: `ui/player.py` was fixed on
-   2026-08-11 so stepping seeks by one frame duration, so display and stamp can
-   now disagree only if they read different clocks. See
-   `validation/VALIDATION_LOG.md` 2026-08-14.
-
-2. **Spot-check for whip-pan cuts coded as `hard_cut`.** The codebook now
+1. **Spot-check for whip-pan cuts coded as `hard_cut`.** The codebook now
    defines whip-pan disguised cuts; a coder not looking for them may have coded
    the join as `hard_cut`. The only subtype whose new definition could
    reclassify existing rows. See `validation/VALIDATION_LOG.md` 2026-08-11.
 
-3. **Cite the transition typology, or say it is ours.** `CODEBOOK.md` defines
+2. **Cite the transition typology, or say it is ours.** `CODEBOOK.md` defines
    five transition types and four `other` subtypes and cites **no source for
    any of them** — including `hard_cut` and `dissolve`. The `other` subtype
    definitions added 2026-08-11 were written from general editing vocabulary,
@@ -66,10 +48,10 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
    primary sources before formal citation — or state plainly that the typology
    is the study's own and give the reasoning.
 
-4. **Freeze the codebook.** Still DRAFT after three mid-study additions. The
+3. **Freeze the codebook.** Still DRAFT after three mid-study additions. The
    2026-07-04 log entry already said to freeze it before the second episode.
 
-5. **Two data decisions the audit surfaced.** The output-audit passes on
+4. **Two data decisions the audit surfaced.** The output-audit passes on
    2026-08-14 found nineteen defects across four rounds, all fixed; see
    `LEARNINGS.md` and `FOR_PAPER.txt`. Every path listed for auditing has now
    been run and its artefact inspected. What is left is not defects but
@@ -103,7 +85,7 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
    the control was present, the button worked, and the record described the
    design that was asked for rather than the one that ran.
 
-6. **One Qt decision, not a port.** **Watch Analysis (Live)** (`gui_live.py`).
+5. **One Qt decision, not a port.** **Watch Analysis (Live)** (`gui_live.py`).
    The Qt Automated coding tab already shows a progress bar, the current
    episode, and a per-episode results table as the run proceeds. Decide
    whether a separate live window still earns its place before porting it.
@@ -112,7 +94,7 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
    as Default*. (The hand-coding worklist that used to be listed here is
    **done** — 2026-08-16, see *The research context, continued*.)
 
-7. **Decide about `master`.** The branch is pushed (done 2026-08-11), so the
+6. **Decide about `master`.** The branch is pushed (done 2026-08-11), so the
    work is backed up. But `feature/language-analysis` is far ahead of
    `master`, whose last commit is 2026-06-30 — and `master` is what GitHub
    shows visitors. Merging forward is a clean fast-forward.
@@ -122,13 +104,13 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
    exists in Qt, so the sentence naming `gui.py` as the product is no longer
    true. Decide which build the README describes before merging.
 
-8. **Try the Qt build as the daily driver, then retire `gui.py`.**
+7. **Try the Qt build as the daily driver, then retire `gui.py`.**
    Every Tk screen now has a Qt equivalent, but "exists" is not "proven": the
    Qt Language, Validate tool, Agreement and Sampler screens have each been
    driven once, headless. Use them for real work before deleting anything —
    see item 10.
 
-9. **Decide the startup wizard's default action.**
+8. **Decide the startup wizard's default action.**
    The wizard opens on every launch with *Create Pipeline* as the default
    button, so dismissing it with Enter creates a pipeline — this project
    accumulated several that way. Options: make Skip the default when pipelines
@@ -170,7 +152,7 @@ session** — each needs its own verification against real output.
     whether an unlinked pipeline should reset to the whole library instead.
 - ~~Scope Human coding.~~ **Done 2026-08-16.** Code and Validate tool both show
   the sample as a worklist with each episode's coding state, read from the
-  engine. This also closes item 6's "the Qt Human coding tab has no worklist".
+  engine. This also closes item 5's "the Qt Human coding tab has no worklist".
   Two real defects were found on the way and fixed — one sheet lookup instead
   of two, and opening a second episode no longer carries the first one's marks
   (`LEARNINGS.md`).
@@ -214,27 +196,27 @@ session** — each needs its own verification against real output.
 
 ## Ready when the above are done
 
-10. **Retire Tk modules that have reached parity.**
+9. **Retire Tk modules that have reached parity.**
    Fifteen `gui*.py` files are still on disk and both builds read the same
    project, so there is a real risk of editing the wrong one. Delete only
-   after item 8 — the Qt equivalents of `gui_sampler.py`, `gui_validation.py`
+   after item 7 — the Qt equivalents of `gui_sampler.py`, `gui_validation.py`
    and `gui_handcoding.py` exist as of 2026-08-14 but have not yet been used
    for real work. Not reversible in a hurry; do it deliberately.
 
-11. **Fold the two positioning documents into `ROADMAP.md`, then delete them.**
+10. **Fold the two positioning documents into `ROADMAP.md`, then delete them.**
    `design/CMAT_GITHUB_PIPELINE_POSITIONING.md` and
    `design/POSITIONING_BRIEF.md` overlap each other and overlap `ROADMAP.md`,
    which `INDEX.md` already names as the home for "positioning, priorities, and
    what is deliberately not being built". Three files answering one question is
-   how they drift apart. Bears on item 7 — what `README.md` should say.
+   how they drift apart. Bears on item 6 — what `README.md` should say.
 
-   The rest of item 11 is **done** (2026-08-14): the seven root files were
+   The rest of item 10 is **done** (2026-08-14): the seven root files were
    sorted into `design/` and `ui/reference/`, and `preview_ui.py` was deleted
    as dead scratch. `docs/` was deliberately **not** used — it is gitignored,
    so moving anything there silently untracks it. See `design/README.md`.
 
-12. **Re-check the UX audit against the Qt build.**
+11. **Re-check the UX audit against the Qt build.**
    `design/CMAT_FIRST_TIME_UX_AUDIT.md` traced the *Tk* build (`gui.py`,
-   `gui_sampler.py`, `gui_pipeline.py`), which item 10 retires. Its findings
+   `gui_sampler.py`, `gui_pipeline.py`), which item 9 retires. Its findings
    may be fixed, may have moved, or may never have applied to Qt. Do this
-   alongside item 8 rather than acting on the audit as written.
+   alongside item 7 rather than acting on the audit as written.

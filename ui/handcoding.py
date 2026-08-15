@@ -365,6 +365,14 @@ class CodeView(QWidget):
         self._btn_mark = QPushButton("Mark at playhead")
         self._btn_mark.setProperty("primary", "true")
         self._btn_mark.setEnabled(False)
+        self._btn_mark.setToolTip(
+            "Records the current type/relevance/repeat at the playhead.\n"
+            "If the video is still playing, this PAUSES IT FIRST — that is "
+            "intentional, not a glitch. VLC's own live clock can be up to "
+            "half a second behind what you just saw, so pausing first is "
+            "what makes the recorded timestamp exact. The moving counter "
+            "while playing is a smoothed estimate for feel; it is never "
+            "what gets written to the sheet.")
         self._btn_mark.clicked.connect(self._mark)
         rl.addWidget(self._btn_mark)
         return row
@@ -448,13 +456,24 @@ class CodeView(QWidget):
                 "other_impossible needs a note saying what happened — "
                 "otherwise the row cannot be checked by a second coder.")
             return
-        seconds = self._player.position()
+        relevance = self._relevance.currentText()
+        repeat = self._repeat.currentText()
+        # player.stamp() pauses first if playing, so the timestamp is read
+        # from libvlc's exact paused clock rather than its coarse live one
+        # (up to ~0.5s stale) — see ui/player.py's VideoPlayer.stamp(). Every
+        # value here is captured now, at the click, so nothing the coder
+        # changes in the meantime can leak into a mark still settling.
+        self._player.stamp(lambda seconds: self._append_event(
+            seconds, etype, relevance, repeat, note))
+
+    def _append_event(self, seconds: float, etype: str, relevance: str,
+                       repeat: str, note: str) -> None:
         self._events.append({
             "timestamp_sec": round(seconds, 3),
             "timestamp_hms": player_mod.sec_to_hms(seconds),
             "event_type": etype,
-            "narrative_relevance": self._relevance.currentText(),
-            "repeat": self._repeat.currentText(),
+            "narrative_relevance": relevance,
+            "repeat": repeat,
             "duration_sec": None,
             "notes": note,
         })
