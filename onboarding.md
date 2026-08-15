@@ -4,8 +4,8 @@ Previously-on, for a session starting with zero memory. Read this, then
 `TODO.md`, then `DECISIONS.md` and `LEARNINGS.md`. `INDEX.md` points at
 everything else.
 
-**Last updated:** 2026-08-14 (ceilings retuned — every composite score moved;
-F1 identifiers renamed to `boundary_f1`; frame-step timestamp question closed)
+**Last updated:** 2026-08-15 (the application now has a research context —
+`analyzer/scope.py`; the Library filters to a drawn sample and names which one)
 
 ---
 
@@ -46,8 +46,8 @@ two items were left deliberately because they need a product decision rather
 than a port (`TODO.md` item 7). Coverage is still not mileage: everything new
 has been driven headless against the real library, not used for real work.
 
-Run the tests with `python -m pytest -q` from the repo root: **315 passed,
-13 skipped** (328 collected). `tests/test_eras.py` asserts on drawn strata and
+Run the tests with `python -m pytest -q` from the repo root: **354 passed,
+13 skipped** (367 collected). `tests/test_eras.py` asserts on drawn strata and
 manifest notes rather than on which widgets exist — the level the sampler
 defects were only visible at. `tests/conftest.py` now offers a session-scoped
 `qapp` fixture — an offscreen `QApplication` — so Qt widgets can be tested for
@@ -116,6 +116,34 @@ new and immediately migrating it.
 pipeline is a control surface rather than a picture. What is left is not
 porting but proving: use the Qt build for real work, then retire the Tk
 modules and decide what `master` and `README.md` should say.
+
+## What changed on 2026-08-15: the research context
+
+The pipeline could *navigate* to a screen but handed it nothing, and every
+screen worked out "which episodes?" for itself from the Library tree. A sample
+could be drawn, documented and manifested with no screen any the wiser.
+
+`analyzer/scope.py` is now the answer to that question: a `Scope` is either the
+whole library or exactly the episodes one draw selected. The Library filters to
+it, and a **Showing:** chooser above the tree always names which. Drawing a
+sample makes it current; so does choosing a pipeline. It is **not persisted** —
+the application always opens on the whole library, deliberately.
+
+**Only the Library obeys it so far.** The Index and the three measurement tabs
+still take a single episode from the tree selection. That is the next work and
+it is broken up in `TODO.md` § *The research context, continued* — the pieces
+are independent and each needs verifying against real output, not one sitting.
+
+Two things worth knowing before touching it:
+
+- The scope is a **view**. It hides rows; it deletes nothing and re-measures
+  nothing. Because it can hide things it is always visible and always one click
+  from *Whole library*.
+- Building it surfaced a real inconsistency: the sampler draws six video
+  extensions and the library walk reads `.mp4` only, so a draw can contain
+  episodes the Library cannot list. The header says what is not shown, but
+  whether to widen the walk is a corpus-level decision — `TODO.md` item 0, and
+  recorded in `FOR_PAPER.txt` because it changes N.
 
 Everything else in `TODO.md` is real but blocks nothing. The **F1
 contradiction is now closed** (2026-08-14, see below); the composite rationale

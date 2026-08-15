@@ -7,6 +7,31 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
 
 ## Now
 
+0. **Re-analyse Spongebob and re-check any figure quoted from it.** The
+   duplicate episodes were removed on 2026-08-15 (see below), and the index
+   row for the removed copy is gone — so the live double count is fixed. What
+   is *not* done is re-deriving anything that was computed while it was there.
+   Any Spongebob show-level aggregate produced before 2026-08-15 counted
+   `S01E08B Squeaky Boots` twice. `FOR_PAPER.txt` has the detail.
+
+   **What was done.** A scan found 66 duplicated filename stems among 203
+   video files. `Little Bear (Full Series) - Copy/` (65 episodes, a whole-series
+   duplicate carrying its own 81-result `.analysis`) and the misfiled
+   `Season 2/SpongeBob SquarePants S01E08B Squeaky Boots.mp4` were **moved, not
+   deleted**, to `_duplicates_quarantined_2026-08-15/` at the project root —
+   outside the library, gitignored, and reversible by moving them back. The
+   `.mkv` under `Season 1/` was kept: `S01E08B` is a season-one episode, so it
+   is the correctly-filed copy, and it is the one the sample manifests
+   reference. The library is now 137 files with **0 duplicated stems**.
+
+   **Expected consequence, not a defect.** Two Spongebob draws referenced the
+   removed copy and now report "1 no longer on disk". Manifests are historical
+   records of what was drawn and are deliberately not rewritten. The 9-episode
+   draw was always 8 distinct episodes.
+
+   **Delete the quarantine folder when you are satisfied** — that part is
+   yours; nothing in the tool reads it.
+
 1. **Fix the video time counter in the Qt build.** Reported 2026-08-14 from
    real use: the time readout in the Qt player is wrong. Not yet characterised —
    before fixing, establish *how* it is wrong (frozen, drifting, wrong format,
@@ -110,6 +135,33 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
    accumulated several that way. Options: make Skip the default when pipelines
    already exist; only show the wizard when there are none; or leave it.
    Needs a product call before code.
+
+## The research context, continued
+
+The scope exists and the Library obeys it (2026-08-15, `DECISIONS.md`). These
+are the rest of it, in the order they pay off. **Do not do them all in one
+session** — each needs its own verification against real output.
+
+- **Scope the Index tab.** It queries SQLite with a show-name filter, so
+  restricting it to an episode list is real work rather than a flag. It is the
+  screen where "over my sample" matters most: an aggregate over the whole
+  corpus when the header says *Pilot Study* would be a wrong number displaying
+  correctly.
+- **Scope the measurement tabs.** Automated coding, Human coding and Language
+  still take a single `set_target(path)` from the Library selection. Giving
+  them the scope means arriving with the working set staged — the analysis
+  queue pre-filled, the coding worklist showing the sample — instead of "No
+  episode or show selected". `_open_stage_screen` in `ui/main_window.py` is
+  where a pipeline node would hand it over.
+- **Show the scope outside the Library.** Once more than one screen obeys it,
+  the chooser belongs above the tabs rather than inside one of them, so the
+  current context is visible wherever you are.
+- **Then, and only then, consider making the wires carry the set.** Sampling
+  emits N, selection narrows it, a hand-code branch takes its subset. This is
+  the north-star spec's "output produced here becomes input there", and it is
+  the point at which drawing the graph starts to matter. Currently
+  `doc.connections` is only ever counted, and `node.config` is written by the
+  templates and read by nothing.
 
 ## Ready when the above are done
 

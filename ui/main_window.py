@@ -49,6 +49,9 @@ from analyzer.show_index import (
 )
 from ui import native_frame, theme
 from analyzer.pipeline import build_pipelines
+from analyzer.scope import (
+    LIBRARY_LABEL, Scope, library_scope, scope_from_draw, scope_from_pipeline,
+)
 from analyzer.pipeline_graph import (
     NODE_TYPES, default_doc, delete_doc, duplicate_doc, list_docs,
     node_type, save_doc, unique_name,
@@ -268,6 +271,10 @@ class MainWindow(QMainWindow):
 
         self._cfg = load_config()
         self._root: Path | None = None
+        # The research context. Deliberately NOT persisted across launches:
+        # opening the application on a narrowed library, with no memory of
+        # having narrowed it, is the failure this control exists to avoid.
+        self._scope = library_scope()
 
         self._build_title_bar()
         self._build_menu()
@@ -650,6 +657,18 @@ class MainWindow(QMainWindow):
             return
         self._trials.refresh()
         self._refresh_canvas()
+        # Drawing a sample is the moment the working set stops being "whatever
+        # is on disk", so the Library follows the draw. It is a view: the
+        # chooser still offers the whole library, one click away.
+        written = getattr(dialog, "written_dir", None)
+        if written is not None:
+            self.set_scope(scope_from_draw(f"sample:{written}",
+                                           written.name, written),
+                           announce=False)
+            self._tabs.setCurrentWidget(self._library_page)
+            self.statusBar().showMessage(
+                f"Showing {self._scope.describe()}. "
+                f"Use Showing → {LIBRARY_LABEL} for everything again.", 12000)
 
     def _build_status_bar(self) -> None:
         """Message on the left, state on the right."""
@@ -1144,15 +1163,39 @@ class MainWindow(QMainWindow):
         self._pipe_pick.clear()
         self._pipe_pick.addItems([d.name for d in self._docs])
         self._pipe_pick.blockSignals(False)
-        self._load_pipeline(0)
+        # Not follow_scope: discovery runs at startup and when the root
+        # changes, and the application must open on the whole library.
+        self._load_pipeline(0, follow_scope=False)
 
-    def _load_pipeline(self, index: int) -> None:
+    def _load_pipeline(self, index: int, follow_scope: bool = True) -> None:
         if not getattr(self, "_docs", None) or index < 0:
             return
         self._undo_stack.clear()
         self._redo_stack.clear()
         self._sync_history()
         self._refresh_canvas()
+        if follow_scope:
+            self._follow_pipeline_scope()
+
+    def _follow_pipeline_scope(self) -> None:
+        """Choosing a pipeline makes its sample the current scope.
+
+        This is the spec's "selecting a node establishes the current research
+        context", at the level the context actually varies: a pipeline binds to
+        one sample, so every node in it shares a working set. A pipeline with
+        no sample linked leaves the scope alone rather than silently emptying
+        the Library — the honest reading of an unlinked pipeline is "no
+        opinion about which episodes", not "no episodes".
+        """
+        doc = self._doc()
+        if doc is None or not doc.source_key:
+            return
+        pipeline = getattr(self, "_derived", {}).get(doc.source_key)
+        if pipeline is None:
+            return
+        scope = scope_from_pipeline(pipeline)
+        if scope is not None and scope.key != self._scope.key:
+            self.set_scope(scope)
 
     def _stage_status(self, node) -> str:
         """The node's real state, derived from what is on disk.
@@ -1187,6 +1230,28 @@ class MainWindow(QMainWindow):
             "folders, not a show folder itself.    2. Pick a show or episode "
             "below to see its analysis.")
         lay.addWidget(self._hint)
+
+        # The scope control. It sits above the tree rather than in the panel
+        # header because it governs what the tree contains, and because a
+        # filter the user cannot see is a filter they will forget: the
+        # application opens on the whole library and this row always says
+        # which set is on screen.
+        scope_row = QHBoxLayout()
+        scope_row.setContentsMargins(0, 0, 0, 0)
+        scope_row.setSpacing(6)
+        scope_row.addWidget(QLabel("Showing:"))
+        self._scope_pick = QComboBox()
+        self._scope_pick.setMinimumWidth(240)
+        self._scope_pick.setToolTip(
+            "Which episodes this screen shows: the whole library, or exactly "
+            "the episodes one documented sample drew. This narrows the view "
+            "only — nothing is deleted, and no measurement changes.")
+        self._scope_pick.currentIndexChanged.connect(self._on_scope_picked)
+        scope_row.addWidget(self._scope_pick)
+        self._scope_note = QLabel("")
+        self._scope_note.setProperty("role", "dim")
+        scope_row.addWidget(self._scope_note, 1)
+        lay.addLayout(scope_row)
 
         split = QSplitter(Qt.Horizontal)
         lay.addWidget(split, 1)
@@ -1651,6 +1716,10 @@ class MainWindow(QMainWindow):
                 pass
         self._conn = None
         self._show_episode_details(None)
+        # Samples are discovered under the root, so both the chooser and the
+        # current scope belong to the library being opened, not the last one.
+        self._scope = library_scope()
+        self._sync_scope_choices()
         self.populate()
         # Pipelines live under the root (<root>/.analysis/pipelines), so the
         # list has to be rebuilt when the root changes. Without this the tab
@@ -1659,8 +1728,16 @@ class MainWindow(QMainWindow):
         self._discover_pipelines()
 
     def populate(self) -> None:
+        """Fill the tree with the episodes the current scope admits.
+
+        Under the whole-library scope this walks the root exactly as it always
+        did. Under a sample's scope a show contributes only its drawn
+        episodes, and a show that drew none is left out rather than shown
+        empty — an empty row would read as a show with no files.
+        """
         self._model.removeRows(0, self._model.rowCount())
         if not self._root:
+            self._sync_scope_note(0)
             self._count.setText("no library loaded")
             return
 
@@ -1674,6 +1751,10 @@ class MainWindow(QMainWindow):
                     s, e = self._add_show(node[0], show_dir)
                     shows += s
                     episodes += e
+                if node[0].rowCount() == 0:
+                    # Every show under this category was filtered out, so the
+                    # category has nothing to group.
+                    self._model.removeRow(node[0].row())
             else:
                 s, e = self._add_show(None, path)
                 shows += s
@@ -1681,6 +1762,7 @@ class MainWindow(QMainWindow):
 
         self._tree.expandAll()
         self._release_columns()
+        self._sync_scope_note(episodes)
         if hasattr(self, "_index"):
             self._index.refresh()
             self._trials.refresh()
@@ -1688,7 +1770,107 @@ class MainWindow(QMainWindow):
             f"{shows} show{'s' if shows != 1 else ''}, "
             f"{episodes} episode{'s' if episodes != 1 else ''}")
         self.statusBar().showMessage(
-            f"{shows} shows, {episodes} episodes in {self._root}")
+            f"{shows} shows, {episodes} episodes in {self._root} "
+            f"({self._scope.describe()})")
+
+    # ---- the research context ----
+    #
+    # One scope, set here and read by the Library. `analyzer/scope.py` owns
+    # what a scope IS; this owns which one is current. The distinction is the
+    # north-star spec's — the Qt layer must not become the source of truth for
+    # research state.
+
+    def set_scope(self, scope: Scope, announce: bool = True) -> None:
+        """Make *scope* current and redraw the Library."""
+        self._scope = scope
+        self._sync_scope_choices()
+        self.populate()
+        if announce:
+            self.statusBar().showMessage(
+                f"Showing {scope.describe()}.", 8000)
+
+    def _sync_scope_choices(self) -> None:
+        """Rebuild the chooser: the whole library, then every drawn sample.
+
+        Samples come from `build_pipelines`, so the list is whatever is
+        actually on disk under the root. The synthetic "Unsampled work"
+        pipeline is excluded by `scope_from_pipeline` — it has no draw folder
+        and its episode paths are placeholders.
+        """
+        if not hasattr(self, "_scope_pick"):
+            return
+        entries: list[tuple[str, Scope]] = [(LIBRARY_LABEL, library_scope())]
+        try:
+            for pipeline in build_pipelines(self._root):
+                scope = scope_from_pipeline(pipeline)
+                if scope is not None:
+                    entries.append((scope.describe(), scope))
+        except Exception:
+            pass                      # a scope list is not worth a crash
+
+        # Two draws of one show can carry the same sample name — this library
+        # has two "Spongebob Squarepants Season 1 (spread)" — so a repeated
+        # label gets its draw folder, which is dated and unique. Picking the
+        # wrong sample would silently scope a study to the wrong episodes.
+        # Keyed on the sample NAME, not on the rendered label: two draws of one
+        # show differ only by episode count, so the labels are technically
+        # distinct and a naive collision check never fires. "(spread) — 9
+        # episodes" against "— 6 episodes" is not something to pick between at
+        # a glance, and picking wrong scopes a study to the wrong episodes.
+        seen: dict[str, int] = {}
+        for _label, scope in entries:
+            seen[scope.label] = seen.get(scope.label, 0) + 1
+        entries = [
+            ((f"{label}  ({scope.folder.name})"
+              if seen[scope.label] > 1 and scope.folder else label), scope)
+            for label, scope in entries
+        ]
+        # A scope set before its draw is discoverable — the sample written
+        # moments ago — is added rather than dropped. Silently falling back to
+        # the whole library here would leave the chooser disagreeing with the
+        # tree, which is the one thing this control must never do.
+        if not self._scope.is_library and \
+                not any(s.key == self._scope.key for _l, s in entries):
+            entries.append((self._scope.describe(), self._scope))
+
+        self._scope_choices = [s for _label, s in entries]
+        self._scope_pick.blockSignals(True)
+        self._scope_pick.clear()
+        for label, _scope in entries:
+            self._scope_pick.addItem(label)
+        self._scope_pick.setCurrentIndex(
+            next((i for i, s in enumerate(self._scope_choices)
+                  if s.key == self._scope.key), 0))
+        self._scope_pick.blockSignals(False)
+
+    def _on_scope_picked(self, index: int) -> None:
+        choices = getattr(self, "_scope_choices", [])
+        if 0 <= index < len(choices):
+            self.set_scope(choices[index])
+
+    def _sync_scope_note(self, shown: int) -> None:
+        """The line beside the chooser: what this scope is, in one sentence.
+
+        *shown* is how many episodes the tree ended up with, which is not
+        always how many the sample drew. The Library lists `.mp4` only
+        (`show_index.list_episodes`) while the sampler draws six extensions,
+        so a draw can legitimately contain a file this screen cannot show. It
+        says so rather than displaying a count that disagrees with the rows
+        underneath it — see `LEARNINGS.md` on numbers that display correctly.
+        """
+        if not hasattr(self, "_scope_note"):
+            return
+        if self._scope.is_library:
+            self._scope_note.setText("every episode under the root folder")
+            return
+        parts = [f"the {self._scope.total_drawn} episodes this sample drew"]
+        if self._scope.missing:
+            parts.append(f"{len(self._scope.missing)} no longer on disk")
+        unlistable = len(self._scope.episodes) - shown
+        if unlistable > 0:
+            parts.append(f"{unlistable} not shown here — the Library lists "
+                         f".mp4 files only")
+        self._scope_note.setText(" — ".join(parts))
 
     def _release_columns(self) -> None:
         """Let the user resize the trailing columns after their first sizing.
@@ -1720,7 +1902,12 @@ class MainWindow(QMainWindow):
 
     def _add_show(self, parent, show_dir: Path) -> tuple[int, int]:
         skey = show_key(self._root, show_dir)
-        eps = list_episodes(show_dir)
+        eps = [ep for ep in list_episodes(show_dir) if self._scope.contains(ep)]
+        # A show with nothing in scope is omitted, not shown empty. Under the
+        # whole-library scope nothing is filtered, so a genuinely empty show
+        # folder still appears and still reads "empty".
+        if not eps and not self._scope.is_library:
+            return 0, 0
         analyzed = 0
         rows = []
         for ep in eps:
@@ -2008,8 +2195,8 @@ class MainWindow(QMainWindow):
         if not chosen:
             return
         folder = Path(chosen).parent
-        from analyzer.pipeline import _read_selected
-        episodes = _read_selected(folder)
+        from analyzer.scope import read_selected
+        episodes = read_selected(folder)
         if not episodes:
             QMessageBox.information(
                 self, "Sample Aggregate",

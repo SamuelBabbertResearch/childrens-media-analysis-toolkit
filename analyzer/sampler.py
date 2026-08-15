@@ -22,6 +22,8 @@ from typing import Any
 
 import pandas as pd
 
+from .show_index import VIDEO_EXTENSIONS
+
 __version__ = "1.0.0"
 
 # ---------------------------------------------------------------------------
@@ -30,7 +32,10 @@ __version__ = "1.0.0"
 
 _DEFAULT_SEASON_REGEX = r"(?i)(?:season\s*|s)(\d+)"
 _DEFAULT_EPISODE_REGEX = r"(?i)s(\d+)e(\d+)"
-_DEFAULT_VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".m4v"}
+# Imported, not restated. These two modules disagreeing about what an episode
+# is meant a documented sample could contain files the library never listed —
+# see `show_index.VIDEO_EXTENSIONS`. A test asserts they stay the same object.
+_DEFAULT_VIDEO_EXTENSIONS = set(VIDEO_EXTENSIONS)
 
 # ---------------------------------------------------------------------------
 # Tooltip strings (authoritative source — imported by GUI and docs)

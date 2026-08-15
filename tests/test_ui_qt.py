@@ -914,7 +914,31 @@ def test_sample_aggregate_counts_the_whole_sample_not_just_the_analysed():
     from ui.main_window import MainWindow
     src = inspect.getsource(MainWindow._show_sample_aggregate)
     assert "aggregate.episode_count = len(episodes)" in src
-    assert "_read_selected" in src
+
+
+def test_sample_aggregate_can_actually_import_its_episode_reader():
+    """The text version of this test passed while the import was broken.
+
+    `_show_sample_aggregate` imports its selected.csv reader inside the
+    function, so a rename leaves the source string intact and the button
+    raising ImportError on click. Asserting the symbol resolves is the
+    cheapest thing that would have caught it.
+    """
+    import ast
+    import importlib
+    import inspect as _inspect
+    from ui.main_window import MainWindow
+
+    tree = ast.parse(_inspect.getsource(MainWindow._show_sample_aggregate)
+                     .lstrip())
+    imports = [node for node in ast.walk(tree)
+               if isinstance(node, ast.ImportFrom)]
+    assert imports, "the reader is expected to be imported inside the function"
+    for node in imports:
+        module = importlib.import_module(node.module)
+        for alias in node.names:
+            assert hasattr(module, alias.name), \
+                f"{node.module}.{alias.name} does not exist"
 
 
 def test_compare_refuses_to_mix_an_episode_with_a_show():
@@ -1044,3 +1068,33 @@ def test_show_in_index_lands_on_the_row():
     assert "scrollToItem" in src and "setCurrentItem" in src
     # And it says so when the episode was never analysed.
     assert "not in the index yet" in src
+
+
+def test_the_video_surface_paints_its_own_pixels(qapp):
+    """WA_OpaquePaintEvent promises Qt this widget covers every pixel.
+
+    It did not: with no media loaded nothing painted the surface at all, and
+    whatever was on screen before survived underneath — the Trials list showed
+    through the coding screen. Rendering it over a known background and reading
+    the pixels back is the only check that would have caught it; every
+    attribute involved was set correctly.
+    """
+    import pytest
+    from PySide6.QtGui import QPixmap
+    import ui.player as player_mod
+
+    ok, reason = player_mod.available()
+    if not ok:
+        pytest.skip(f"no libvlc: {reason}")
+
+    surface = player_mod.VideoSurface()
+    surface.resize(400, 300)
+
+    for idle in (True, False):
+        surface.set_idle(idle)
+        canvas = QPixmap(400, 300)
+        canvas.fill()                      # white, so a no-op paint shows up
+        surface.render(canvas)
+        corner = canvas.toImage().pixelColor(5, 5)
+        assert corner.name() == "#000000", \
+            f"surface left its background unpainted when idle={idle}"

@@ -148,6 +148,12 @@ COLORS: dict[str, str] = {
     "table_cell_line": "#d0d0d0",
     "table_gridline":  "#d8d8d8",
 
+    # --- video surface ------------------------------------------------------
+    # The letterbox libvlc draws into. Black because that is what a video
+    # surface is, not because it is chrome — it does not follow the palette.
+    "video_surface":      "#000000",
+    "video_surface_text": "#8a8a8a",
+
     # --- path display -------------------------------------------------------
     "path_text": "#003a70",
 

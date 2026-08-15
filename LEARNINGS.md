@@ -542,6 +542,73 @@ just scored under the previous weights.
 around it. More generally: when porting, list the *transformations* the old
 code applied on read, not only the screens it drew.
 
+### A source-text test passed while the import it asserted on was broken
+**What.** `analyzer.pipeline._read_selected` was moved to `analyzer/scope.py`
+so one module reads `selected.csv`. `MainWindow._show_sample_aggregate` imports
+its reader *inside* the function, and that line still said
+`from analyzer.pipeline import _read_selected`. **Sample Aggregate… would have
+raised ImportError on click.** The full suite passed — 345 tests — because the
+test for that method asserts `"_read_selected" in inspect.getsource(...)`, and
+the string was still there. The rename had made the assertion true and the
+feature broken at the same time.
+**Why.** A function-local import is invisible to import-time checking, and a
+test that greps source text cannot tell a name that resolves from a name that
+does not. This is shape 3 — *a claim was restated instead of read* — with the
+test doing the restating.
+**Avoid.** Where a test must assert on source, assert that the symbols
+**resolve**: parse the function, walk its `ImportFrom` nodes, and `hasattr` the
+module. `tests/test_ui_qt.py::test_sample_aggregate_can_actually_import_its_
+episode_reader` does this, and was confirmed by reverting the fix and watching
+it fail. Grepping for a moved symbol (`grep -rn "_read_selected"`) found it in
+two seconds; the suite never would have.
+
+### Three settings each looked like they painted the widget black; none did
+**What.** The coding screen showed the **Trials tab's list and "Trial detail"
+panel** where the video should be, with the transport controls beneath it —
+reported 2026-08-15 as "this screen is messed up". Nothing was mis-parented and
+no view had switched: those were **stale pixels**. Before an episode is opened,
+nothing ever painted the video surface, so whatever had been on screen
+previously survived underneath it.
+**Why.** `VideoSurface` set three things that each read as "this widget is
+black": `setAutoFillBackground(True)`, `setStyleSheet("background:#000000;")`,
+and `WA_OpaquePaintEvent`. The third defeats the first — it tells Qt to skip
+erasing the background because the widget paints every pixel itself — and the
+second does nothing on a plain QWidget, which does not draw its own stylesheet
+background without `WA_StyledBackground` and a paintEvent. libvlc keeps the
+`WA_OpaquePaintEvent` promise once a media is loaded; nothing kept it before.
+**Avoid.** `WA_OpaquePaintEvent` is a *promise*, and the widget owes a
+`paintEvent` that keeps it in **every** state, not just the one the author was
+thinking about. More generally: when several settings all appear to specify the
+same thing and the thing is not happening, they are probably cancelling rather
+than reinforcing — read what each one does to the others. **Test by reading
+pixels**: render the widget over a known background and check the colour back.
+Every attribute involved was set correctly, so nothing short of the pixels
+would have caught it (`tests/test_ui_qt.py::test_the_video_surface_paints_its_
+own_pixels`).
+
+### A count can reconcile in the model and still disagree with the rows
+**What.** With a sample scope selected, the Library header read "9 episodes"
+above **8** rows. Both numbers were correct: the draw selected nine files, all
+nine exist on disk, and the tree can only show eight of them.
+**Why.** `analyzer/sampler.py` draws six video extensions
+(`.mp4 .mkv .avi .mov .wmv .m4v`); `show_index.list_episodes` is
+`sorted(show_dir.glob("*.mp4"))`. A sample can therefore contain an episode the
+Library cannot list — here one `.mkv`. Pre-existing and invisible until a
+count was put beside the rows.
+**Avoid.** Two layers that enumerate "episodes" by different rules will
+disagree eventually; when one displays a total for the other's rows, say what
+is not shown rather than showing a number that fails to add up.
+**Fixed the same day** by giving both layers one definition —
+`show_index.VIDEO_EXTENSIONS`, which `sampler.py` imports rather than restating,
+with a test asserting the two sets stay equal. The four `glob("*.mp4")` sites
+in `show_index.py` were shape 5 in miniature: each correct locally, and the set
+they encoded was only wrong when compared with another module's.
+**What it exposed.** The invisible `.mkv` had already been **measured and
+indexed** — the sampler's own path does not go through the library walk — so a
+file could be in the corpus, in the index, and absent from the screen that
+lists the corpus. When two enumerators disagree, suspect that the *other* one
+has already acted on what yours cannot see.
+
 ### The pipeline's derived status was not undisplayed — it was unreachable
 **What.** `TODO.md` item 7 read "`analyzer/pipeline.py` already computes
 `Stage.headline`, `Stage.details` and `Stage.next_action` and nothing displays

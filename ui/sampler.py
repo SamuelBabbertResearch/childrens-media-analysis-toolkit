@@ -97,6 +97,9 @@ class SamplerDialog(QDialog):
         self._window = window
         self._episodes: list = []
         self._result: SampleResult | None = None
+        # Set by _write once a draw is on disk; read by MainWindow to make the
+        # new sample the current scope. None means nothing was written.
+        self.written_dir: Path | None = None
         self._folder: Path | None = None
         self._registry: Path | None = None
         self._eras_from_registry = False
@@ -701,6 +704,10 @@ class SamplerDialog(QDialog):
             f"linked to it from Pipeline → Manage → Link to Episode Sample.")
         self._window.statusBar().showMessage(
             f"Sample written to {paths['csv'].parent}", 10000)
+        # The folder the draw landed in, for the caller. MainWindow makes the
+        # new draw the current scope, which it cannot do from the dialog's
+        # result code alone.
+        self.written_dir = outdir
         self.accept()
 
     @staticmethod

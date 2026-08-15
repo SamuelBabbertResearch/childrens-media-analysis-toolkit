@@ -29,6 +29,7 @@ whenever files move, a folder changes purpose, or a system is added.
 | change what a screen looks like | `ui/theme.py` (tokens in `ui/tokens.py`) — read `ui/DESIGN.md` §0 first |
 | add or change a pipeline stage type | `NODE_TYPES` in `analyzer/pipeline_graph.py` — a dict entry, not a UI change |
 | change how pipeline status is derived | `analyzer/pipeline.py` |
+| change which episodes a screen works on | `analyzer/scope.py` for what a scope is; `MainWindow.set_scope` for which one is current |
 | change how episodes are grouped into eras | `analyzer/eras.py`; the editor is `ui/eras.py` |
 | change scoring (weights, ceilings) | `config.json` presets; the dialog is `ui/settings.py` |
 | change which tool measures what | `analyzer/measurements.py` registry; the dialog is `ui/measurements.py` |
@@ -56,6 +57,7 @@ whenever files move, a folder changes purpose, or a system is added.
 | `validation.py`, `event_coding.py` | tool-vs-human scoring, Cohen's kappa, inter-coder agreement |
 | `pipeline.py` | **derived** workflow status from what is on disk |
 | `pipeline_graph.py` | **editable** pipeline documents, node types, templates |
+| `scope.py` | the **research context** — which episodes the application is working on. The only reader of a draw's `selected.csv`; normalises paths at the choke point so a sample's spelling matches the library walk's |
 | `provenance.py` | self-reported accuracy figures — read by the PDF, the CSV sidecar, the JSON export and the public site. Keep `METRIC_STATUS` in step with the registry; a test enforces it |
 | `prefs.py` | per-user local state, kept out of the versioned config |
 | `config_loader.py` | loads and normalises `config.json` |
