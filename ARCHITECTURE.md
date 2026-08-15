@@ -651,11 +651,18 @@ come from.
 
 ## 12. Data conventions
 
+**What counts as an episode.** `show_index.VIDEO_EXTENSIONS` —
+`.mp4 .mkv .avi .mov .wmv .m4v` — is the single definition, matched on the
+lowercased suffix (not by globbing, which is case-sensitive on Linux and not on
+Windows). `analyzer/sampler.py` imports it rather than keeping its own; a test
+asserts the two sets stay equal. They were separate until 2026-08-15, and a
+sample could contain episodes the Library never listed.
+
 ```
 <root>/
-  ShowName/                    ← flat show (MP4s directly inside)
+  ShowName/                    ← flat show (videos directly inside)
     ep01.mp4
-  CategoryName/                ← category (no direct MP4s)
+  CategoryName/                ← category (no direct videos)
     ShowName/
       ep01.mp4
   .analysis/

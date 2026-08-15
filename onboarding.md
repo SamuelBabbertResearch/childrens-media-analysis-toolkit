@@ -349,7 +349,9 @@ this machine), so it is a fix to the documented fallback path.
   4179ms -> 93ms.
 
 Measured on this working copy (32 show folders, 202 episodes, 12 cached
-results), offscreen:
+results), offscreen. **The library is 137 episodes since the 2026-08-15
+de-duplication** — the figures below are not re-measured, so treat them as the
+shape of the cost rather than current absolutes:
 
 | Operation | Cost |
 |---|---|
