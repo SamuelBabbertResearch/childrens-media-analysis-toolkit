@@ -18,7 +18,7 @@ from pathlib import Path
 
 from analyzer.aggregate import compute_show_aggregate, save_show_results
 from analyzer.batch import analyze_show_batch
-from analyzer.cache import load_cached, save_cache
+from analyzer.cache import load_cached, load_scored, save_cache
 from analyzer.config_loader import load_config
 from analyzer.db import get_db, query_episodes, query_shows
 from analyzer.engine import analyze_episode
@@ -61,8 +61,12 @@ def _analyze_single(
 
     cached = None if force else load_cached(root, skey, episode.stem)
     if cached:
+        # Re-scored against the current config, so the CLI and the GUI cannot
+        # print different composites for one cached episode.
         print(f"[cache] {episode.name}")
-        print(json.dumps(cached, indent=2))
+        result = load_scored(root, skey, episode.stem, cfg)
+        print(result.to_json() if result is not None
+              else json.dumps(cached, indent=2))
         return
 
     def _progress(frac: float) -> None:
@@ -205,10 +209,11 @@ def cmd_shows(args: argparse.Namespace) -> None:
 def _db_backfill(root: Path) -> None:
     """Seed the index DB from all cached episode JSONs — mirrors what the GUI does on folder open."""
     from analyzer.aggregate import compute_show_aggregate
-    from analyzer.cache import load_cached
+    from analyzer.cache import load_scored
+    from analyzer.config_loader import load_config
     from analyzer.db import get_db, upsert_episode, upsert_show
-    from analyzer.schema import EpisodeResult
 
+    cfg = load_config()
     conn = get_db(root)
     for show_dir in list_shows(root):
         skey = show_key(root, show_dir)
@@ -216,15 +221,16 @@ def _db_backfill(root: Path) -> None:
         dname, _auto_s = display_show_name(root, show_dir)
         show_results = []
         for ep in list_episodes(show_dir):
-            c = load_cached(root, skey, ep.stem)
-            if c:
-                try:
-                    result = EpisodeResult.from_dict(c)
-                    if result.status == "ok":
-                        upsert_episode(conn, result, dname, str(ep), show_key=stable_show_key)
-                        show_results.append(result)
-                except Exception:
-                    pass
+            try:
+                # Re-scored: the index stores the composite, so backfilling it
+                # from a raw cache read would write scores under whatever
+                # weights each episode happened to be analysed with.
+                result = load_scored(root, skey, ep.stem, cfg)
+                if result is not None and result.status == "ok":
+                    upsert_episode(conn, result, dname, str(ep), show_key=stable_show_key)
+                    show_results.append(result)
+            except Exception:
+                pass
         if show_results:
             try:
                 agg = compute_show_aggregate(dname, show_results)

@@ -16,7 +16,29 @@ Coder: Samuel Babbert (single coder; see Limitations in VALIDATION_LOG.md)
 | `dissolve` | Gradual cross-fade: two shots are visibly superimposed for 2+ frames. | Approximate **midpoint** of the blend (the moment both shots are roughly equally visible). |
 | `fade_out` | Image transitions to a solid color (usually black), no incoming shot during the fade. | Midpoint of the fade. |
 | `fade_in` | Image emerges from a solid color. | Midpoint of the fade. |
-| `other` | Anything else: wipes, iris transitions, whip-pan disguised cuts, page turns. Always add a note describing it. | Best-judgment center of the transition. |
+| `other` | Any shot boundary that is none of the above — see **Subtypes of `other`** below. Always add a note naming the subtype. | Best-judgment centre of the transition. |
+
+### Subtypes of `other`
+
+All of these are **real shot boundaries** and must be coded. They are grouped
+under `other` because the tool cannot yet distinguish them, not because they
+are unimportant. Name the subtype in the notes column (`wipe`, `iris`,
+`whip-pan cut`, `page turn`, or a short description) so the category can be
+split later without re-coding.
+
+| Subtype | Definition | How to recognise it | Timestamp |
+|---|---|---|---|
+| **Wipe** | A boundary **line or shaped edge travels across the frame**, the incoming shot replacing the outgoing one behind it. Both shots are on screen at once but are **never superimposed** — they are separated by a moving edge. | Follow the edge. If you can point at a line with a different shot on each side, it is a wipe. Includes shaped wipes (star, heart, clock/radial) common in 1990s–2000s cartoons. | The frame where the edge **crosses the centre** of the picture. |
+| **Iris** | A geometric shape — usually a circle — **expands or contracts** to reveal or conceal the picture, the rest of the frame being solid colour (usually black). | *Iris-out* opens from a point to full frame; *iris-in* closes to a point. Distinguish from a fade: a fade changes the **whole** frame's brightness uniformly, an iris has a hard travelling **edge**. Common in classic cel animation. | The frame where the aperture is **roughly half** the picture width. |
+| **Whip-pan disguised cut** | A **genuine hard cut hidden inside heavy motion blur**, usually a fast camera whip. The blur is engineered so the join reads as continuous camera movement. | Frame-step it. There *is* a single-frame join — the blur direction, subject, or background changes discontinuously at one frame even though the motion appears continuous. If frame-stepping shows no discontinuity, it is camera movement within one shot and is **not** a transition (Rule 3). | The **first frame of the incoming shot**, as for `hard_cut`. |
+| **Page turn / page peel** | The outgoing shot **lifts, curls, or slides away like a sheet of paper**, revealing the incoming shot beneath. | The outgoing shot deforms (curls, folds, or slides as a plane). A wipe's edge moves across a *static* image; a page turn *moves the image itself*. Common in storybook-framed children's programmes. | The frame where the turning page covers **roughly half** the picture. |
+
+**Not `other`, and not transitions at all:** camera pans, zooms, tilts, and
+character movement within a continuous shot (Rule 3); graphics or text animating
+over an unchanging background shot (Rule 6).
+
+**If a boundary fits none of these**, still code `other`, describe it in the
+notes, and flag it in the session log (Rule 4). Never silently guess.
 
 ## Decision rules
 

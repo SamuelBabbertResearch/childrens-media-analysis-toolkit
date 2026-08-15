@@ -15,6 +15,96 @@ Entry format:
 
 ---
 
+## 2026-08-11 — CODEBOOK: `other` subtypes given operational definitions
+
+The `other` row listed "wipes, iris transitions, whip-pan disguised cuts, page
+turns" with **no definitions**. Four named categories a coder was expected to
+recognise but that the codebook never described.
+
+Added a **Subtypes of `other`** table defining each: what it is, how to tell it
+from the thing it is most often confused with, and where to place the
+timestamp. The confusions each definition targets:
+
+- **wipe vs dissolve** — a wipe has a hard travelling edge and the shots are
+  never superimposed; a dissolve superimposes them.
+- **iris vs fade** — a fade changes the whole frame's brightness uniformly; an
+  iris has a travelling aperture edge.
+- **whip-pan cut vs camera movement** — frame-step it. A real join shows a
+  single-frame discontinuity; continuous motion is not a transition (Rule 3).
+- **page turn vs wipe** — a wipe moves an *edge* across a static image; a page
+  turn moves the *image itself*.
+
+**Why now.** These matter for this corpus specifically: irises are common in the
+1965 *A Charlie Brown Christmas* material, shaped wipes in the SpongeBob
+episodes, and page turns in storybook-framed shows. A second coder — which
+inter-rater reliability requires — had no shared definition to work from, so
+disagreement on these would have measured the codebook's vagueness rather than
+coder judgement.
+
+**Effect on already-coded episodes.** The category boundary has **not** moved:
+anything that was `other` is still `other`, and no coded row changes type by
+this edit alone. But the definitions make one prior risk visible — a
+**whip-pan disguised cut may previously have been coded `hard_cut`**, since the
+join is real and a coder not looking for the disguise would call it what it
+looks like.
+
+- [ ] **Spot-check outstanding.** Re-check the coded episodes for whip-pan
+      joins coded as `hard_cut`. Not yet done; this is the only subtype whose
+      definition could reclassify existing rows.
+
+**Codebook status.** Still DRAFT, still not frozen. This is the third mid-study
+addition (Rules 6 and 7 preceded it). Freezing before the next coding session is
+overdue — see the 2026-07-04 entry, which said the same thing.
+
+## 2026-08-11 — Timestamp accuracy defect in the coding player (affects collected data)
+
+Investigating a stuttering timer in the Qt coding screen found three defects in
+how the video clock is read. Measured on *A Charlie Brown Christmas* (23.976fps):
+
+1. **During playback the clock is coarse** — it advances in 0.25–0.5s jumps, not
+   per frame. A mark made while playing can be up to ~0.5s stale.
+2. **Frame stepping did not move the clock at all.** `libvlc next_frame()`
+   advances the picture but leaves `get_time()` and `get_position()` frozen:
+   three steps from 30.000s all still reported 30000ms. A coder stepping to the
+   exact frame of a transition recorded the timestamp of wherever they paused.
+3. **A seek issued after frame-stepping is wrong and stays wrong** — a seek to
+   45.0s landed at 40.040s and did not correct over 1.4s of polling.
+
+**Fixed in the Qt player** (`ui/player.py`): stepping is now a seek of one frame
+duration rather than `next_frame()`. Verified — steps land within a millisecond
+of the frame boundary, later seeks are exact in both directions, and backward
+stepping now works.
+
+**Also fixed, same day, in the Tk editor** (`gui_coding_editor.py`) — the one
+the validation study was actually coded in. Same approach: stepping is a seek
+of one frame duration, and a back-step (W) is now possible alongside forward
+(E). Verified end to end on the workflow the button's own tooltip describes —
+nudge back 0.5s, frame-step forward four times, Stamp:
+
+    before the fix   stamped 29.490s  (the nudge position; the four steps were
+                     invisible to the clock)
+    after the fix    stamped 29.658s  vs 29.657s expected — within 1.2ms
+
+So the defect is closed going forward. **It does not undo timestamps already
+collected.**
+
+**What this does and does not imply.**
+
+- Marks placed by seeking or by the ±1s nudge buttons are **unaffected** — those
+  use `set_time`, which is exact.
+- Marks placed *after frame-stepping* are early by one frame per step
+  (0.042s each at 23.976fps). Ten steps is 0.42s — under the ±1s target, but
+  systematic and in one direction.
+- The size of the effect depends entirely on how often frame-stepping was used
+  before marking, which only the coder knows.
+
+- [ ] **Assess and decide.** Estimate how much frame-stepping the coded episodes
+      involved. If it was routine, the affected timestamps are biased early and
+      the hard-cut F1 figures should be recomputed after correction. If it was
+      rare, note it as a limitation. **Do not assume either.**
+- [ ] **Decide whether to fix the Tk editor.** It is the shipping software and
+      the only one used for real coding. Not changed here without a decision.
+
 ## 2026-07-02 — Study infrastructure created
 
 - Built `validate_cuts.py` (template / export / compare / sweep / summary) and this

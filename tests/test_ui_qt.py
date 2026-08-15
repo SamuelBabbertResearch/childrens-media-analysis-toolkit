@@ -9,6 +9,7 @@ later back the PDF export and the static site.
 
 from __future__ import annotations
 
+import inspect
 import re
 
 import pytest
@@ -356,6 +357,620 @@ def test_show_report_states_the_weighting():
     assert "weighted equally" in html
 
 
+# ---------------------------------------------------------------------------
+# Pipeline as a control surface
+# ---------------------------------------------------------------------------
+
+def test_every_stage_type_can_reach_a_screen_or_says_why_not():
+    """A node the user can select must lead somewhere, or state its reason.
+
+    The pipeline's job is to show what the software is doing; a stage that
+    silently does nothing when opened is the failure this mapping exists to
+    prevent. A new node type with a stage_key therefore has to be routed here
+    or explicitly listed as unported.
+    """
+    from analyzer.pipeline_graph import NODE_TYPES
+    from ui.main_window import STAGE_ACTIONS, STAGE_TABS, STAGE_UNPORTED
+    for kind in NODE_TYPES.values():
+        if not kind.stage_key:
+            continue
+        routes = [kind.stage_key in d
+                  for d in (STAGE_TABS, STAGE_ACTIONS, STAGE_UNPORTED)]
+        assert any(routes), kind.stage_key
+        assert sum(routes) == 1, f"{kind.stage_key} is routed twice"
+
+
+def test_stage_actions_name_methods_that_exist():
+    """A dialog route calls a MainWindow method by name."""
+    from ui.main_window import STAGE_ACTIONS, MainWindow
+    for _label, method in STAGE_ACTIONS.values():
+        assert callable(getattr(MainWindow, method, None)), method
+
+
+def test_stage_routes_name_tabs_that_are_actually_built():
+    """A route to a tab title that no longer exists would open nothing."""
+    import inspect
+    from ui.main_window import STAGE_TABS, MainWindow
+    src = inspect.getsource(MainWindow._build_tabs)
+    for title, _view in STAGE_TABS.values():
+        assert f'"{title}"' in src, title
+
+
+def test_stage_routes_name_sub_views_that_exist():
+    """A route may name a screen inside a tab; that name must be real."""
+    from ui.handcoding import HandCodingTab
+    from ui.language import LanguageTab
+    from ui.main_window import STAGE_TABS
+    known = {
+        "Human coding": {"Code", "Validate tool", "Agreement"},
+        "Language": {"Speech", "Vocabulary"},
+    }
+    for title, view in STAGE_TABS.values():
+        if view is not None:
+            assert title in known, title
+            assert view in known[title], (title, view)
+    # And the names the tabs actually register, so the map above cannot rot.
+    import inspect
+    for cls, title in ((HandCodingTab, "Human coding"),
+                       (LanguageTab, "Language")):
+        src = inspect.getsource(cls.__init__)
+        for name in known[title]:
+            assert f'"{name}"' in src, (title, name)
+
+
+def test_unported_stage_routes_name_a_stage_that_exists():
+    """Each entry disappears when its screen is ported; none may go stale."""
+    from analyzer.pipeline import STAGE_KEYS
+    from ui.main_window import STAGE_ACTIONS, STAGE_TABS, STAGE_UNPORTED
+    for key in list(STAGE_TABS) + list(STAGE_ACTIONS) + list(STAGE_UNPORTED):
+        assert key in STAGE_KEYS, key
+
+
+def test_double_clicking_a_node_asks_for_its_screen():
+    """Without this the canvas treats the second click as another drag."""
+    import inspect
+    from ui.pipeline_view import Canvas
+    assert hasattr(Canvas, "node_activated")
+    assert "node_activated.emit" in inspect.getsource(
+        Canvas.mouseDoubleClickEvent)
+
+
+def test_a_pipeline_links_to_a_sample_not_a_show():
+    """`source_key` must be a key `build_pipelines()` actually produces.
+
+    A show key ("Show/Season 1") and a derived pipeline key
+    ("sample:<folder>") are different namespaces. Link to Episode Sample
+    offered SHOWS, so the look-up never matched and every node of every
+    linked pipeline reported "no derived status" — which is why the derived
+    state looked like it was merely undisplayed.
+    """
+    import inspect
+    from ui.main_window import MainWindow
+    src = inspect.getsource(MainWindow._link_to_sample)
+    assert "build_pipelines" in src
+    assert "show_key" not in src
+
+
+def _inspector_rows(insp) -> dict:
+    """The key/value grid as a dict, read back off the widget."""
+    grid = insp._grid
+    rows: dict[str, str] = {}
+    for r in range(grid.rowCount()):
+        k = grid.itemAtPosition(r, 0)
+        v = grid.itemAtPosition(r, 1)
+        if k is not None and v is not None:
+            rows[k.widget().text()] = v.widget().text()
+    return rows
+
+
+def test_inspector_shows_the_derived_stage_not_the_registry_entry(qapp):
+    """analyzer/pipeline.py computes headline, details and next_action.
+
+    Nothing displayed any of them, which is what made the node a picture: the
+    inspector showed the same static description for a stage not started and a
+    stage complete.
+    """
+    from analyzer.pipeline import empty_pipeline
+    from analyzer.pipeline_graph import default_doc
+    from ui.inspector import Inspector
+
+    doc = default_doc("Test study")
+    node = next(n for n in doc.nodes if n.type == "sampling")
+    stage = empty_pipeline().stage("sampling")
+
+    insp = Inspector()
+    insp.show_node(node, stage, "", ("Library", None))
+    rows = _inspector_rows(insp)
+
+    assert rows["Status"] == stage.status_label
+    assert rows["Summary"] == stage.headline
+    assert rows["Next step"] == stage.next_action
+    for key, value in stage.details:
+        assert rows[key] == value
+    # The one thing the researcher can act on leads.
+    assert insp._banner.text() == stage.next_action
+
+
+def test_inspector_says_why_a_node_has_no_derived_state(qapp):
+    """An unlinked pipeline must not show a plausible figure instead."""
+    from analyzer.pipeline_graph import default_doc
+    from ui.inspector import Inspector
+
+    node = next(n for n in default_doc().nodes if n.type == "sampling")
+    insp = Inspector()
+    insp.show_node(node, None, "this pipeline is not linked", None)
+    rows = _inspector_rows(insp)
+    assert rows["Current state"] == "this pipeline is not linked"
+    assert "Summary" not in rows
+
+
+def test_an_unported_stages_button_is_disabled_and_says_why(qapp):
+    """An unavailable control must not look like a broken one."""
+    from ui.inspector import Inspector
+    insp = Inspector()
+    insp._set_open_target((None, "still on the Tkinter build"))
+    assert not insp._open.isHidden()               # present, not silently gone
+    assert not insp._open.isEnabled()
+    assert insp._open.toolTip() == "still on the Tkinter build"
+
+
+# ---------------------------------------------------------------------------
+# The ported screens
+# ---------------------------------------------------------------------------
+
+def test_every_tk_only_screen_is_now_in_qt():
+    """The migration is finished when nothing is Tk-only.
+
+    Each of these was a screen the Qt build did not have. The check is that
+    the module and the entry point exist, so deleting one without replacing
+    it fails here rather than at the next person's first click.
+    """
+    from ui.handcoding import AgreementView, CodeView, ValidateView
+    from ui.language import SpeechView, VocabularyView
+    from ui.main_window import MainWindow
+    from ui.sampler import SamplerDialog
+    assert all((AgreementView, CodeView, ValidateView, SpeechView,
+                VocabularyView, SamplerDialog))
+    assert callable(MainWindow.open_sampler)
+    assert callable(MainWindow._show_full_series)
+
+
+def test_speech_is_never_reported_without_density():
+    """WPM divides by dialogue time, so alone it invites the wrong reading.
+
+    CLAUDE.md §2.2: "Words per minute is reported with speech density, or not
+    at all." Both the column and the explanation are pinned here.
+    """
+    from ui import language
+    headers = [h for h, _w, _r in language.SPEECH_COLUMNS]
+    assert "Words per minute" in headers
+    assert "Speech density" in headers
+    note = inspect.getsource(language.SpeechView._write_note)
+    assert "DIALOGUE time, not runtime" in note
+
+
+def test_the_sampler_uses_the_engine_s_own_explanations():
+    """analyzer/sampler.py calls TOOLTIPS the authoritative source.
+
+    Re-wording a method's meaning in the interface is how the interface and
+    the manifest come to describe different things.
+    """
+    from analyzer.sampler import TOOLTIPS
+    from ui import sampler
+    used = {tip for _v, _l, tip in
+            sampler.METHODS + sampler.STRATIFY + sampler.ALLOCATION}
+    for key in used:
+        assert key in TOOLTIPS, key
+
+
+def test_the_sampler_distinguishes_probability_from_not():
+    """A hand-picked set is not a sample, and the screen must not blur it."""
+    src = inspect.getsource(__import__("ui.sampler", fromlist=["x"]))
+    assert "NON-PROBABILITY" in src
+    assert "does not support inference to the whole show" in src
+
+
+def test_agreement_reports_kappa_as_a_property_of_the_coders():
+    """Cohen's kappa here grades the coding, not the programme."""
+    from ui.handcoding import AgreementView
+    src = inspect.getsource(AgreementView)
+    assert "says nothing about the" in src
+    # Landis & Koch's bands are a convention and are named as one.
+    reading = inspect.getsource(AgreementView._kappa_reading)
+    assert "Landis & Koch" in reading and "not a threshold" in reading
+
+
+def test_validation_never_shows_a_bare_f1():
+    """An accuracy figure without its qualifiers is the thing §2.2 forbids."""
+    from ui.handcoding import ValidateView
+    src = inspect.getsource(ValidateView)
+    # Tolerance is stated with the per-episode scores…
+    assert "self._tolerance.value():g} s" in src
+    # …and the aggregate says how many comparisons it covers, FOR WHICH
+    # detector. Blending configurations produced 0.891 where the two real
+    # detectors score 0.855 and 0.928.
+    assert "comparison file" in src
+    assert "detector_tag" in src
+    assert "their scores are not combined" in src
+
+
+def test_the_composite_is_rescored_on_read(qapp):
+    """Settings' "Apply & Re-score" must actually change the score.
+
+    The composite is a weighted sum over numbers already measured, so it is
+    recomputed on read. The Qt build loaded results straight from the cache,
+    which meant new weights changed nothing anywhere on screen.
+    """
+    from analyzer.config_loader import load_config
+    from analyzer.metrics_sensory import rescore_episode
+    from ui.main_window import MainWindow
+    # The re-derivation lives in the engine so `cli.py` shares it; the window
+    # must go through it rather than reading the cache raw.
+    assert "load_scored" in inspect.getsource(MainWindow._cached)
+    for method in (MainWindow._show_report, MainWindow._on_select,
+                   MainWindow._show_indexed_episode,
+                   MainWindow._show_full_series):
+        src = inspect.getsource(method)
+        assert "load_cached(" not in src, (
+            f"{method.__name__} reads the cache directly, so it skips the "
+            f"re-score")
+
+    # And the engine call itself does what the screen relies on.
+    config = load_config()
+    result = _result()
+    before = result.metrics.sensory_load.score
+    config = dict(config)
+    config["sensory_load_weights"] = {
+        k: (1.0 if k == "pacing" else 0.0)
+        for k in config.get("sensory_load_weights", {})}
+    after = rescore_episode(result, config).metrics.sensory_load.score
+    assert after != before
+
+
+def test_every_export_carries_its_provenance():
+    """A CSV of numbers with no qualifiers is the artefact §2.2 forbids.
+
+    JSON embeds the provenance block; CSV writes a sidecar so the data file
+    stays machine-readable. Neither may become optional.
+    """
+    from ui.main_window import MainWindow
+    assert "validation_dict" in inspect.getsource(MainWindow.export_json)
+    csv_src = inspect.getsource(MainWindow.export_csv)
+    assert "validation_statement" in csv_src
+    assert "_PROVENANCE.txt" in csv_src
+
+
+def test_export_actions_are_disabled_with_nothing_to_export():
+    """Otherwise they export whatever was last on screen."""
+    from ui.main_window import MainWindow
+    src = inspect.getsource(MainWindow._set_export_source)
+    assert "setEnabled(episode is not None or show is not None)" in src
+
+
+def test_the_two_settings_axes_stay_separate():
+    """Scoring re-scores from cache; measurement invalidates it.
+
+    Mixing them would let someone change a detector threshold and see scores
+    that blend old detections with a new configuration label.
+    """
+    from ui import measurements, settings
+    scoring = inspect.getsource(settings)
+    for measurement_key in ("cut_detection_threshold", "sample_fps",
+                            "flashing_luminance_threshold", "measurements"):
+        assert measurement_key not in scoring, measurement_key
+    # And the measurement dialog must not edit weights or ceilings.
+    measuring = inspect.getsource(measurements)
+    for scoring_key in ("sensory_load_weights",
+                        "normalization_reference_ranges"):
+        assert scoring_key not in measuring, scoring_key
+
+
+def test_measurement_settings_are_built_from_the_registry():
+    """A tool added to the engine must appear without editing the dialog."""
+    from ui import measurements
+    src = inspect.getsource(measurements)
+    assert "for spec in MEASUREMENTS" in src
+    assert "for tool in spec.tools" in src
+
+
+def test_a_tools_validation_status_travels_with_its_name():
+    """CLAUDE.md §2.2: unvalidated measures are flagged wherever they appear."""
+    from analyzer.measurements import MEASUREMENTS, STATUS_LABEL
+    from ui.measurements import _status_text
+    for spec in MEASUREMENTS:
+        for tool in spec.tools:
+            shown = _status_text(tool)
+            assert tool.name in shown
+            assert STATUS_LABEL[tool.status] in shown
+
+
+def test_staleness_reports_what_it_cannot_check():
+    """`is_stale` grandfathers results written before fingerprinting.
+
+    That is the right engine default — one upgrade must not invalidate a
+    corpus — but reporting only the detectable count understates the cost in
+    the direction that flatters the change. This working copy has 12 cached
+    episodes and 1 fingerprint, so the gap is not hypothetical.
+    """
+    from ui.measurements import MeasurementsDialog
+    src = inspect.getsource(MeasurementsDialog._count_stale)
+    assert "cached_fingerprint" in src
+    assert "-> tuple[int, int]" in inspect.getsource(
+        MeasurementsDialog._count_stale).splitlines()[0]
+
+
+def test_optional_tools_shows_costs_and_caveats_not_just_benefits():
+    """TransNetV2's caveats include "unverified on animation".
+
+    For a children's-television tool that outranks its benchmark scores, so a
+    panel that rendered only `benefits` would be selling the download.
+    """
+    from ui.optional_tools import ToolPanel
+    src = inspect.getsource(ToolPanel.__init__)
+    for field in ("tool.benefits", "tool.costs", "tool.caveats"):
+        assert field in src, field
+    assert "install_command" in src, "the exact pip command must be shown"
+
+
+def test_episode_notes_and_metadata_live_in_the_index_not_the_cache():
+    """Re-analysing an episode must not erase what a person typed."""
+    from ui.main_window import MainWindow
+    for method in (MainWindow._save_metadata, MainWindow._save_note,
+                   MainWindow._show_episode_details):
+        src = inspect.getsource(method)
+        assert "analyzer.db" in src or "self._db()" in src
+        assert "save_cache" not in src
+
+
+def test_the_analysis_queue_holds_paths_not_results():
+    """A queued result would be stale before its turn came.
+
+    The queue can sit for an hour while earlier entries run; anything derived
+    stored in it would describe the library as it was when queued.
+    """
+    from ui.automated import AutomatedTab
+    src = inspect.getsource(AutomatedTab.enqueue)
+    assert "Path(path)" in src
+    assert "self._queue.append(path)" in src
+
+
+def test_a_missing_queued_target_does_not_end_the_run():
+    """Queue twenty, delete one, and the other nineteen still get measured."""
+    from ui.automated import AnalysisWorker
+    src = inspect.getsource(AnalysisWorker.run)
+    assert "target.exists()" in src
+    assert "no longer on disk" in src
+    assert "continue" in src
+
+
+def test_queue_progress_spans_the_whole_queue():
+    """Per-target progress would reset the bar to zero on every entry."""
+    from ui.automated import AnalysisWorker
+    src = inspect.getsource(AnalysisWorker._tick)
+    assert "(self._index + overall) / total" in src
+
+
+def test_the_sampler_can_hand_a_draw_to_the_measurement_pass():
+    """A sample that only prints a list leaves the bookkeeping to the user.
+
+    That is the reason sampling was made a first-class module rather than a
+    CSV export — see DECISIONS.md, 2026-06-30.
+    """
+    from ui.automated import AutomatedTab
+    from ui.sampler import SamplerDialog
+    assert callable(AutomatedTab.enqueue)
+    src = inspect.getsource(SamplerDialog._send_to_queue)
+    assert "_automated.enqueue" in src
+    # And it must not be mistaken for recording the draw.
+    assert "did not write the sample" in src
+
+
+# ---------------------------------------------------------------------------
+# Crash and cost regressions
+# ---------------------------------------------------------------------------
+
+def test_no_screen_drops_its_worker_reference_in_a_slot():
+    """Freeing a live QThread from its own signal handler kills the process.
+
+    The C++ object is deleted while still inside emit, so it dies with no
+    traceback and no Python exception. Guards must use isRunning() and keep
+    the reference — the pattern AutomatedTab has always used.
+    """
+    import pathlib
+    import ui
+    offenders = []
+    for path in pathlib.Path(ui.__file__).parent.glob("*.py"):
+        for number, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), 1):
+            if line.strip() == "self._worker = None":
+                offenders.append(f"{path.name}:{number}")
+    assert offenders == [], (
+        "these free a QThread from a slot connected to it: "
+        + ", ".join(offenders))
+
+
+def test_startup_path_imports_no_heavy_library_at_module_scope():
+    """A module-level import is a cost paid on every launch.
+
+    pandas (~1.1s) and scenedetect (~0.6s) are needed for CSV export and for
+    running detection. Neither is needed to draw the first screen, and all
+    three modules below are reached while the interface starts.
+    """
+    import ast
+    import pathlib
+    import analyzer
+    heavy = {"pandas", "scenedetect", "torch", "matplotlib"}
+    root = pathlib.Path(analyzer.__file__).parent
+    for name in ("aggregate.py", "metrics_cuts.py", "validation.py",
+                 "pipeline.py", "trials.py"):
+        tree = ast.parse((root / name).read_text(encoding="utf-8"))
+        for node in tree.body:                      # module scope only
+            names = set()
+            if isinstance(node, ast.Import):
+                names = {a.name.split(".")[0] for a in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                names = {node.module.split(".")[0]}
+            assert not (names & heavy), f"{name} imports {names & heavy}"
+
+
+def test_asking_whether_a_tool_is_installed_does_not_import_it():
+    """`is_available()` decides whether to grey out a control.
+
+    Importing the package to answer that pulled PyTorch into the process —
+    3.6 seconds, for a tooltip.
+    """
+    import inspect
+    from analyzer.optional_tools import OptionalTool
+    src = inspect.getsource(OptionalTool.is_available)
+    assert "find_spec" in src
+    assert "import_module" not in src
+    assert "import_module" not in inspect.getsource(OptionalTool.version)
+
+
+# ---------------------------------------------------------------------------
+# Compare, import, transcribe, sample aggregate
+# ---------------------------------------------------------------------------
+
+def test_a_comparison_issues_no_verdict():
+    """A side-by-side is the easiest place to imply a ranking.
+
+    Two value columns and a signed difference — no ordering, no arrow, no
+    wording that makes one side the winner. CLAUDE.md §2.1.
+    """
+    from ui.report import compare_html
+    a, b = _result(), _result()
+    b.metrics.sensory_load.score = 0.481
+    a.metrics.audio.available = b.metrics.audio.available = True
+    html = compare_html(a, b, "A", "B")
+    assert html.startswith("<html>")
+    assert "+0.219" in html                     # 0.481 - 0.262, signed
+    body = html.lower()
+    for banned in ("higher risk", "too fast", "winner", "best", "worst",
+                   "recommended", "unsuitable"):
+        assert banned not in body, banned
+    # The one place a comparative word may appear is the guardrail itself.
+    assert "not a worse programme" in body
+
+
+def test_a_comparison_warns_when_audio_is_missing_on_one_side():
+    """Missing audio redistributes its weight, so the composites differ in
+    composition as well as value — the difference is not like for like."""
+    from ui.report import compare_html
+    a, b = _result(), _result()
+    a.metrics.audio.available = True            # b keeps the default False
+    assert "not composed the same way" in compare_html(a, b, "A", "B")
+
+
+def test_comparison_covers_the_same_metrics_the_report_does():
+    """A comparison quietly covering fewer metrics than the report it sits
+    beside would look like agreement where none was checked."""
+    from ui.report import AGGREGATE_ROWS, COMPARE_EPISODE_ROWS
+    compared = {h for h, _read, _p in COMPARE_EPISODE_ROWS}
+    aggregated = {h for h, _attr, _p in AGGREGATE_ROWS}
+    assert aggregated <= compared, aggregated - compared
+
+
+def test_metadata_import_flags_matches_it_guessed():
+    """`match_to_files` falls back to title similarity down to 0.45.
+
+    Applying a wrong fuzzy match writes an air date that nothing downstream
+    questions — and air dates drive era stratification in the sampler. So the
+    count is warned about and every row can be unchecked.
+    """
+    from ui.metadata_import import MetadataImportDialog
+    src = inspect.getsource(MetadataImportDialog._fill)
+    assert "TITLE SIMILARITY" in src
+    assert "match.score" in src
+    assert "Qt.ItemIsUserCheckable" in src
+    assert callable(MetadataImportDialog._uncheck_fuzzy)
+    # Nothing unchecked may be written.
+    apply_src = inspect.getsource(MetadataImportDialog._apply)
+    assert "checkState(0) != Qt.Checked" in apply_src
+
+
+def test_transcription_skips_episodes_that_already_have_captions():
+    """Whisper costs minutes per episode; a caption file is already exact."""
+    from ui.automated import AutomatedTab
+    src = inspect.getsource(AutomatedTab._needs_captions)
+    assert "_find_cc_file" in src
+    assert "continue" in src
+
+
+def test_transcription_does_not_re_measure_the_video():
+    """It patches the cached speech block, nothing else.
+
+    Re-running the full analysis to pick up a transcript would recompute
+    minutes of colour, motion and flashing figures that have not changed.
+    """
+    from ui.automated import TranscribeWorker
+    src = inspect.getsource(TranscribeWorker.run)
+    assert "transcribe_only" in src
+    assert "analyze_episode" not in src
+    assert '"speech"' in src
+
+
+def test_sample_aggregate_counts_the_whole_sample_not_just_the_analysed():
+    """Otherwise "10 episodes" means the ten that happen to be cached."""
+    from ui.main_window import MainWindow
+    src = inspect.getsource(MainWindow._show_sample_aggregate)
+    assert "aggregate.episode_count = len(episodes)" in src
+    assert "_read_selected" in src
+
+
+def test_compare_refuses_to_mix_an_episode_with_a_show():
+    """One episode's numbers beside a mean of many is not a difference."""
+    from ui.main_window import MainWindow
+    src = inspect.getsource(MainWindow._sync_compare)
+    assert "self._selected[0] == self._pinned[0]" in src
+
+
+def test_the_sampler_offers_era_as_well_as_season():
+    """Stratifying a long run by production period is the reason eras exist.
+
+    The Qt sampler shipped with season and none only, which quietly dropped
+    a whole axis the engine has always supported.
+    """
+    from ui import sampler
+    values = {value for value, _label, _tip in sampler.STRATIFY}
+    assert {"season", "era", None} <= values
+
+
+def test_the_sampler_fills_the_era_column_before_stratifying_on_it():
+    """`Episode.extra` is populated by nothing in the engine.
+
+    A folder scan cannot know an air date either, so without this step
+    "stratify by era" reports a stratified design and draws one stratum.
+    """
+    from ui.sampler import SamplerDialog
+    src = inspect.getsource(SamplerDialog._apply_eras)
+    assert "attach_air_dates" in src
+    assert "assign_eras" in src
+    assert "get_show_eras" in src
+
+
+def test_the_sampler_says_when_era_stratification_would_do_nothing():
+    """No eras defined means one "(no era)" group — not a stratified draw."""
+    from ui.sampler import SamplerDialog
+    src = inspect.getsource(SamplerDialog._sync_enabled)
+    assert "UNASSIGNED" in src
+    assert "same as not" in src
+
+
+def test_era_labels_follow_the_chosen_axis():
+    """"Per season" is wrong when the draw is grouped by era."""
+    from ui.sampler import SamplerDialog
+    src = inspect.getsource(SamplerDialog._sync_enabled)
+    assert '"Per era:" if by_era else "Per season:"' in src
+
+
+def test_the_era_editor_shows_how_many_episodes_land_in_each():
+    """An era with one episode is censused; an empty one is not a stratum."""
+    from ui.eras import ErasDialog
+    src = inspect.getsource(ErasDialog._refresh)
+    assert "assign_eras" in src
+    assert "coverage_note" in src
+
+
 def test_chart_plots_components_not_the_composite_alone():
     """A bar of the composite alone hides how two equal scores were reached."""
     from ui import chart
@@ -363,3 +978,69 @@ def test_chart_plots_components_not_the_composite_alone():
     weights = load_config().get("sensory_load_weights", {})
     for _label, _attr, weight_key in chart.COMPONENTS:
         assert weight_key in weights, weight_key
+
+
+# ---------------------------------------------------------------------------
+# Sending a Library selection to another tab
+# ---------------------------------------------------------------------------
+
+def test_the_library_offers_a_context_menu():
+    """Right-click is the platform's "act on this item" gesture, and it was
+    the missing way to get an episode from the Library to the tab that works
+    on it — selection pushed the target silently and left you to find the tab.
+    """
+    from ui.main_window import MainWindow
+    src = inspect.getsource(MainWindow._build_library)
+    assert "CustomContextMenu" in src
+    assert "customContextMenuRequested" in src
+
+
+def test_the_library_allows_selecting_several_episodes():
+    """Queueing a batch was one-at-a-time because the tree was SingleSelection."""
+    from ui.main_window import MainWindow
+    src = inspect.getsource(MainWindow._build_library)
+    assert "ExtendedSelection" in src
+
+
+def test_the_menu_is_built_separately_from_being_shown():
+    """So which destinations are offered for which selection is testable."""
+    from ui.main_window import MainWindow
+    assert callable(MainWindow.build_library_menu)
+    assert "return menu" in inspect.getsource(MainWindow.build_library_menu)
+
+
+def test_hand_coding_destinations_require_exactly_one_episode():
+    """Hand coding is per episode. A show folder or a multi-selection has no
+    single video to open, so those entries are disabled rather than absent —
+    an unavailable control must not look like a broken one."""
+    from ui.main_window import MainWindow
+    src = inspect.getsource(MainWindow.build_library_menu)
+    assert "act.setEnabled(len(files) == 1)" in src
+    assert "hand coding is per" in src
+
+
+def test_every_destination_routes_through_one_send_path():
+    """The menu, the pipeline nodes and anything added later must agree about
+    what "send to Human coding" means."""
+    from ui.main_window import MainWindow
+    src = inspect.getsource(MainWindow.build_library_menu)
+    # Every action delegates; none reaches into a tab itself.
+    assert src.count("self._send_to(") >= 6
+    assert "setCurrentWidget" not in src, (
+        "the menu must not switch tabs itself — that belongs in _send_to")
+
+
+def test_sending_a_selection_deduplicates():
+    """Selecting a show and one of its episodes must not queue it twice."""
+    from ui.main_window import MainWindow
+    src = inspect.getsource(MainWindow._selected_paths)
+    assert "seen" in src and "unique" in src
+
+
+def test_show_in_index_lands_on_the_row():
+    """Landing on the top of the table is not "show in index"."""
+    from ui.index_tab import IndexTab
+    src = inspect.getsource(IndexTab.focus_episode)
+    assert "scrollToItem" in src and "setCurrentItem" in src
+    # And it says so when the episode was never analysed.
+    assert "not in the index yet" in src

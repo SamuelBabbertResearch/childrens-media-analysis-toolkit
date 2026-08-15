@@ -5,6 +5,12 @@ Real decisions and why they were made. Bugs and mistakes belong in
 
 Format: **decision** · reason · date · what was rejected.
 
+**Companion log.** `validation/VALIDATION_LOG.md` is the *research* diary —
+kept contemporaneously since 2026-07-02, with dated coding sessions, result
+corrections, and codebook changes. Methodology decisions belong there; product
+and architecture decisions belong here. When a change is both, log it in both
+and say so.
+
 Sections: [Foundations](#foundations-june--august-2026) (chronological, how the
 project got its shape) · [Product identity](#product-identity) ·
 [Architecture](#architecture) · [Interface](#interface) ·
@@ -276,6 +282,265 @@ remember.
 **Rejected.** Fixing the callers; keying on a content hash (a good idea for the
 *cache*, still open — see `ROADMAP.md`).
 
+### A pipeline document binds to an episode sample, not to a show
+**Decision.** `PipelineDoc.source_key` holds a key `build_pipelines()`
+produces — `sample:<folder>`, or `unsampled`. *Link to Episode Sample* offers
+those, and only those.
+**Reason.** It previously offered **shows**, whose keys (`Show/Season 1`) are a
+different namespace, so the look-up never matched and every node of every
+linked pipeline reported "no derived status". A stage is derived *for a
+sample*: it counts the episodes in one `selected.csv`. A show is not that set.
+**Consequence.** The key contains an absolute folder path, so moving the
+library breaks the link. The inspector says so and names the fix rather than
+falling back to a plausible number.
+**Date.** 2026-08-14.
+**Rejected.** Matching a show key to a sample by episode overlap — a guess
+about which of several samples of one show was meant.
+
+### The Library sends work to other tabs by right-click
+**Decision.** Right-clicking a Library selection offers the destinations that
+can act on it — analyse, queue, transcribe, hand-code, validate, show in
+index, speech, reveal on disk — and every entry routes through
+`MainWindow._send_to()`, which sets the target AND switches to the tab. The
+tree is multi-select so a batch can be queued in one gesture.
+**Reason.** Selecting an episode already pushed it to Automated coding and
+Human coding, but nothing said so and nothing took you there: the user had to
+know which tab wanted it and go looking. Right-click is the platform's "act on
+this item" gesture (`CLAUDE.md` §4 — take Windows' controls and behaviours),
+and it is discoverable in a way a fourth toolbar button is not.
+**Consequence.** Destinations that need exactly one episode (hand coding,
+Show in Index) are DISABLED with a reason for a folder or a multi-selection,
+rather than hidden — an unavailable control must not look like a broken one.
+**Date.** 2026-08-14.
+**Rejected.** A row of "Send to…" buttons above the tree (four more controls
+on the densest screen); a drag-and-drop-onto-tab gesture (undiscoverable, and
+Qt tab bars are not drop targets without custom event handling).
+
+### A derived value has ONE derivation, called by everyone who shows it
+**Decision.** Where a value is computed from other values, the computation
+lives in the engine and every display calls it. Three of these now exist and
+they are the pattern to copy:
+
+| Helper | Answers |
+|---|---|
+| `analyzer.cache.load_scored()` | how do I read a cached result |
+| `analyzer.metrics_sensory.effective_weights()` | what weights actually produced this score |
+| `analyzer.measurements.ungraded_measurements()` | which numbers on this screen need a flag |
+
+**Reason.** The alternative is not "each caller decides" — it is "each caller
+decides differently, and nobody notices". Reading the cache without
+re-deriving the composite was written independently in four places. The
+unvalidated flag was decided independently on five surfaces and most decided
+"not at all". The audio weight redistribution was computed in the engine and
+re-guessed in two displays. Each site was correct on its own reading; the rule
+that made them wrong lived in a comment.
+**Date.** 2026-08-14.
+**Rejected.** Documenting the rule near the call sites (that is what failed);
+storing the derived value everywhere it is shown (a schema change per
+display, and old data still lacks it).
+
+### A claim that leaves the tool is read from its source, never restated
+**Decision.** `analyzer/provenance.py` is called by the PDF, the CSV sidecar,
+the JSON export, the report and `build_site.py`. None of them restates an
+accuracy figure or a validation status.
+**Reason.** Its docstring already claimed it was "the single source of truth
+… shown on every results view, export, and the public site". It was not: the
+site hard-coded its own F1 range and its own per-metric statuses, and
+published a figure contradicting the constants and a validation status
+contradicting the registry. A module is not a source of truth because it says
+so; it is one when the consumers call it.
+**Consequence.** When `TODO.md` item 1 settles which F1 is authoritative, one
+edit updates the interface, the exports and the site together.
+**Date.** 2026-08-14.
+**Rejected.** Leaving the site's wording independent "because it is
+audience-facing" — that is exactly where a wrong claim costs most.
+
+### The unvalidated flag is derived from the registry, in one place
+**Decision.** `analyzer.measurements.ungraded_measurements()` is the single
+answer to "which numbers on this screen need a flag". The episode report, the
+comparison, the Index table, the component chart, the PDF and the published
+site all call it.
+**Reason.** `CLAUDE.md` §2.2 requires the flag wherever the numbers appear.
+Each surface decided for itself and most decided "not at all": the Index, the
+chart, the comparison, the PDF and the site all showed flashing figures with
+no flag, and the report only flagged results whose cache carried
+`measurement_tools` — 2 of 13 here.
+**Date.** 2026-08-14.
+**Rejected.** A hard-coded list per screen (it is how they diverged);
+back-filling `measurement_tools` into old caches (rewrites research data to
+fix a display problem).
+
+### Effective weights are part of the result, not a display detail
+**Decision.** `metrics_sensory.effective_weights(config, audio_available)` is
+called by the engine to compute the composite and by the report and chart to
+explain it.
+**Reason.** Missing audio redistributes its weight across the visual metrics.
+The engine did that in a local variable and returned only the score, so every
+display read the nominal weights and produced a breakdown that did not sum to
+the score above it. A calculation that adjusts its inputs has to expose the
+adjusted ones or its explanation is fiction.
+**Date.** 2026-08-14.
+**Rejected.** Recomputing the redistribution in `ui/` (duplicating engine
+arithmetic in a front-end, which `CLAUDE.md` §2.4 forbids); storing effective
+weights in the cache (a schema change to fix a display bug, and old caches
+would still lack them).
+
+### Eras are derived from air dates, not typed per episode
+**Decision.** `analyzer/eras.py` turns a show's era definitions plus each
+episode's air date into `Episode.extra["era"]`, which the sampler stratifies
+on like any other column. Air dates come from the index; era ranges come from
+`show_eras`.
+**Reason.** The pieces already existed and nothing joined them: era ranges had
+been in the index since July for chart colouring, and `sample()` has always
+accepted `stratify_by="<any column>"` — but `Episode.extra` is populated by
+neither `scan_entry_root` nor `load_registry_csv`, and a folder scan leaves
+`air_date` as None. Deriving the tag is the smallest join, and it means one
+air-date import serves both the sampler and the charts.
+**Consequence.** Era stratification is only as good as the imported metadata.
+Episodes with no air date group as `(no era)` — a real stratum, so they stay
+in the sampling frame and the shortfall is visible rather than silent.
+**Date.** 2026-08-14.
+**Rejected.** An era field typed per episode (it is a property of the date, so
+it would be transcription and would drift); dropping undated episodes from the
+frame (it shrinks the sample without saying so).
+
+### One import dialog for Wikipedia and TVMaze
+**Decision.** `ui/metadata_import.py` handles both sources; the source is a
+combo box, not a separate dialog.
+**Reason.** After the fetch they are the same job — both return a
+`WikiEpisode` list, both go through `match_to_files`, both end at
+`upsert_episode_metadata`. Two dialogs would be two places for the matching
+rules to drift apart.
+**Date.** 2026-08-14.
+**Rejected.** Porting `gui_wiki_import.py` and `gui_tvmaze_import.py`
+separately, as the Tk build has them.
+
+### A fuzzy filename match is offered, flagged, and revocable
+**Decision.** Rows matched by title similarity show their score, are counted
+in a warning above the table, and can be unchecked — individually or all at
+once. Nothing unchecked is written.
+**Reason.** `match_to_files` falls back to `difflib` similarity down to 0.45.
+That is a guess about which file is which episode, and applying a wrong one
+writes an air date nothing downstream will ever question — while air dates
+drive era stratification in the sampler. Silently applying them would make the
+importer a source of quiet data corruption.
+**Date.** 2026-08-14.
+**Rejected.** Applying every match above the threshold (what the Tk build
+does); refusing fuzzy matches outright (they are usually right, and typing a
+season of air dates by hand is worse).
+
+### A comparison shows a signed difference and nothing else
+**Decision.** `report.compare_html` renders two value columns and B − A in each
+metric's own units. No ordering, no colour, no arrow, no "higher/lower" verdict
+wording. It refuses to compare an episode with a show aggregate.
+**Reason.** A side-by-side is the easiest place in the product to imply a
+ranking, and `CLAUDE.md` §2.1 says CMAT issues none. Mixing an episode with an
+aggregate would also put one episode's numbers beside a mean of many and call
+the gap a difference.
+**Date.** 2026-08-14.
+**Rejected.** Percentage differences (they imply a baseline that does not
+exist); highlighting the larger value.
+
+### Optional-tool availability is a presence check, not an import
+**Decision.** `OptionalTool.is_available()` uses `importlib.util.find_spec`;
+`version()` reads package metadata. Neither imports the package.
+**Reason.** The old `import_module` check was stricter — it proved the package
+loads — but for TransNetV2 that means importing PyTorch: 3.6 seconds, and a
+deep-learning runtime resident in the process, to decide whether to grey out a
+combo-box entry. A package that is installed but broken now reads as
+available; the real import error then surfaces when it is actually used, which
+is a better place to meet it than a greyed-out menu item.
+**Date.** 2026-08-14.
+**Rejected.** Memoising the import (still 3.6s once per session, still resident
+PyTorch); probing in a background thread (a settings dialog that fills in
+after four seconds is worse than one that is simply right).
+
+### The analysis queue holds paths, never results
+**Decision.** `AutomatedTab._queue` is a list of episode and show paths. A
+target that has disappeared by the time its turn comes is reported as a failed
+row; the rest of the run continues.
+**Reason.** A queue can sit for an hour while earlier entries run, so anything
+derived stored in it would describe the library as it was when queued. And a
+twenty-episode run must not be thrown away by one moved file.
+**Date.** 2026-08-14.
+**Rejected.** Queuing resolved episode lists (a show's contents change);
+aborting the run on a missing target.
+
+### Every export carries its provenance, in the shape that fits the format
+**Decision.** JSON embeds `validation_provenance`; CSV writes a
+`<name>_PROVENANCE.txt` sidecar beside it; PDF renders the statement into the
+report.
+**Reason.** `CLAUDE.md` §2.2 — an accuracy figure without its qualifiers is
+the thing the rule exists to prevent, and an export is exactly where numbers
+leave the tool and the qualifiers get left behind. A comment row would have
+kept the CSV self-contained but stopped it being machine-readable, so the
+sidecar is the compromise, and the status bar names both files.
+**Date.** 2026-08-14 (Qt; the Tk build did the same from 2026-07).
+**Rejected.** A provenance comment row inside the CSV; provenance only on
+request.
+
+### Episode notes and metadata live in the index, not the cache
+**Decision.** `air_date`, `season_num`, `episode_num` and notes are written
+through `analyzer/db.py` to the SQLite index.
+**Reason.** They are things a PERSON recorded. The cache is rewritten by every
+re-analysis, so keeping them there would mean re-measuring an episode silently
+erased its air date — and air dates drive era stratification in the sampler.
+**Date.** 2026-08-14 (Qt; matches the Tk build).
+**Rejected.** A sidecar JSON per episode; storing them in the cache file.
+
+### Language is a tab, not a screen inside Automated coding
+**Decision.** `ui/language.py` is a seventh top-level tab.
+**Reason.** The pipeline already treats language as its own stage with its own
+"Language only" template, on the grounds that a language study needs no
+sensory pass at all. Burying it inside Automated coding would contradict the
+model the pipeline teaches. It also follows the existing decision that
+automated and hand coding are separate tracks with separate tabs.
+**Date.** 2026-08-14.
+**Rejected.** A sub-view of Automated coding, mirroring the Tk layout.
+
+### Screens inside a tab are sub-toolbar buttons, not nested tabs
+**Decision.** `SubViews` puts a group of checkable buttons in the reference's
+`.sub-toolbar` over a `QStackedWidget`. Used by Language and Human coding.
+**Reason.** `ui/reference/*.css` has a tab strip and a sub-bar; it has no
+nested tab strip, and a second row of tabs inside the first is not a Windows
+convention either. The checked state is the platform's pressed face — no
+second accent.
+**Date.** 2026-08-14.
+**Rejected.** A nested `QTabWidget`; a "View:" combo box.
+
+### Full Series Aggregate does not write to disk
+**Decision.** The Qt version renders the aggregate and saves nothing.
+**Reason.** The Tk version called `save_show_results` as a side effect of
+*viewing* it, which writes a series-level result into the library whenever
+someone looks. A view should not change the data it is a view of, and the
+aggregate is cheap to recompute.
+**Date.** 2026-08-14.
+**Rejected.** Keeping the save for parity.
+
+### The composite is re-scored on read, never taken from cache
+**Decision.** `MainWindow._cached` runs `rescore_episode` with the settings in
+force; every screen goes through it, and a test fails if one calls
+`load_cached` directly.
+**Reason.** The composite is a weighted sum over numbers already measured, so
+the weights in the cache file are whatever happened to be set when it was
+written. The Qt build read the score straight out of the cache, which made
+Settings' "Apply & Re-score" a no-op — the button promised exactly this call.
+**Date.** 2026-08-14.
+**Rejected.** Re-writing the cache on a settings change (it would invalidate
+nothing but would rewrite every file for a presentation choice).
+
+### A pipeline node opens the screen that does its stage's work
+**Decision.** Double-clicking a node, or its inspector button, switches to that
+tab. The stage → tab map is `STAGE_TABS` in `ui/main_window.py`; stages whose
+screen is still Tk-only are listed in `STAGE_UNPORTED` and keep a **disabled**
+button carrying the reason.
+**Reason.** `CLAUDE.md` §4 makes the pipeline how a researcher sees what the
+software is doing. A node that cannot reach the work is a picture of the
+workflow, not the workflow.
+**Date.** 2026-08-14.
+**Rejected.** Opening the tab on single-click (selection is how you inspect a
+node, so it cannot also navigate away); hiding the button when unported.
+
 ---
 
 ## Interface
@@ -373,6 +638,27 @@ control is worse than an honest one.
 ---
 
 ## Data and reporting
+
+### The headline accuracy figure is the `ALL`-row boundary F1, not hard-cut only
+**Decision.** The published figure is **F1 0.85 aggregate, range 0.75–0.91**,
+type-agnostic at ±2 s, on the shipped `content-t27-diss` detector over two
+coded episodes (CB 0.753, LB 0.910; pooled 103 TP / 14 FP / 21 FN). The
+competing "0.84–0.96, aggregate ~0.91" is **superseded and deleted from the
+code comments.** TransNetV2 (0.902 / 0.942, pooled 0.928) is reported
+separately and never pooled with it.
+**Reason.** The two figures were never rival measurements of one quantity: the
+old pair is the **hard_cut-type-only** basis for the *same two runs* (0.841 and
+0.964), and its aggregate additionally double-counted reruns across mixed
+detector configs. Scoring on `ALL` is the honest basis because the tool is
+scored against everything a coder marked, not just the category it handles
+best — and it is the *lower* number. Settled by recomputing from the comparison
+CSVs on disk rather than by choosing between notes; `local_hard_cut_f1()`
+returns `('0.85', 2)`, reproducing the constants exactly.
+**Date.** Basis changed 2026-08-08; contradiction traced and closed 2026-08-14.
+**Rejected.** Quoting the higher 0.91; averaging the two detectors.
+**Both logs.** Methodology in `validation/VALIDATION_LOG.md` (2026-08-08);
+`ARCHITECTURE.md` §9 now names which runs the aggregate covers. The constants
+remain *misnamed* `REFERENCE_HARD_CUT_F1_*` — see `TODO.md` item 1.
 
 ### A show aggregate weights every episode equally
 **Decision.** Every episode counts once regardless of length, **and the choice

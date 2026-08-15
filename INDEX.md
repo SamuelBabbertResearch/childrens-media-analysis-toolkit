@@ -17,7 +17,7 @@ Retrieval table of contents. Load what the task needs; do not load everything.
 | Read | When |
 |---|---|
 | [DECISIONS.md](DECISIONS.md) | before revisiting a settled choice — the reason is recorded |
-| [LEARNINGS.md](LEARNINGS.md) | before debugging; several traps here look like new bugs |
+| [LEARNINGS.md](LEARNINGS.md) | before debugging **and before calling work finished** — it opens with the five recurring shapes of defect on this project, and how to test for each |
 | [navigation.md](navigation.md) | to find the file that owns a behaviour |
 
 ## Reference
@@ -28,6 +28,7 @@ Retrieval table of contents. Load what the task needs; do not load everything.
 | [STACK.md](STACK.md) | frameworks, libraries, platform constraints, Qt facts that are not guessable |
 | [ROADMAP.md](ROADMAP.md) | positioning, priorities, and what is deliberately not being built |
 | [README.md](README.md) | public-facing description |
+| [design/README.md](design/README.md) | specifications and strategy notes — the pipeline north-star spec, migration strategy, UX audit, positioning. **Inputs, not authority**; never adopt a label, metric or number from them |
 
 ## Interface work
 
@@ -35,16 +36,18 @@ Retrieval table of contents. Load what the task needs; do not load everything.
 |---|---|
 | [ui/DESIGN.md](ui/DESIGN.md) | **§0 is the recipe for building a screen.** Read before touching the interface |
 | `ui/reference/*.css` | the supplied mockups' stylesheets, verbatim. The source of the design — do not hand-edit |
+| `ui/reference/GeminiPipelineSample.qss` | a supplied Qt Style Sheet sample of the target aesthetic. Reference only — nothing loads it, and `reference_css.py` reads `*.css` by name so never sees it |
 | `ui/tokens.py` | every colour and metric. Never write a literal colour into a widget |
 
 ## Research and domain
 
 | Document | Covers |
 |---|---|
-| [validation/CODEBOOK.md](validation/CODEBOOK.md) | transition hand-coding definitions |
+| [validation/VALIDATION_LOG.md](validation/VALIDATION_LOG.md) | **the research diary** — dated coding sessions, result corrections, codebook changes |
+| [validation/CODEBOOK.md](validation/CODEBOOK.md) | transition hand-coding definitions, including the `other` subtypes |
 | [validation/EVENT_CODEBOOK.md](validation/EVENT_CODEBOOK.md) | fantastical-event hand-coding definitions |
 | `validation/*.csv`, `*_manifest_*.json` | hand coding and trial manifests — authoritative data a person typed |
-| `docs/wiki` | long-form documentation |
+| `docs/wiki` | long-form documentation — **gitignored**, managed separately |
 
 ## Not in version control
 
@@ -64,6 +67,7 @@ Retrieval table of contents. Load what the task needs; do not load everything.
 | What do the tests protect? | `ARCHITECTURE.md` §11 |
 | Why is it built this way? | `DECISIONS.md` |
 | Why did this break before? | `LEARNINGS.md` |
+| How do I know this actually works? | `LEARNINGS.md` § The shape most of these share; `CLAUDE.md` §6 |
 | Which file do I edit? | `navigation.md` |
 | What is authoritative vs rebuildable? | `ARCHITECTURE.md` §2 |
 | Can I change this dependency? | `STACK.md` — ask first |

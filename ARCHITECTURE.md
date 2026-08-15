@@ -184,6 +184,36 @@ This surprises people. A show with violent volume swings and a show with
 constant loudness score identically on audio, because only `rms_mean` counts.
 Say "sensory load" when you mean the composite and name the metric otherwise.
 
+### 8.1a What the composite's shape is NOT justified by — an open gap
+
+Three choices are load-bearing and **have no recorded rationale anywhere**.
+They are listed here so nobody mistakes silence for justification, and because
+a Methods section or a reviewer will ask about each one first.
+
+1. **Why a weighted linear sum at all.** The composite is
+   `Σ(weight × normalised value)`. Nothing records why an additive model was
+   chosen over standardised z-scores, a principal component, or a factor
+   score. A linear sum assumes the components are commensurable and
+   independently additive; neither has been tested.
+2. **Why these default weights** — pacing 25%, saturation 5%, contrast 10%,
+   motion 25%, flashing 15%, audio 20%. Pacing and motion carry five times the
+   weight of saturation. That is a substantive theoretical claim about what
+   drives sensory load, and it is written down nowhere. The per-preset
+   `description` fields in `config.json` explain each preset's *emphasis*, not
+   the base weighting.
+3. **Where the ceilings came from.** `cuts_per_min` max 60, contrast max 0.35,
+   flashing max 30/min, audio RMS max 0.2. No source, derivation, or corpus is
+   recorded for any of them, and they set the scale every score sits on.
+
+The theoretical grounding is named — Huston & Wright's formal features, Lang's
+LC4MP (`CLAUDE.md` §2.2) — but **nothing maps a specific metric to a specific
+construct**, which is the step that would justify 1 and 2.
+
+Until this is written down, the composite is best described as *a configurable
+weighted index whose defaults are a working judgement*, not as an operational
+measure of a construct. That framing is honest and defensible; claiming more
+would not be. See `TODO.md`.
+
 ### 8.2 Normalization, and the ceiling that discards information
 
 ```python
@@ -340,10 +370,14 @@ Five statuses, and they mean different things. The table above shows only the fi
 - **validated** — graded against human coding.
 - **unvalidated** — works, ungraded. Flag it wherever its numbers appear.
 - **experimental** — ungraded *and* known to be rough.
-- **deterministic** — colour, motion, flashing and audio are direct signal
-  measurements with no detection or classification step to validate. The
-  *signal* is deterministic; whether `flashing` counts the right events is a
-  separate question, and it is unvalidated.
+- **deterministic** — colour, motion and audio are direct signal measurements
+  with no detection or classification step to validate.
+  **Flashing is NOT in this group**, though `analyzer/provenance.py` described
+  it as such until 2026-08-14 — and that description was published on the
+  site and in every PDF. The *signal* is deterministic; whether the whole-frame
+  luminance mean counts the right events is a separate question and is
+  unvalidated, which is why the registry marks it so and why it is flagged
+  wherever its numbers appear.
 - **human** — fantastical events. The tool structures the coding; it does not
   detect fantasy.
 
@@ -363,6 +397,28 @@ Everything in that sentence is load-bearing:
 - **PRELIMINARY.** A small single-coder pilot. Inter-rater reliability and a
   larger sample are outstanding.
 - Weakest on dissolve-heavy, low-contrast and visually noisy footage.
+
+**Which runs the aggregate covers** (confirmed 2026-08-14 by recomputing from
+the comparison CSVs; `local_hard_cut_f1` reproduces it):
+
+| Episode | Detector | TP | FP | FN | F1 |
+|---|---|---|---|---|---|
+| A Charlie Brown Christmas 1965 | `content-t27-diss` | 32 | 10 | 11 | 0.753 |
+| Little Bear 1x01 | `content-t27-diss` | 71 | 4 | 10 | 0.910 |
+| **pooled** | `content-t27-diss` | **103** | **14** | **21** | **0.855** |
+
+Two episodes, one detector — the shipped ContentDetector configuration. The
+range endpoints are those two episodes, not a distribution. TransNetV2
+(`transnet-t0.5-solo`) scores 0.902 / 0.942, pooled **0.928**, and is reported
+separately; the two detectors are never pooled.
+
+**The figure is misnamed.** It is scored on the `ALL` row — every transition
+type a human coded — not on `hard_cut` alone. The hard_cut-only figures for the
+same two runs are 0.841 and 0.964, and that pair is the superseded "0.84–0.96"
+reference range. Both numbers are correct; they answer different questions. The
+2026-08-08 log entry moved the published basis to `ALL` because the tool is
+scored against everything a coder marked. `REFERENCE_HARD_CUT_F1_*` and the
+prose above still carry the old name.
 
 ### Two different accuracy claims
 

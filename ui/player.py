@@ -6,7 +6,11 @@ means naming the moment it happens, and on Windows QMediaPlayer goes through
 Media Foundation, where seeking on an arbitrary MP4 lands on the nearest
 keyframe rather than the frame asked for. A coder stepping frame by frame
 would be recording the wrong timestamp and would have no way to tell. libvlc
-decodes and steps frames itself, so `next_frame` really is the next frame.
+seeks accurately: a seek to 30.0s reports 30.000s exactly, and stepping by one
+frame duration lands within a millisecond of the frame boundary.
+
+Note that libvlc's own `next_frame()` is NOT used — see `step_frame()`. It
+advances the picture without moving the clock, and corrupts the next seek.
 
 The cost is a real dependency: VLC must be installed, 64-bit to match the
 interpreter. `available()` reports that rather than letting the screen fail
@@ -24,7 +28,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QEventLoop, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget,
 )
@@ -123,6 +127,7 @@ class VideoPlayer(QWidget):
         self._player = self._instance.media_player_new()
         self._duration = 0.0
         self._scrubbing = False
+        self._fps = 0.0
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -153,11 +158,13 @@ class VideoPlayer(QWidget):
             b.setToolTip(tip)
             b.clicked.connect(lambda _=False, d=delta: self.nudge(d))
             rl.addWidget(b)
+        self._btn_frame_back = QPushButton("◂ Frame")
+        self._btn_frame_back.setToolTip("Back one frame.")
+        self._btn_frame_back.clicked.connect(lambda: self.step_frame(-1))
+        rl.addWidget(self._btn_frame_back)
         self._btn_frame = QPushButton("Frame ▸")
-        self._btn_frame.setToolTip(
-            "Advance one frame. VLC decodes it, so this is the next frame "
-            "rather than the next keyframe.")
-        self._btn_frame.clicked.connect(self.step_frame)
+        self._btn_frame.setToolTip("Forward one frame.")
+        self._btn_frame.clicked.connect(lambda: self.step_frame(1))
         rl.addWidget(self._btn_frame)
         rl.addStretch(1)
         self._time = QLabel("00:00:00.00 / 00:00:00.00")
@@ -208,15 +215,52 @@ class VideoPlayer(QWidget):
     def nudge(self, delta: float) -> None:
         self.seek(self.position() + delta)
 
-    def step_frame(self) -> None:
-        self._player.next_frame()
+    def step_frame(self, frames: int = 1) -> None:
+        """Move by whole frames, forward or back.
+
+        Implemented as a seek of one frame duration, NOT libvlc's
+        `next_frame()`. Measured, `next_frame()` advances the picture but
+        leaves `get_time()` and `get_position()` frozen — three steps from
+        30.000s all still reported 30000ms — so a coder stepping to the exact
+        frame of a cut would record the timestamp of wherever they paused.
+
+        Worse, it leaves the player in a state where the NEXT seek is applied
+        wrongly and never corrects: a seek to 45.0s landed at 40.040s and
+        stayed there. Re-asserting pause, seeking twice and set_position all
+        failed to clear it.
+
+        Seeking by a frame duration has neither problem: the step lands within
+        a millisecond of the frame boundary, the clock follows it, later seeks
+        stay exact — and stepping backwards becomes possible, which
+        `next_frame()` cannot do at all.
+        """
+        frame = self.frame_duration()
+        if frame <= 0:
+            return
+        self.seek(self.position() + frames * frame)
 
     def seek(self, seconds: float) -> None:
         seconds = max(0.0, min(seconds, self._duration or seconds))
-        self._player.set_time(int(seconds * 1000))
+        self._player.set_time(int(round(seconds * 1000)))
         self.position_changed.emit(seconds)
 
+    def frame_duration(self) -> float:
+        """Seconds per frame, from the media's own rate. 0.0 if unknown."""
+        if self._fps <= 0:
+            try:
+                self._fps = float(self._player.get_fps() or 0.0)
+            except Exception:       # noqa: BLE001 - unknown rate is not fatal
+                self._fps = 0.0
+        return 1.0 / self._fps if self._fps > 0 else 0.0
+
     def position(self) -> float:
+        """The position a mark records.
+
+        Exact when paused or after a seek. During PLAYBACK libvlc's clock is
+        coarse — measured, it advances in jumps of 0.25–0.5s on 23.976fps
+        material — so a mark made while playing can be up to half a second
+        stale. Pause before marking; the coding UI enforces that.
+        """
         ms = self._player.get_time()
         return max(0.0, ms / 1000.0) if ms and ms > 0 else 0.0
 

@@ -1,2 +1,1 @@
 timestamp_hms,timestamp_sec,event_type,narrative_relevance,repeat,duration_sec,notes
-,,physical | transformation | continuity | body | animacy | causal | other_impossible,integral | incidental,new | repeat,(optional sec),premise: <note show premise here>

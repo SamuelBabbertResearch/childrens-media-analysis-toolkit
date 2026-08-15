@@ -167,7 +167,12 @@ def episode_html(result, percentile: dict | None = None,
     # Contribution = normalised value x weight. A bar chart showed the
     # normalised value alone, which cannot explain the composite sitting
     # above it: saturation at 0.372 contributes less than contrast at 0.560.
-    cfg = result.config.get("sensory_load_weights", {})
+    # EFFECTIVE weights, not the nominal ones in config: a silent episode has
+    # audio's share redistributed across the visual metrics, so showing 25%
+    # for pacing gave a breakdown that did not add up to the score printed
+    # directly above it (0.057 out, on a real episode).
+    from analyzer.metrics_sensory import effective_weights
+    cfg = effective_weights(result.config, sl.audio_available)
     c = sl.components
     comps = [
         ("Pacing",     c.pacing,     cfg.get("pacing", 0.25)),
@@ -185,12 +190,19 @@ def episode_html(result, percentile: dict | None = None,
         tr = '<tr class="alt">' if i % 2 else "<tr>"
         if label == "Audio" and not sl.audio_available:
             rows.append(f'{tr}<td class="l">Audio</td><td class="dim">n/a</td>'
-                        f'<td>{wt:.0%}</td><td class="dim">—</td></tr>')
+                        f'<td class="dim">0%</td><td class="dim">—</td></tr>')
             continue
         rows.append(f'{tr}<td class="l">{label}</td><td>{val:.3f}</td>'
                     f'<td>{wt:.0%}</td><td>{val * wt:.3f}</td></tr>')
     rows.append("</table>")
     parts.append("".join(rows))
+    if not sl.audio_available:
+        parts.append(
+            '<p class="note">No audio track: the audio share of the composite '
+            'has been redistributed across the visual metrics, so the weights '
+            'above are the ones that actually produced the score — not the '
+            'nominal weights in settings. A score composed this way is not '
+            'directly comparable with one that included audio.</p>')
 
     # --- measured features --------------------------------------------------
     shot, pace = m.shot_length, m.scene_pacing
@@ -268,11 +280,36 @@ def episode_html(result, percentile: dict | None = None,
                      'under Human coding → Code.</p>')
 
     # --- provenance ---------------------------------------------------------
+    parts.append(_provenance(result))
+    return _document("".join(parts))
+
+
+def _ungraded_by_default() -> list[str]:
+    """Measurements whose DEFAULT tool has never been graded.
+
+    Used when a cached result predates `measurement_tools`. The registry knows
+    a tool's status regardless of what any particular result recorded, so the
+    flag does not depend on a field the cache may not carry.
+    """
+    from analyzer.measurements import ungraded_measurements
+    return [name for name, _why in ungraded_measurements()]
+
+
+def _provenance(result) -> str:
+    """Which tool measured what, and which of them are not validated.
+
+    CLAUDE.md §2.2: unvalidated measures are flagged WHEREVER their numbers
+    appear. That has to hold for results measured before CMAT recorded its
+    tool selection — 11 of 13 cached episodes in the working copy carry no
+    `measurement_tools`, and for every one of them this section silently
+    vanished, taking the flashing and scene-relation warnings with it. The
+    numbers were on screen; the qualifier was not.
+    """
     tools = getattr(result, "measurement_tools", None) or {}
+    parts: list[str] = ['<p class="section-title">Measured with</p>']
+
     if tools:
-        parts.append('<p class="section-title">Measured with</p>')
-        rows = []
-        ungraded = []
+        rows, ungraded = [], []
         for key, desc in tools.items():
             if desc == "disabled":
                 continue
@@ -286,8 +323,23 @@ def episode_html(result, percentile: dict | None = None,
                 f'<p class="warn">Not graded against hand coding: '
                 f'{_e(", ".join(ungraded))}. Treat these as exploratory; do '
                 f'not report them as validated measures.</p>')
+        return "".join(parts)
 
-    return _document("".join(parts))
+    # No recorded selection. Say that plainly rather than showing nothing,
+    # and still name what is unvalidated by default.
+    parts.append(
+        '<p class="note">This result was measured before CMAT recorded which '
+        'tool produced each measurement, so the exact settings behind these '
+        'numbers are not known. Re-analyse the episode to record them.</p>')
+    ungraded = _ungraded_by_default()
+    if ungraded:
+        parts.append(
+            f'<p class="warn">Not graded against hand coding: '
+            f'{_e(", ".join(ungraded))}. These are unvalidated by default in '
+            f'every configuration shipped so far, so the warning applies '
+            f'whatever settings this result was measured under. Treat them as '
+            f'exploratory; do not report them as validated measures.</p>')
+    return "".join(parts)
 
 
 def _document(body: str) -> str:
@@ -398,4 +450,103 @@ def show_html(aggregate, results, show_name: str = "") -> str:
             f'{"they are" if not_run != 1 else "it is"} not in the figures '
             f'above. Run the show from Automated coding to include '
             f'{"them" if not_run != 1 else "it"}.</p>')
+    return _document("".join(parts))
+
+
+# ---------------------------------------------------------------------------
+# Side-by-side comparison
+# ---------------------------------------------------------------------------
+
+# (heading, how to read it off an EpisodeResult, decimal places). Deliberately
+# the same fields the episode report shows, so a comparison cannot quietly
+# cover a different set of metrics from the report it is compared against.
+COMPARE_EPISODE_ROWS = (
+    ("Sensory load", lambda m: m.sensory_load.score, 3),
+    ("Cuts / min", lambda m: m.scene_pacing.cuts_per_min, 2),
+    ("Shot length mean (s)", lambda m: m.shot_length.mean_sec, 2),
+    ("Colour saturation", lambda m: m.color_saturation.mean, 3),
+    # Contrast lives on the saturation block, not a block of its own — it is
+    # the spatial std-dev of the V channel, added alongside saturation.
+    ("Colour contrast", lambda m: m.color_saturation.contrast_mean, 3),
+    ("Motion", lambda m: m.motion.mean, 4),
+    ("Flashing events / min",
+     lambda m: m.flashing.luminance_delta_events_per_min, 2),
+    ("Audio RMS", lambda m: m.audio.rms_mean if m.audio.available else None, 4),
+)
+
+
+def _delta(a, b, places: int) -> str:
+    """B minus A, signed. Blank when either side has no value.
+
+    Deliberately a bare difference, not a percentage or a verdict: a signed
+    number in the metric's own units is the only comparison the data supports.
+    Nothing here says which episode is 'better' or 'worse' — see CLAUDE.md
+    §2.1.
+    """
+    if a is None or b is None:
+        return "—"
+    return f"{b - a:+.{places}f}"
+
+
+def compare_html(left, right, left_name: str = "", right_name: str = "",
+                 kind: str = "episode") -> str:
+    """Two episodes, or two show aggregates, side by side.
+
+    *kind* is "episode" (EpisodeResult) or "show" (ShowAggregate).
+
+    GUARDRAIL. A comparison is the easiest place in the whole product to
+    imply a ranking, so this one does not. Columns are A, B and the signed
+    difference; there is no ordering, no colour, no arrow and no wording that
+    makes one side the winner. A difference in cuts per minute is a difference
+    in cuts per minute.
+    """
+    a_name = _e(left_name or "A")
+    b_name = _e(right_name or "B")
+    parts = [f'<p class="section-title">{a_name}  vs  {b_name}</p>']
+
+    rows = []
+    if kind == "show":
+        for heading, attribute, places in AGGREGATE_ROWS:
+            a_stat = getattr(left, attribute, None)
+            b_stat = getattr(right, attribute, None)
+            a = getattr(a_stat, "mean", None)
+            b = getattr(b_stat, "mean", None)
+            rows.append((heading, _num(a, places), _num(b, places),
+                         _delta(a, b, places)))
+        parts.append(_table(
+            ("Metric (mean)", a_name, b_name, "B − A"), rows,
+            first_col_width=_KEY_W))
+        counts = [("Episodes measured",
+                   str(getattr(left, "episode_count", 0)),
+                   str(getattr(right, "episode_count", 0)), "")]
+        parts.append(_table(("", a_name, b_name, ""), counts,
+                            first_col_width=_KEY_W))
+    else:
+        for heading, read, places in COMPARE_EPISODE_ROWS:
+            a = read(left.metrics)
+            b = read(right.metrics)
+            rows.append((heading, _num(a, places), _num(b, places),
+                         _delta(a, b, places)))
+        parts.append(_table(("Metric", a_name, b_name, "B − A"), rows,
+                            first_col_width=_KEY_W))
+        if not (left.metrics.audio.available
+                and right.metrics.audio.available):
+            parts.append(
+                '<p class="warn">One of these has no audio track. Missing '
+                'audio redistributes its weight across the visual metrics, so '
+                'the two sensory-load scores are not composed the same way '
+                'and the difference above is not like for like.</p>')
+
+    parts.append(
+        '<p class="note">Differences are B minus A in each metric\'s own '
+        'units. CMAT reports measurements of the stimulus: nothing here '
+        'ranks the two, and a larger number is not a worse programme.</p>')
+    # A comparison is numbers on a screen like any other, so §2.2 applies.
+    ungraded = _ungraded_by_default()
+    if ungraded:
+        parts.append(
+            f'<p class="warn">Not graded against hand coding: '
+            f'{_e(", ".join(ungraded))}. A difference in an ungraded measure '
+            f'is a difference in what the tool computed, not a demonstrated '
+            f'difference between the programmes.</p>')
     return _document("".join(parts))

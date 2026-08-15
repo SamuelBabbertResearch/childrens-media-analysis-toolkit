@@ -1,0 +1,5 @@
+timestamp_hms,timestamp_sec,type,scene_relation,notes
+00:02.5,,fade in,change,
+00:02.5,,fade_in,change,Opening from black to white
+00:05.3,,hard_cut,within,George looking into telescope
+00:09.9,,hard_cut,change,Transition to new setting within same scene (theme song)

@@ -580,6 +580,37 @@ MEASUREMENTS: list[MeasurementSpec] = [
 FINGERPRINTED = [m.key for m in MEASUREMENTS]
 
 
+def ungraded_measurements(cfg: dict[str, Any] | None = None
+                          ) -> list[tuple[str, str]]:
+    """[(measurement name, why it is flagged)] for anything not validated.
+
+    The single answer to "which numbers on this screen need a flag".
+    `CLAUDE.md` §2.2 requires unvalidated measures to be flagged WHEREVER
+    their numbers appear — the report, the index table, the comparison, the
+    chart, the exports and the published site. Each of those used to decide
+    for itself, and most of them decided "not at all".
+
+    With *cfg* the answer reflects the tools actually selected; without it,
+    the shipped defaults.
+    """
+    out: list[tuple[str, str]] = []
+    for measurement in MEASUREMENTS:
+        if cfg is not None:
+            tool, _params, enabled = selection(cfg, measurement.key)
+            if measurement.can_disable and not enabled:
+                continue
+        else:
+            tool = measurement.default_tool()
+        if tool.status == VALIDATED:
+            continue
+        out.append((
+            measurement.name,
+            f"{tool.name} is {STATUS_LABEL.get(tool.status, tool.status)} — "
+            f"never graded against hand coding",
+        ))
+    return out
+
+
 def get_measurement(key: str) -> MeasurementSpec | None:
     for m in MEASUREMENTS:
         if m.key == key:

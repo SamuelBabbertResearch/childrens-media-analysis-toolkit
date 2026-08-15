@@ -13,6 +13,7 @@ Output:
 """
 
 from __future__ import annotations
+import html
 import json
 import os
 import re
@@ -21,6 +22,8 @@ import stat
 from collections import Counter
 from datetime import date
 from pathlib import Path
+
+from analyzer.provenance import validation_short
 
 ROOT     = Path(__file__).parent
 SITE     = ROOT / "_site"
@@ -614,18 +617,29 @@ def _build_show_page(entry: dict, agg: dict | None, episodes: list[dict], lang: 
             + _row("Flashing events / min", "flashing_events_per_min", 1)
             + _row("Audio RMS",             "audio_rms_mean", 4)
             + "</tbody></table>"
-            + '<p class="tbl-note"><strong>Detection accuracy (preliminary):</strong> '
-              'unlike black-box tools, CMAT measures its own error rate against '
-              'human coding — but that validation is currently a small, '
-              'single-coder pilot, so treat the figures as indicative, not '
-              'settled. Hard-cut detection (the basis of the pacing metric) '
-              'agreed with human coding at F1 ~0.84 on dissolve-heavy 1960s '
-              'animation (worst case) up to ~0.96 on clean modern animation; '
-              'accuracy is content-dependent. Inter-rater reliability and a '
-              'larger sample are in progress. Dissolve and scene-change '
-              'detection are experimental; color, motion, flashing and audio '
-              'are deterministic measurements. See '
-              f'<a href="{_p("/methodology/")}">Methodology</a>.</p>'
+            # The accuracy claim comes from analyzer/provenance.py, which its
+            # own docstring calls "the single source of truth for CMAT's
+            # self-reported accuracy, shown on every results view, export, and
+            # the public site". It was not: this paragraph hard-coded a THIRD
+            # variant of the F1 figure (~0.84 to ~0.96) that contradicts the
+            # constants CLAUDE.md and ARCHITECTURE.md quote, and repeated the
+            # claim that flashing is a deterministic measurement needing no
+            # validation — which the measurement registry contradicts. Both
+            # were being published. Reading the statement means the site
+            # follows automatically. Settled 2026-08-14: the hard-coded
+            # ~0.84-0.96 was the hard_cut-type-only basis for the same two
+            # runs; the published basis is the ALL row, F1 0.85 (0.75-0.91).
+            # The site now emits that via validation_short(). Do not
+            # reintroduce a literal figure here.
+            + '<p class="tbl-note"><strong>Unlike black-box tools, CMAT '
+              'measures its own error rate against human coding.</strong> '
+              'That validation is currently a small, single-coder pilot, so '
+              'treat the figures as indicative, not settled. '
+            # validation_short() opens with its own "Detection accuracy
+            # (preliminary):" heading, so the lead-in above deliberately does
+            # not repeat it.
+            + html.escape(validation_short(), quote=False)
+            + f' See <a href="{_p("/methodology/")}">Methodology</a>.</p>'
         )
 
     # Episode table

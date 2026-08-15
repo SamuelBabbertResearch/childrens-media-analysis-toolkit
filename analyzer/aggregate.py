@@ -8,11 +8,20 @@ Writes:
 
 from __future__ import annotations
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
-import pandas as pd
 
 from .schema import EpisodeResult, MetricStats, ShowAggregate
+
+if TYPE_CHECKING:                       # only for the annotation below
+    import pandas as pd
+
+# pandas is imported inside results_to_dataframe, not here. It costs ~1.1s to
+# load and is needed only for CSV export, but this module also holds
+# compute_show_aggregate — which the interface calls while building the Library
+# — so a module-level import made pandas part of application STARTUP. Deferring
+# it took the Qt build's import time from 2.2s to 1.1s.
 
 
 def _stats(values: list[float]) -> MetricStats:
@@ -56,8 +65,9 @@ def compute_show_aggregate(
     )
 
 
-def results_to_dataframe(results: list[EpisodeResult]) -> pd.DataFrame:
+def results_to_dataframe(results: list[EpisodeResult]) -> "pd.DataFrame":
     """Flatten episode results into a tidy DataFrame (one row per episode)."""
+    import pandas as pd
     rows = []
     for r in results:
         m = r.metrics
