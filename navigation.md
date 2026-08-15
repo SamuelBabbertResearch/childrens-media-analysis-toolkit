@@ -29,6 +29,9 @@ whenever files move, a folder changes purpose, or a system is added.
 | change what a screen looks like | `ui/theme.py` (tokens in `ui/tokens.py`) — read `ui/DESIGN.md` §0 first |
 | add or change a pipeline stage type | `NODE_TYPES` in `analyzer/pipeline_graph.py` — a dict entry, not a UI change |
 | change how pipeline status is derived | `analyzer/pipeline.py` |
+| change which episodes a screen works on | `analyzer/scope.py` for what a scope is; `MainWindow.set_scope` for which one is current |
+| add a screen that obeys the research context | read `MainWindow._scope` and filter with `Scope.contains()`; never compare raw paths |
+| change how show-level rows are summarised | `db.summarise_shows()` — one function, used by the Index for both contexts |
 | change how episodes are grouped into eras | `analyzer/eras.py`; the editor is `ui/eras.py` |
 | change scoring (weights, ceilings) | `config.json` presets; the dialog is `ui/settings.py` |
 | change which tool measures what | `analyzer/measurements.py` registry; the dialog is `ui/measurements.py` |
@@ -56,6 +59,7 @@ whenever files move, a folder changes purpose, or a system is added.
 | `validation.py`, `event_coding.py` | tool-vs-human scoring, Cohen's kappa, inter-coder agreement |
 | `pipeline.py` | **derived** workflow status from what is on disk |
 | `pipeline_graph.py` | **editable** pipeline documents, node types, templates |
+| `scope.py` | the **research context** — which episodes the application is working on. The only reader of a draw's `selected.csv`; normalises paths at the choke point so a sample's spelling matches the library walk's |
 | `provenance.py` | self-reported accuracy figures — read by the PDF, the CSV sidecar, the JSON export and the public site. Keep `METRIC_STATUS` in step with the registry; a test enforces it |
 | `prefs.py` | per-user local state, kept out of the versioned config |
 | `config_loader.py` | loads and normalises `config.json` |
@@ -74,15 +78,15 @@ whenever files move, a folder changes purpose, or a system is added.
 | `reference_css.py` | loads those, resolves `var()`, returns a component's rules |
 | `tokens.py` | design tokens; **no framework imports** — shared by both front-ends |
 | `theme.py` | fonts, the Qt stylesheet |
-| `main_window.py` | the shell: title bar, toolbar, tabs, Library, Full Series Aggregate, and the pipeline tab's actions. `STAGE_TABS` / `STAGE_ACTIONS` map a stage to the screen that does its work; `SubViews` builds the screens-inside-a-tab switcher |
+| `main_window.py` | the shell: title bar, toolbar, tabs, Library, Full Series Aggregate, and the pipeline tab's actions. Owns **which** research context is current (`_scope`, `set_scope`); the toolbar's *Showing:* chooser sets it. `STAGE_TABS` / `STAGE_ACTIONS` map a stage to the screen that does its work; `SubViews` builds the screens-inside-a-tab switcher |
 | `modal.py` | `WindowTitleBar`, the dialog frame, `ConfirmDialog` |
 | `native_frame.py` | suppresses the Win32 frame's *drawing* while keeping snap, resize and the system menu |
 | `pipeline_view.py` | the node canvas: nodes, wires, pan, zoom |
 | `inspector.py` | the pipeline inspector panel — the selected stage's derived status, details and next action |
 | `report.py` | episode, show and **comparison** results as HTML; **no Qt import**, so it is testable headless and reusable for PDF export and the static site |
 | `automated.py` | the Automated coding tab, the analysis queue, Transcribe Missing Subtitles, and the worker threads |
-| `index_tab.py` | the Index tab over the SQLite index; `focus_episode()` selects one row for the Library's *Show in Index* |
-| `handcoding.py`, `player.py` | the Human coding tab — Code, Validate tool, Agreement; VLC embedded in Qt |
+| `index_tab.py` | the Index tab over the SQLite index; obeys the research context; its Shows view is **derived** by `db.summarise_shows()` from the episode rows on screen, never read from the `shows` table. `focus_episode()` selects one row for the Library's *Show in Index* |
+| `handcoding.py`, `player.py` | the Human coding tab — Code, Validate tool, Agreement; VLC embedded in Qt. `VideoSurface` paints itself: it declares `WA_OpaquePaintEvent`, so it owes a `paintEvent` in every state — see `ui/DESIGN.md` §0.4 |
 | `language.py` | the Language tab — Speech (from cache) and Vocabulary (spaCy on a worker thread) |
 | `sampler.py` | the Episode Sampler dialog; explanations come from `analyzer.sampler.TOOLTIPS` |
 | `trials_tab.py` | the Trials registry |

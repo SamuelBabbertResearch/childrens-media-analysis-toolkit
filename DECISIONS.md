@@ -549,6 +549,96 @@ workflow, not the workflow.
 **Rejected.** Opening the tab on single-click (selection is how you inspect a
 node, so it cannot also navigate away); hiding the button when unported.
 
+### The application has one research context, and it is named on screen
+**Decision.** `analyzer/scope.py` holds a `Scope` — either the whole library or
+exactly the episodes one documented draw selected. `MainWindow._scope` is the
+current one; the Library filters to it and a **Showing:** chooser above the
+tree always names it. Set by drawing a sample, by choosing a pipeline, or by
+the chooser. **Not persisted across launches** — the application always opens
+on the whole library.
+**Reason.** Every screen answered "which episodes?" for itself, from the
+Library tree selection. A sample could be drawn, documented and manifested and
+no screen was any the wiser, so the researcher matched `selected.csv` against
+the tree by hand. This is `design/CMAT_PIPELINE_INTERACTION_MODEL.md`'s Phase 2
+("selection establishes the current research context") at the level the context
+actually varies — a pipeline binds to one sample, so every node in it shares a
+working set.
+**Consequence.** A scope is a **view**, never a filter on the record: nothing
+is deleted and no measurement changes. Because it can hide episodes, it is
+always visible and always one click from *Whole library* — a filter the user
+cannot see is a filter they will forget.
+**Date.** 2026-08-15.
+**Rejected.** Persisting the scope (opening on a narrowed library with no
+memory of having narrowed it is the failure the control exists to avoid);
+setting it from pipeline *node* selection (a document binds to one sample, so
+nodes do not vary it, and single-click already means "inspect"); scoping the
+Index and the measurement tabs in the same change — the Library was the ask,
+and the rest is a separate piece of work with its own verification.
+
+### The Index's Shows view is derived from its episode rows, not from `shows`
+**Decision.** `db.summarise_shows()` builds show rows from whatever episode
+rows are on screen. The Index uses it for both scopes; the stored `shows` table
+is no longer read there.
+**Reason.** Two reasons that arrived together. The stored table goes stale —
+`upsert_show` runs on a whole-show analysis, so analysing episodes one at a
+time never refreshes it, and this library's Spongebob row read
+`episode_count = 2, avg_load = 0.3071` against five indexed episodes averaging
+**0.2557**. And under a sample scope a stored whole-show aggregate answers a
+question nobody asked. Deriving fixes both: the Shows view is a summary of the
+Episodes view *by construction*, so they cannot disagree.
+**Consequence.** `cli.py db --shows` and the Tk build still read the stored
+table and can still show stale figures — recorded in `FOR_PAPER.txt` and
+`TODO.md`. The derived view groups by the displayed show name and deliberately
+does **not** normalise it, so an episode indexed with a raw relative path
+(`Show/Season 1`) splinters into its own row and stays visible. Hiding it in a
+summary would leave the index defect unfixed and unseen.
+**Date.** 2026-08-15.
+**Rejected.** Refreshing `shows` on every episode upsert (it makes a derived
+table authoritative-by-habit and still leaves scoped views wrong); reading the
+stored table under the library scope and deriving only when scoped — switching
+scope would then change both the set and the arithmetic, making any difference
+unattributable.
+
+### One definition of what counts as an episode
+**Decision.** `show_index.VIDEO_EXTENSIONS` — `.mp4 .mkv .avi .mov .wmv .m4v` —
+is the single answer, matched on the lowercased suffix rather than by globbing.
+`analyzer/sampler.py` imports it instead of keeping its own copy, and a test
+asserts the two sets stay equal.
+**Reason.** The sampler drew six extensions while `show_index` globbed
+`*.mp4` in four separate places, so a documented sample could contain episodes
+the Library never listed. Live in this working copy: a drawn `.mkv` that had
+been measured **and indexed** — the sampler's path does not go through the
+library walk — and was invisible on the screen that lists the corpus.
+**Consequence.** More files count as episodes, so "n of m analyzed"
+denominators move. Nothing is invalidated: the cache is keyed on show folder
+plus filename stem, so existing results keep their keys and no aggregate
+changes until a newly-visible file is analysed. Suffix matching also removes a
+platform difference — `glob("*.mp4")` is case-sensitive on Linux and not on
+Windows, so the same library listed differently depending on where it opened.
+**Consequence, less comfortable.** The `.mp4`-only filter had been hiding a
+duplicate. Making the corpus honest made the duplicate visible, which is the
+right order but means `TODO.md` item 0 must be done before the next draw.
+**Date.** 2026-08-15.
+**Rejected.** Narrowing the sampler to `.mp4` (it would make existing manifests
+undrawable); leaving the two definitions apart and describing the gap in the
+interface, which was the interim state and only ever a caption on a defect.
+
+### A validation subset is drawn, not chosen by CMAT
+**Decision.** A sample's `selected.csv` is already a valid registry for the
+sampler — it carries the `episode` column `load_registry_csv` requires plus
+`filepath` — so a hand-coding subset is drawn **from** the sample with the
+sampler, seeded and manifested like any other draw. `coding_target` on a
+hand-code node stays advisory.
+**Reason.** Which episodes get hand-coded is a sampling decision that belongs
+in a manifest and a write-up. If CMAT picks them, the study acquires an
+undocumented selection step.
+**Consequence.** A subsample can only stratify by season/episode, because
+`selected.csv` carries no custom columns. Writing the stratification columns
+through is the fix when it is needed.
+**Date.** 2026-08-15.
+**Rejected.** Having CMAT choose N episodes for the subset; treating
+`coding_target` as a filter.
+
 ---
 
 ## Interface

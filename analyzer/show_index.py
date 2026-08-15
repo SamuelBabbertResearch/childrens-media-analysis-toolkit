@@ -1,17 +1,61 @@
-"""Discovers shows (folders) and episodes (MP4 files) under a root directory.
+"""Discovers shows (folders) and episodes (video files) under a root directory.
 
 Supports one level of category folders:
   Root/
-    ShowName/          ← flat show (MP4s directly inside)
+    ShowName/          ← flat show (videos directly inside)
       ep.mp4
-    CategoryName/      ← category (no direct MP4s, but contains show sub-dirs)
+    CategoryName/      ← category (no direct videos, but contains show sub-dirs)
       ShowName/
         ep.mp4
+
+WHAT COUNTS AS AN EPISODE
+-------------------------
+`VIDEO_EXTENSIONS` is the single answer, and `analyzer/sampler.py` imports it
+rather than keeping its own. It used to keep its own: the sampler drew six
+extensions while this module globbed `*.mp4` in four separate places, so a
+documented sample could contain episodes the library never listed. Found
+2026-08-15 with one `.mkv` live in a drawn sample and invisible in the Library
+— it had been measured and indexed through the sampler's own path, which does
+not go through here.
+
+Widening this set makes more files count as episodes. It does not invalidate
+anything: the cache is keyed on show folder plus filename stem, so existing
+results keep their keys and only the "n of m analyzed" denominators move.
 """
 
 from __future__ import annotations
 import re
 from pathlib import Path
+
+# Every container the tool treats as an episode. One definition, because four
+# copies of `glob("*.mp4")` is how this drifted from the sampler in the first
+# place — `LEARNINGS.md` § *The same one-line mistake, in four places*.
+VIDEO_EXTENSIONS = frozenset(
+    {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".m4v"})
+
+
+def list_videos(directory: Path) -> list[Path]:
+    """Video files directly inside *directory*, sorted by name.
+
+    Matches on the lowercased suffix rather than by globbing each extension:
+    `glob` is case-sensitive on Linux, so `*.mp4` silently skips `EP.MP4`
+    there while finding it on Windows — a library that lists differently
+    depending on the platform it is opened on.
+    """
+    try:
+        return sorted(p for p in directory.iterdir()
+                      if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS)
+    except OSError:
+        return []
+
+
+def _has_video(d: Path) -> bool:
+    """True if *d* directly contains at least one video file."""
+    try:
+        return any(p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS
+                   for p in d.iterdir())
+    except OSError:
+        return False
 
 # Matches "Season 1", "S2", "Series 3", "Part 4" etc.
 _SEASON_RE = re.compile(r"^(?:[Ss]eason|[Ss]eries|[Ss]|[Pp]art)\s*(\d+)$")
@@ -54,21 +98,21 @@ def db_show_key(root: Path, show_dir: Path) -> str:
 
 
 def _is_show(d: Path) -> bool:
-    """True if d is a non-hidden directory that directly contains MP4 files."""
-    return d.is_dir() and not d.name.startswith(".") and any(d.glob("*.mp4"))
+    """True if d is a non-hidden directory that directly contains video files."""
+    return d.is_dir() and not d.name.startswith(".") and _has_video(d)
 
 
 def list_top_level(root: Path) -> list[tuple[str, Path]]:
     """Return top-level items as (kind, path) pairs, sorted by name.
 
-    kind is 'show' for directories that contain MP4 files directly,
+    kind is 'show' for directories that contain video files directly,
     or 'category' for directories that contain show sub-directories.
     """
     result: list[tuple[str, Path]] = []
     for d in sorted(root.iterdir()):
         if not d.is_dir() or d.name.startswith("."):
             continue
-        if any(d.glob("*.mp4")):
+        if _has_video(d):
             result.append(("show", d))
         elif any(_is_show(sub) for sub in d.iterdir() if sub.is_dir()):
             result.append(("category", d))
@@ -81,7 +125,7 @@ def list_shows(root: Path) -> list[Path]:
     for d in sorted(root.iterdir()):
         if not d.is_dir() or d.name.startswith("."):
             continue
-        if any(d.glob("*.mp4")):
+        if _has_video(d):
             shows.append(d)
         else:
             for sub in sorted(d.iterdir()):
@@ -105,5 +149,5 @@ def show_key(root: Path, show_dir: Path) -> str:
 
 
 def list_episodes(show_dir: Path) -> list[Path]:
-    """Return MP4 files inside show_dir, sorted by name."""
-    return sorted(show_dir.glob("*.mp4"))
+    """Return the video files inside show_dir, sorted by name."""
+    return list_videos(show_dir)

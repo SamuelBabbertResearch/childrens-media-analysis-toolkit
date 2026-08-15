@@ -140,6 +140,20 @@ Two names, and they are not interchangeable:
 - **Open Children's Media Index** — the published dataset at
   OpenChildrensMediaIndex.org, built by `build_site.py`.
 
+**Selection and scope are not synonyms**, and the difference is worth holding:
+
+| Term | Means | Lives in |
+|---|---|---|
+| **Selection** | the pipeline *stage* — which episodes belong to a study | `analyzer/pipeline.py` |
+| **Scope** | what the interface is *currently showing* — the research context | `analyzer/scope.py` |
+
+They usually name the same episodes and are still different questions.
+Selection is a property of the study and is recorded in a manifest; scope is a
+property of the session, is never persisted, and is always one click from
+*Whole library*. Say **scope** for the chooser and for what a screen is
+filtered to; say **selection** for the stage. Do not use either for the
+Library's highlighted row — that is the **Library selection**, a third thing.
+
 Other terms:
 
 - **Pipeline**, not "trial", for a workflow the user owns. A *trial* is a

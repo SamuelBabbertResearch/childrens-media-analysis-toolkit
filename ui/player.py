@@ -29,9 +29,13 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QEventLoop, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
     QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout, QWidget,
 )
+
+from ui import theme
+from ui.tokens import color
 
 
 # One libvlc instance for the whole application, built once and silenced.
@@ -98,16 +102,47 @@ def sec_to_hms(seconds: float) -> str:
 
 
 class VideoSurface(QWidget):
-    """The native window libvlc draws into."""
+    """The native window libvlc draws into.
+
+    `WA_OpaquePaintEvent` promises Qt that this widget paints every one of its
+    pixels, so Qt skips erasing the background. libvlc keeps that promise while
+    a video is loaded. **Before one is**, nothing painted here at all, and the
+    pixels of whatever was previously on screen survived underneath — the
+    Trials tab's list showed through the coding screen, which read as the
+    coding screen being broken. So the promise is kept here too: paintEvent
+    fills the surface, and says what it is waiting for.
+
+    `setStyleSheet("background: ...")` does not do this. A plain QWidget does
+    not draw its own stylesheet background without `WA_StyledBackground` and a
+    paintEvent, and `WA_OpaquePaintEvent` suppresses the autofill that would
+    otherwise cover it. Three settings that each looked like they painted the
+    widget black, and none of them did.
+    """
+
+    IDLE_TEXT = "No episode open — use Open Episode."
 
     def __init__(self) -> None:
         super().__init__()
         self.setAttribute(Qt.WA_NativeWindow, True)
         self.setAttribute(Qt.WA_DontCreateNativeAncestors, True)
         self.setAttribute(Qt.WA_OpaquePaintEvent, True)
-        self.setAutoFillBackground(True)
-        self.setStyleSheet("background:#000000;")
         self.setMinimumSize(320, 180)
+        self._idle = True
+
+    def set_idle(self, idle: bool) -> None:
+        """Whether libvlc has a media loaded and is painting this surface."""
+        if idle != self._idle:
+            self._idle = idle
+            self.update()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(color("video_surface")))
+        if not self._idle:
+            return
+        painter.setPen(QColor(color("video_surface_text")))
+        painter.setFont(theme.font("small"))
+        painter.drawText(self.rect(), Qt.AlignCenter, self.IDLE_TEXT)
 
 
 class VideoPlayer(QWidget):
@@ -181,6 +216,10 @@ class VideoPlayer(QWidget):
     def open(self, path: Path) -> None:
         media = self._instance.media_new(str(path))
         self._player.set_media(media)
+        # libvlc owns the pixels from here, so Qt stops drawing the placeholder
+        # over them. Set before play() rather than after: the first frame can
+        # arrive inside this call.
+        self.surface.set_idle(False)
         handle = int(self.surface.winId())
         if sys.platform == "win32":
             self._player.set_hwnd(handle)

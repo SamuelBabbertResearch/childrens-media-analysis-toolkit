@@ -37,13 +37,13 @@ Pure functions, zero GUI imports.
 
 from __future__ import annotations
 
-import csv
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from .cache import load_cached
+from .scope import read_selected
 from .trials import KIND_LABELS, discover_trials, sample_coverage
 from .validation import get_validation_dir
 
@@ -131,21 +131,10 @@ class Pipeline:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _read_selected(folder: Path) -> list[Path]:
-    """Episode paths from a sampler draw's selected.csv."""
-    csv_path = folder / "selected.csv"
-    if not csv_path.exists():
-        return []
-    out: list[Path] = []
-    try:
-        with csv_path.open(newline="", encoding="utf-8-sig") as fh:
-            for row in csv.DictReader(fh):
-                fp = (row.get("filepath") or "").strip()
-                if fp and fp.lower() != "nan":
-                    out.append(Path(fp))
-    except Exception:
-        return []
-    return out
+# selected.csv is read by analyzer/scope.py and nowhere else. It used to be
+# read here too, and a sample's episode list now has three consumers — the
+# scope, this module and the sample aggregate. Three readers of one file is
+# how they drift apart.
 
 
 def cached_stems(root: Path | None) -> set[str]:
@@ -624,7 +613,7 @@ def build_pipelines(
 
     for trial in samples:
         folder = trial.get("folder")
-        episodes = _read_selected(folder) if folder else []
+        episodes = read_selected(folder) if folder else []
         stems = {e.stem for e in episodes}
         claimed_stems |= stems
 

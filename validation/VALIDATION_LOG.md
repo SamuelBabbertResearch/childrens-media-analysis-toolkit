@@ -15,6 +15,72 @@ Entry format:
 
 ---
 
+## 2026-08-15 — CORPUS CORRECTION: 66 duplicate episodes removed; one show-level figure was double-counted
+
+**What was done.** While building the research-context feature, the library was
+scanned for duplicate episodes for the first time. It held **203 video files
+with 66 duplicated filename stems**. Two groups:
+
+1. `Shows/Little Bear (Full Series) - Copy/` — a whole-series duplicate, 65
+   episodes, byte-identical file sizes, same five season folders as
+   `Little Bear (Full Series)/`. Not a fuller backup: the four Season 4
+   episodes that the *PilotTrial2* draw is missing are absent from both.
+   Little Bear was not analysed, so nothing was double-counted from it.
+2. `SpongeBob SquarePants S01E08B Squeaky Boots` — present as `.mkv` under
+   `Season 1/` and `.mp4` under `Season 2/`. Confirmed the **same episode** by
+   ffprobe: duration 00:11:02.60 both (identical to the centisecond), 512x384,
+   23.98 fps, start offset 0.021000, h264 Main; differing only in container and
+   bitrate (979 vs 952 kb/s). It was **filed under two different seasons**, so
+   its season attribution was wrong in one of them.
+
+Both were **moved out of the library**, not deleted, to
+`_duplicates_quarantined_2026-08-15/` (gitignored, reversible). The `.mkv` under
+`Season 1/` was kept: `S01E08B` is a season-one episode, so it is the correctly
+filed copy, and it is the one the sample manifests reference.
+
+**Why it went unnoticed.** `analyzer/show_index.py` listed `*.mp4` only while
+`analyzer/sampler.py` drew six extensions, so the `.mkv` was invisible in the
+Library — while having been measured and written to the index through the
+sampler's own path, which does not go through the library walk. The `.mp4`-only
+filter was hiding one half of the pair.
+
+**Outcome / numbers.**
+
+| | Before | After |
+|---|---|---|
+| Video files in `Shows/` | 203 | **137** |
+| Duplicated filename stems | 66 | **0** |
+| Index rows | 15 | **14** |
+
+**RESULT CORRECTION.** The SQLite index held rows for *both* copies of Squeaky
+Boots, so **any Spongebob show-level aggregate computed before 2026-08-15
+counted that episode twice**. Episode-level figures are unaffected — each file
+measured itself correctly. Recompute before quoting any Spongebob show-level
+mean. The affected draw (`Shows/_samples_20260630T012204`) has a manifest N of
+9 whose true N is **8 distinct episodes**; the manifest is deliberately not
+rewritten, because a manifest records what was drawn.
+
+**A second, separate stale figure found the same day.** The `shows` table is
+written by `db.upsert_show`, which runs only when a *whole show* is analysed;
+analysing episodes individually never refreshes it. Measured here: the stored
+Spongebob row read `episode_count = 2, avg_load = 0.3071` against five indexed
+episodes averaging **0.2557** — a ~20% error in the headline show-level figure,
+with a current-looking timestamp on the row. The Qt Index now derives its
+show rows from the episode rows on screen. **`cli.py db --shows` and `gui.py`
+still read the stored table.**
+
+**Open questions.**
+- Re-analyse Spongebob? No — re-analysis is not needed, only re-aggregation:
+  the per-episode results are correct and cached. Confirm the show-level
+  figures after the index rebuild before using any of them.
+- One index row carries a raw relative path as its show name
+  (`Spongebob Squarepants Season 1/Season 1`), from the `.mkv` indexed through
+  the sampler's path. It appears as its own show in any grouping and should be
+  re-indexed.
+- Should the sampler's analysis path be routed through `show_index`'s naming
+  (`db_show_key` / `display_show_name`) so this class of defect cannot recur?
+  It has now produced two separate defects.
+
 ## 2026-08-14 — Frame-step defect assessed against the coded data: NOT affected
 
 Closing the question the 2026-08-11 timestamp entry left open — whether the

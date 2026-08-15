@@ -102,6 +102,18 @@ Each of these looked like a styling failure and was not.
 - **A bare `QWidget` ignores a stylesheet background** unless
   `setAttribute(Qt.WA_StyledBackground, True)` is set. `QFrame` does not need
   it. This is why the inspector and the zoom pill first rendered untinted.
+- **`WA_OpaquePaintEvent` is a promise, and it must hold in every state.** It
+  tells Qt to skip erasing the widget because the widget paints every pixel
+  itself. `VideoSurface` set it, set `setAutoFillBackground(True)` and a
+  `background:#000000` stylesheet, and painted nothing until libvlc loaded a
+  video — the attribute suppresses the autofill, and the stylesheet does
+  nothing on a bare `QWidget` per the entry above. Result: **the previously
+  viewed tab's pixels stayed on screen inside the coding screen**, which reads
+  as a broken screen rather than an unpainted one. If several settings all look
+  like they specify the same thing and it is not happening, they are probably
+  cancelling rather than reinforcing. **Test by reading pixels back** — render
+  the widget onto a known background and check the colour; every attribute here
+  was set correctly.
 - **No `:nth-child`, `:first-child`, or `border-collapse`** in the rich text
   engine. Emit striping as an explicit class per row, mark the label column
   explicitly, and use `cellspacing="0"`.

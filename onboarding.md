@@ -4,8 +4,9 @@ Previously-on, for a session starting with zero memory. Read this, then
 `TODO.md`, then `DECISIONS.md` and `LEARNINGS.md`. `INDEX.md` points at
 everything else.
 
-**Last updated:** 2026-08-14 (ceilings retuned — every composite score moved;
-F1 identifiers renamed to `boundary_f1`; frame-step timestamp question closed)
+**Last updated:** 2026-08-15 (the application now has a research context —
+`analyzer/scope.py`; the Library and Index filter to a drawn sample, and the
+toolbar always names which one. 66 duplicate episodes moved out of the library)
 
 ---
 
@@ -46,8 +47,8 @@ two items were left deliberately because they need a product decision rather
 than a port (`TODO.md` item 7). Coverage is still not mileage: everything new
 has been driven headless against the real library, not used for real work.
 
-Run the tests with `python -m pytest -q` from the repo root: **315 passed,
-13 skipped** (328 collected). `tests/test_eras.py` asserts on drawn strata and
+Run the tests with `python -m pytest -q` from the repo root: **359 passed,
+13 skipped** (372 collected). `tests/test_eras.py` asserts on drawn strata and
 manifest notes rather than on which widgets exist — the level the sampler
 defects were only visible at. `tests/conftest.py` now offers a session-scoped
 `qapp` fixture — an offscreen `QApplication` — so Qt widgets can be tested for
@@ -116,6 +117,45 @@ new and immediately migrating it.
 pipeline is a control surface rather than a picture. What is left is not
 porting but proving: use the Qt build for real work, then retire the Tk
 modules and decide what `master` and `README.md` should say.
+
+## What changed on 2026-08-15: the research context
+
+The pipeline could *navigate* to a screen but handed it nothing, and every
+screen worked out "which episodes?" for itself from the Library tree. A sample
+could be drawn, documented and manifested with no screen any the wiser.
+
+`analyzer/scope.py` is now the answer to that question: a `Scope` is either the
+whole library or exactly the episodes one draw selected, and the **Showing:**
+chooser on the toolbar always names which. Drawing a sample makes it current;
+so does choosing a pipeline. It is **not persisted** — the application always
+opens on the whole library, deliberately.
+
+**The Library and the Index obey it; the three measurement tabs do not yet.**
+They still take a single episode from the tree selection. The remaining pieces
+are in `TODO.md` § *The research context, continued* — independent, and each
+needs verifying against real output rather than done in one sitting.
+
+The chooser sits on the **main toolbar**, beside Root folder and Preset, so it
+is visible from every tab. It moved there the moment a second screen obeyed it:
+a control that narrows the Index while hidden inside the Library is a filter
+you cannot see from the screen it is filtering.
+
+Scoping the Index turned up a live wrong number worth knowing about: the stored
+`shows` table goes stale, because `upsert_show` only runs on a whole-show
+analysis. The Qt Index now derives its Shows view from the episode rows on
+screen, so the two views cannot disagree — but **`cli.py db --shows` and the Tk
+build still read the stored table**. See `LEARNINGS.md` and `TODO.md`.
+
+Two things worth knowing before touching it:
+
+- The scope is a **view**. It hides rows; it deletes nothing and re-measures
+  nothing. Because it can hide things it is always visible and always one click
+  from *Whole library*.
+- Building it surfaced a real inconsistency: the sampler draws six video
+  extensions and the library walk reads `.mp4` only, so a draw can contain
+  episodes the Library cannot list. The header says what is not shown, but
+  whether to widen the walk is a corpus-level decision — `TODO.md` item 0, and
+  recorded in `FOR_PAPER.txt` because it changes N.
 
 Everything else in `TODO.md` is real but blocks nothing. The **F1
 contradiction is now closed** (2026-08-14, see below); the composite rationale
@@ -309,7 +349,9 @@ this machine), so it is a fix to the documented fallback path.
   4179ms -> 93ms.
 
 Measured on this working copy (32 show folders, 202 episodes, 12 cached
-results), offscreen:
+results), offscreen. **The library is 137 episodes since the 2026-08-15
+de-duplication** — the figures below are not re-measured, so treat them as the
+shape of the cost rather than current absolutes:
 
 | Operation | Cost |
 |---|---|
@@ -703,7 +745,40 @@ as its default button (`TODO.md` item 10).
   table. **It is not a hard-cut figure** — that is a different, real number
   (0.841 / 0.964), and calling it hard-cut is the mistake that cost this
   project a published contradiction.
-- This working copy has real data: 32 shows, 202 episodes, 13 indexed, 29
-  pipeline documents, 22 trials. Tests must not write into it — a previous
-  session's manual test created a stray pipeline document that had to be
-  removed by hand.
+- **The research context is a thing now.** `analyzer/scope.py` decides which
+  episodes a screen is showing. `CLAUDE.md` §3 rules on *scope* vs *selection*
+  — they are not synonyms and the difference matters. `ARCHITECTURE.md` §1 has
+  the concept.
+- This working copy has real data: **32 shows, 137 episodes, 14 indexed**, 29
+  pipeline documents, 22 trials. (It was 203 episodes until 2026-08-15, when
+  66 duplicates were moved out — see below.) Tests must not write into it — a
+  previous session's manual test created a stray pipeline document that had to
+  be removed by hand.
+
+## Picking this up cold on 2026-08-16 or later
+
+Two commits on 2026-08-15 (`6dbca37`, `1818b98`) added the research context and
+scoped the Library and Index. **Everything is committed and the suite is green
+(359 passed, 13 skipped).** Nothing is half-finished.
+
+The three things most worth knowing before choosing what to do next:
+
+1. **The obvious next task is the measurement tabs.** Automated coding, Human
+   coding and Language still take one episode from the Library selection, so
+   double-clicking a pipeline node still lands you on an empty screen.
+   `TODO.md` § *The research context, continued* has the shape of it.
+2. **A root cause is still open and is generating defects.** The sampler's
+   analysis path does not go through `analyzer/show_index.py`, so anything it
+   touches is named and listed by different rules. It has produced two
+   separate defects already: a drawn `.mkv` invisible in the Library (fixed by
+   unifying the extension set) and an index row whose show name is a raw
+   relative path (**not** fixed — `TODO.md`). Fixing the path is probably worth
+   more than fixing the next symptom.
+3. **Some stored numbers are stale and are not all fixed.** The `shows` table
+   goes stale because `upsert_show` only runs on a whole-show analysis. The Qt
+   Index now derives around it; `cli.py db --shows` and `gui.py` do not.
+   `FOR_PAPER.txt` carries the correction and the "do not quote" note.
+
+Read `TODO.md` items 0–1 first: item 0 is a data question (re-analyse Spongebob
+after the de-duplication), item 1 is the video time counter, which is the
+oldest real defect still open.

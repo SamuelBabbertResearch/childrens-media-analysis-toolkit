@@ -378,6 +378,75 @@ def query_episodes(
     return [dict(r) for r in rows]
 
 
+def summarise_shows(
+    episode_rows: list[dict],
+    sort_by: str = "avg_load",
+    ascending: bool = False,
+) -> list[dict]:
+    """Show-level rows derived from the episode rows given, not from `shows`.
+
+    WHY THIS EXISTS, rather than reading the stored aggregate.
+
+    The `shows` table is written by `upsert_show` when a whole show is
+    analysed. Analysing individual episodes does not refresh it, so it goes
+    stale silently: on 2026-08-15 this library's stored Spongebob row read
+    `episode_count = 2, avg_load = 0.3071` while the index held **five**
+    Spongebob episodes averaging **0.2557**. The Index tab showed both figures
+    on two of its own views.
+
+    Deriving from the rows on screen means the Shows view and the Episodes
+    view cannot disagree — the first is a summary of the second, by
+    construction. It also makes the view correct under a narrowed scope, where
+    a stored whole-show aggregate would answer a question nobody asked.
+
+    Means are unweighted across episodes, matching `compute_show_aggregate`.
+    A column is None when no episode in the group carries it, which is
+    different from zero and is rendered as an em dash.
+    """
+    # Grouped by the name the Episodes view displays, so the two views
+    # correspond row for row. Deliberately NOT normalised here: an episode
+    # indexed with a raw relative path as its show name ("Show/Season 1")
+    # splinters into its own group and stays visible, because that is an
+    # index defect to fix at the source rather than to hide in a summary.
+    groups: dict[str, list[dict]] = {}
+    for row in episode_rows:
+        key = row.get("show_name") or row.get("show_key") or ""
+        groups.setdefault(key, []).append(row)
+
+    def _mean(rows: list[dict], column: str) -> float | None:
+        values = [r[column] for r in rows
+                  if r.get(column) is not None]
+        return sum(values) / len(values) if values else None
+
+    out: list[dict] = []
+    for key, rows in groups.items():
+        stamps = [r.get("analyzed_at") for r in rows if r.get("analyzed_at")]
+        out.append({
+            "show_key":         key,
+            "show_name":        rows[0].get("show_name") or key,
+            "episode_count":    len(rows),
+            "avg_load":         _mean(rows, "sensory_load_score"),
+            "avg_cuts_per_min": _mean(rows, "cuts_per_min"),
+            "avg_motion":       _mean(rows, "motion_mean"),
+            "avg_saturation":   _mean(rows, "color_saturation_mean"),
+            "avg_contrast":     _mean(rows, "color_contrast_mean"),
+            "avg_flashing":     _mean(rows, "flashing_events_per_min"),
+            "avg_audio_rms":    _mean(rows, "audio_rms_mean"),
+            "updated_at":       max(stamps) if stamps else None,
+        })
+
+    column = sort_by if sort_by in _SHOW_SORT_COLS else "avg_load"
+    # Partitioned rather than sorted with a "is None" flag in the key: reverse
+    # would flip that flag too, floating the blank rows to the top of a
+    # descending sort. A show with no value for the sorted column belongs at
+    # the end whichever direction was asked for.
+    have = [r for r in out if r.get(column) is not None]
+    blank = [r for r in out if r.get(column) is None]
+    have.sort(key=lambda r: r[column], reverse=not ascending)
+    blank.sort(key=lambda r: r["show_name"])
+    return have + blank
+
+
 def query_shows(
     conn: sqlite3.Connection,
     sort_by: str = "avg_load",

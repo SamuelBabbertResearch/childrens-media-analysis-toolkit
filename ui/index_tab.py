@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from analyzer.db import (
-    get_db, query_episodes, query_shows, remove_stale_episodes,
+    get_db, query_episodes, remove_stale_episodes, summarise_shows,
 )
 from ui.tokens import OUTLIER_LEGEND
 
@@ -216,15 +216,27 @@ class IndexTab(QWidget):
         if root is None:
             self._count.setText("no library loaded")
             return
+        # One query, then the research context, then the summary — in that
+        # order, so the Shows view is always a summary of exactly the episodes
+        # the Episodes view would list. Reading the stored `shows` table
+        # instead let the two disagree, and they did: a stored Spongebob row
+        # read 2 episodes / 0.3071 mean load while the index held 5 averaging
+        # 0.2557, because `upsert_show` only runs on a whole-show analysis.
+        # NOTE: `self._scope` on this class is the Episodes/Shows mode combo,
+        # which predates the research context and is a different idea. The
+        # research context lives on the window.
+        context = getattr(self._window, "_scope", None)
         try:
             conn = get_db(root)
-            if self._mode == "episodes":
-                rows = query_episodes(conn, sort_by=self._sort,
+            episodes = query_episodes(conn, sort_by=self._sort,
                                       ascending=self._ascending,
                                       filter_show=self._filter.text().strip())
-            else:
-                rows = query_shows(conn, sort_by=self._sort,
-                                   ascending=self._ascending)
+            if context is not None and not context.is_library:
+                episodes = [r for r in episodes
+                            if r.get("file_path")
+                            and context.contains(r["file_path"])]
+            rows = episodes if self._mode == "episodes" else summarise_shows(
+                episodes, sort_by=self._sort, ascending=self._ascending)
         except Exception as exc:            # noqa: BLE001 - shown, not hidden
             self._count.setText(f"index unavailable: {exc}")
             return
@@ -270,8 +282,12 @@ class IndexTab(QWidget):
             head.setSectionResizeMode(col, QHeaderView.ResizeToContents)
 
         noun = "episode" if self._mode == "episodes" else "show"
+        # The set is named, not just counted: "6 episodes" over a narrowed
+        # index reads as the whole corpus unless it says otherwise.
+        where = ("" if context is None or context.is_library
+                 else f"  in {context.label}")
         self._count.setText(
-            f"{len(rows)} {noun}{'s' if len(rows) != 1 else ''}")
+            f"{len(rows)} {noun}{'s' if len(rows) != 1 else ''}{where}")
         flagged_here = [head for head, key, _ in columns if key in flagged]
         lines = []
         if fences is not None:

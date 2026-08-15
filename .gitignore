@@ -52,6 +52,10 @@ _site/
 # User show library (personal video data, not part of the app)
 Shows/
 
+# Duplicate episodes moved out of the library on 2026-08-15 (TODO.md item 0).
+# Kept rather than deleted so the removal is reversible; nothing reads it.
+_duplicates_quarantined_*/
+
 # Release archives
 *.zip
 
