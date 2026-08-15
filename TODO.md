@@ -155,12 +155,27 @@ session** — each needs its own verification against real output.
     as its own show in any grouping. Re-index it, and check whether the
     sampler's analysis path should be routed through `db_show_key` /
     `display_show_name` so it cannot recur.
-- **Scope the measurement tabs.** Automated coding, Human coding and Language
-  still take a single `set_target(path)` from the Library selection. Giving
-  them the scope means arriving with the working set staged — the analysis
-  queue pre-filled, the coding worklist showing the sample — instead of "No
-  episode or show selected". `_open_stage_screen` in `ui/main_window.py` is
-  where a pipeline node would hand it over.
+- ~~Scope Automated coding.~~ **Done 2026-08-16.** A sample scope stages its
+  episodes into the analysis queue and the queue says where they came from and
+  how many already have a cached result. Verified against the real library:
+  a pipeline node now lands on a filled queue instead of "No episode or show
+  selected". `DECISIONS.md` has why it stages rather than filters. It surfaced
+  one thing that is **not** done:
+  - **An unlinked pipeline inherits the previous pipeline's scope.**
+    `_follow_pipeline_scope` deliberately leaves the scope alone when
+    `source_key` is empty — "no opinion about which episodes", not "no
+    episodes". Six of the eleven pipeline documents here are unlinked, so
+    selecting one leaves another study's sample current, and that sample now
+    arrives pre-staged in the run queue. It is visible (the Showing: control
+    and the queue note both name it) and nothing is mis-attributed, but decide
+    whether an unlinked pipeline should reset to the whole library instead.
+- **Scope Human coding.** Still one `set_target(path)` from the Library
+  selection. The sample should arrive as a worklist — which is also item 6's
+  "the sampler can send a draw to the analysis queue but not to a hand-coding
+  worklist, because the Qt Human coding tab has no worklist".
+- **Scope Language.** Same shape; its Speech view already lists many episodes,
+  so this is closer to filtering the list it already builds than to staging a
+  queue. Check which before building it.
 - ~~Show the scope outside the Library.~~ **Done 2026-08-15** — the chooser is
   on the main toolbar beside Root folder and Preset, so it is visible from
   every tab. The Library keeps the sentence explaining the current context.

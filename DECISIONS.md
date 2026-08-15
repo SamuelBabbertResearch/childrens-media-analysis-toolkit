@@ -623,6 +623,37 @@ right order but means `TODO.md` item 0 must be done before the next draw.
 undrawable); leaving the two definitions apart and describing the gap in the
 interface, which was the interim state and only ever a caption on a defect.
 
+### The scope STAGES a measurement screen; it does not filter one
+**Decision.** `AutomatedTab.set_scope()` puts the current sample's episodes into
+the analysis queue and names where they came from. It does **not** stop the
+screen acting on anything else: the Library can still send it an out-of-scope
+episode, and Analyze still runs whatever the queue holds. Changing scope
+withdraws only what the *previous* scope staged, so a hand-queued episode
+survives. A **Queue Scope (N)** button re-stages after a run or a Clear Queue,
+and is disabled — with the reason — under the whole library.
+**Reason.** The Library and the Index are views, so a scope narrows them. A
+measurement screen is not a view; it is where work is started, and the useful
+thing to do with "these twenty episodes" is to have them ready to run. Filtering
+here would be the wrong verb twice over: it would forbid work the researcher is
+entitled to do, and it would leave the queue — the thing `_start` actually hands
+the worker — still empty.
+**Consequence.** The whole library is deliberately **not** staged. Queueing 137
+episodes because the application opened is not a working set, and it would make
+Analyze a much larger action than it looks.
+**Consequence, watch this one.** An unlinked pipeline still inherits whatever
+scope was current, by the existing rule that it has "no opinion about which
+episodes". That was cheap when the scope only hid Library rows; it now
+pre-fills a run queue from another study's sample. It stays visible — the
+Showing: control and the queue's own note both name the sample — but see
+`TODO.md`.
+**Date.** 2026-08-16.
+**Rejected.** Filtering the queue to the scope (forbids legitimate work and
+still leaves nothing staged); staging on tab activation rather than on scope
+change (the queue would then depend on which tab you visited, and a run started
+from a pipeline node would differ from the same run started from the tab bar);
+replacing the whole queue on every scope change (throws away what the user
+queued by hand).
+
 ### A validation subset is drawn, not chosen by CMAT
 **Decision.** A sample's `selected.csv` is already a valid registry for the
 sampler — it carries the `episode` column `load_registry_csv` requires plus

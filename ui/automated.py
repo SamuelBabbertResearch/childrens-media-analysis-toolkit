@@ -19,6 +19,21 @@ A target that vanishes between queueing and running is reported as a failed
 row rather than ending the run: the other nineteen episodes are still worth
 measuring.
 
+THE SCOPE STAGES THE QUEUE
+
+`analyzer/scope.py` holds the research context — the whole library, or exactly
+the episodes one documented draw selected. When a sample becomes the current
+scope this screen stages that sample into the queue, so arriving here from a
+pipeline node lands on the work rather than on "No Library selection".
+
+Staging is not filtering. The queue can still hold anything the Library sends
+it, and switching scope removes only what the *previous* scope staged — a
+hand-queued episode survives, because the user put it there and nothing here
+asked to undo that.
+
+The scope is a session view, so nothing about it is written down: the queue is
+still a list of paths and still holds no results.
+
 Cancellation is the one subtlety. `analyze_show_batch` has no cancel flag, and
 it wraps each episode in `except Exception`, so an ordinary exception raised
 from the progress callback would be swallowed and recorded as a failed
@@ -46,6 +61,7 @@ from analyzer.batch import analyze_show_batch
 from analyzer.cache import load_cached, save_cache
 from analyzer.engine import analyze_episode
 from analyzer.schema import EpisodeResult
+from analyzer.scope import Scope, library_scope, normalize
 from analyzer.show_index import list_episodes, show_key
 
 
@@ -184,6 +200,10 @@ class AutomatedTab(QWidget):
         # Paths, not results: a queue entry cannot go stale, and a target that
         # disappears before its turn is reported when its turn comes.
         self._queue: list[Path] = []
+        # What the current scope put in the queue, so a later scope change can
+        # take back its own staging and leave hand-queued entries alone.
+        self._staged: list[Path] = []
+        self._scope: Scope = library_scope()
         self._transcriber: TranscribeWorker | None = None
 
         lay = QVBoxLayout(self)
@@ -200,6 +220,9 @@ class AutomatedTab(QWidget):
             "and walk away.")
         self._btn_queue.clicked.connect(self._enqueue_target)
         bar.row.addWidget(self._btn_queue)
+        self._btn_queue_scope = QPushButton("Queue Scope")
+        self._btn_queue_scope.clicked.connect(self._enqueue_scope)
+        bar.row.addWidget(self._btn_queue_scope)
         self._btn_run = QPushButton("Analyze")
         self._btn_run.setProperty("primary", "true")
         self._btn_run.clicked.connect(lambda: self._start(force=False))
@@ -244,6 +267,11 @@ class AutomatedTab(QWidget):
         bl.addWidget(self._status)
 
         queue_panel = Panel("Analysis queue")
+        self._scope_note = QLabel("")
+        self._scope_note.setProperty("role", "dim")
+        self._scope_note.setWordWrap(True)
+        self._scope_note.setVisible(False)
+        queue_panel.body_layout.addWidget(self._scope_note)
         self._queue_count = QLabel("empty")
         self._queue_count.setProperty("role", "dim")
         queue_panel.add_header_widget(self._queue_count)
@@ -287,15 +315,119 @@ class AutomatedTab(QWidget):
     def set_target(self, path: Path | None) -> None:
         """Called when the Library selection changes."""
         self._target = path
-        if path is None:
-            self._target_label.setText("No episode or show selected")
-        elif path.is_dir():
-            n = len(list_episodes(path))
-            self._target_label.setText(
-                f"Show: {path.name} — {n} episode{'s' if n != 1 else ''}")
-        else:
-            self._target_label.setText(f"Episode: {path.name}")
+        self._sync_target_label()
         self._sync_buttons()
+
+    def _sync_target_label(self) -> None:
+        """What this screen will act on if you press Analyze with an empty queue.
+
+        With nothing selected in the Library the label used to read "No episode
+        or show selected" whatever else was true — including when a pipeline
+        node had just brought the user here with a sample staged below. It now
+        names the scope in that case, because the queue is what Analyze will
+        run.
+        """
+        path = self._target
+        if path is not None:
+            if path.is_dir():
+                n = len(list_episodes(path))
+                self._target_label.setText(
+                    f"Show: {path.name} — {n} episode{'s' if n != 1 else ''}")
+            else:
+                self._target_label.setText(f"Episode: {path.name}")
+            return
+        if self._queue:
+            self._target_label.setText(
+                f"No Library selection — {len(self._queue)} queued below")
+            return
+        if not self._scope.is_library:
+            self._target_label.setText(
+                f"No Library selection — showing {self._scope.label}")
+            return
+        self._target_label.setText("No episode or show selected")
+
+    # -- the research context ----------------------------------------------
+    def set_scope(self, scope: Scope) -> None:
+        """The research context changed: stage its episodes into the queue.
+
+        Called by `MainWindow.set_scope`, so drawing a sample, choosing a
+        pipeline or picking from the Showing: control all arrive here. Only
+        the previous scope's own staging is withdrawn — an episode the user
+        queued by hand is theirs, not this method's to remove.
+        """
+        self._scope = scope
+        was_staged = {normalize(p) for p in self._staged}
+        if was_staged:
+            self._queue = [p for p in self._queue
+                           if normalize(p) not in was_staged]
+        self._staged = []
+        if not scope.is_library:
+            self._staged = [Path(p) for p in scope.episodes]
+            self.enqueue(self._staged)
+        self._refill_queue()
+
+    def _enqueue_scope(self) -> None:
+        """Re-stage the current scope — after a run, or after Clear Queue."""
+        if self._scope.is_library:
+            return
+        self._staged = [Path(p) for p in self._scope.episodes]
+        added = self.enqueue(self._staged)
+        self._status.setText(
+            f"Queued {added} episode{'s' if added != 1 else ''} from "
+            f"{self._scope.label}." if added
+            else f"Every episode in {self._scope.label} is already queued.")
+
+    def _measured_count(self, paths: list[Path]) -> int:
+        """How many of *paths* already have a cached result under this root.
+
+        Analyze skips those; Re-analyze does not. Saying so is the difference
+        between a queue of nine and a run of two.
+        """
+        root = self._window._root
+        if root is None:
+            return 0
+        found = 0
+        for episode in paths:
+            try:
+                key = show_key(root, episode.parent)
+            except ValueError:
+                continue          # outside the root: no cache lives here
+            if load_cached(root, key, episode.stem):
+                found += 1
+        return found
+
+    def _sync_scope_note(self) -> None:
+        """One line saying which episodes are staged and what will be skipped.
+
+        Computed from the queue rather than from what `set_scope` intended, so
+        it cannot claim a sample is staged after Clear Queue or after a run.
+        """
+        if self._scope.is_library:
+            self._scope_note.setVisible(False)
+            return
+        queued = {normalize(p) for p in self._queue}
+        staged = [p for p in self._scope.episodes if normalize(p) in queued]
+        total = self._scope.total_drawn
+        if not staged:
+            self._scope_note.setText(
+                f"Showing {self._scope.label} — {total} episode"
+                f"{'s' if total != 1 else ''}, none queued. "
+                f"Press Queue Scope to stage them.")
+            self._scope_note.setVisible(True)
+            return
+        measured = self._measured_count(staged)
+        line = (f"Staged from {self._scope.label}: {len(staged)} of its "
+                f"{total} episode{'s' if total != 1 else ''}.")
+        if measured:
+            line += (f" {measured} already ha"
+                     f"{'ve' if measured != 1 else 's'} a cached result — "
+                     f"Analyze skips those, Re-analyze measures them again.")
+        if self._scope.missing:
+            line += (f" {len(self._scope.missing)} of the draw "
+                     f"{'is' if len(self._scope.missing) == 1 else 'are'} no "
+                     f"longer on disk and cannot be staged.")
+        self._scope_note.setText(line)
+        self._scope_note.setVisible(True)
 
     # -- the queue ---------------------------------------------------------
     def enqueue(self, paths) -> int:
@@ -304,14 +436,21 @@ class AutomatedTab(QWidget):
         Public because the Episode Sampler calls it: a drawn sample should go
         straight into the measurement pass rather than making the researcher
         re-find twenty files in the Library by hand.
+
+        De-duplication is on the NORMALISED path, not the literal one. The
+        Library walks the root and `selected.csv` stores absolute paths, so the
+        same episode reaches here spelled two ways — the shape of
+        `LEARNINGS.md` § *The index held two rows per episode*, which here
+        would mean measuring one file twice in a single run.
         """
-        existing = set(self._queue)
+        existing = {normalize(p) for p in self._queue}
         added = 0
         for path in paths:
             path = Path(path)
-            if path not in existing:
+            key = normalize(path)
+            if key not in existing:
                 self._queue.append(path)
-                existing.add(path)
+                existing.add(key)
                 added += 1
         self._refill_queue()
         return added
@@ -334,6 +473,9 @@ class AutomatedTab(QWidget):
 
     def clear_queue(self) -> None:
         self._queue.clear()
+        # Nothing staged survives an empty queue, so a later scope change has
+        # nothing of this one's to withdraw.
+        self._staged = []
         self._refill_queue()
 
     def _queue_episode_count(self) -> int:
@@ -363,6 +505,8 @@ class AutomatedTab(QWidget):
             plural = "" if episodes == 1 else "s"
             self._queue_count.setText(
                 f"{entries} {word} - {episodes} episode{plural}")
+        self._sync_scope_note()
+        self._sync_target_label()
         self._sync_buttons()
 
     def _sync_buttons(self) -> None:
@@ -376,6 +520,23 @@ class AutomatedTab(QWidget):
         self._btn_force.setEnabled(ready)
         self._btn_cancel.setEnabled(running)
         self._btn_queue.setEnabled(self._target is not None and not running)
+        # Disabled with a reason rather than hidden: an unavailable control
+        # must not look like a broken one (`CLAUDE.md` §4).
+        if self._scope.is_library:
+            self._btn_queue_scope.setEnabled(False)
+            self._btn_queue_scope.setText("Queue Scope")
+            self._btn_queue_scope.setToolTip(
+                "The whole library is not a work list. Choose a sample in the "
+                "Showing: control on the toolbar, and its episodes stage here.")
+        else:
+            n = len(self._scope.episodes)
+            self._btn_queue_scope.setEnabled(bool(n) and not running)
+            self._btn_queue_scope.setText(f"Queue Scope ({n})")
+            self._btn_queue_scope.setToolTip(
+                f"Queue the {n} episode{'s' if n != 1 else ''} "
+                f"{self._scope.label} drew that are still on disk."
+                if n else
+                f"{self._scope.label} has no episodes on disk to queue.")
         self._btn_transcribe.setEnabled(
             (self._target is not None or queued) and not running)
         self._btn_dequeue.setEnabled(queued and not running)
