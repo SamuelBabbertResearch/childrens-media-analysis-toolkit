@@ -436,6 +436,128 @@ def test_a_pipeline_node_lands_on_the_staged_queue(window, tmp_path):
         window._automated._target_label.text()
 
 
+# --- Language: one view narrows, the other stages ----------------------------
+
+def _speech_files(window) -> list[str]:
+    table = window._language.speech._table
+    return [table.topLevelItem(i).text(1)
+            for i in range(table.topLevelItemCount())]
+
+
+def _vocab_files(window) -> list[str]:
+    listing = window._language.vocabulary._files
+    return [Path(listing.item(i).text()).name
+            for i in range(listing.count())]
+
+
+def _cache_speech(root: Path, episode: Path, words: int) -> None:
+    """A cached result carrying speech figures, written the engine's way."""
+    from analyzer.cache import save_cache
+    from analyzer.show_index import show_key
+    save_cache(root, show_key(root, episode.parent), episode.stem, {
+        "file": episode.name,
+        "status": "ok",
+        "duration_sec": 600.0,
+        "metrics": {"speech": {"available": True, "source": "captions",
+                               "words_per_minute": 120.0,
+                               "speech_density": 0.4,
+                               "total_words": words}},
+    })
+
+
+def test_the_speech_table_narrows_to_the_context(window, tmp_path):
+    """It reports on episodes already measured, so the scope FILTERS it.
+
+    A whole-corpus table under a header naming one sample is the wrong number
+    displayed correctly — the same defect the Index's show means had.
+    """
+    root = _make_library(tmp_path)
+    a = root / "Little Bear" / "S01 E01.mp4"
+    b = root / "Curious George" / "S01 E01.mp4"
+    window.set_root(root)
+    _cache_speech(root, a, 1200)
+    _cache_speech(root, b, 900)
+
+    speech = window._language.speech
+    speech.refresh()
+    assert len(_speech_files(window)) == 2
+
+    folder = _make_draw(tmp_path, [a])
+    window.set_scope(scope_from_draw(f"sample:{folder}", "Pilot", folder))
+
+    assert _speech_files(window) == ["S01 E01.mp4"]
+    assert "in Pilot" in speech._count.text()
+    # Six episodes exist; one is in scope, so five are not counted here.
+    assert "5 episodes elsewhere in the library are not counted" in \
+        speech._note.text()
+
+    window.set_scope(library_scope())
+    assert len(_speech_files(window)) == 2
+
+
+def test_the_speech_table_is_not_filled_on_startup(window, tmp_path):
+    """It walks every show and opens every cached result.
+
+    Refreshing it from `set_root` would put that walk on the cold path — the
+    startup cost this project has already paid once for module-scope imports.
+    """
+    root = _make_library(tmp_path)
+    _cache_speech(root, root / "Little Bear" / "S01 E01.mp4", 1200)
+
+    window.set_root(root)
+
+    assert window._language.speech._loaded is False
+    assert _speech_files(window) == []
+
+
+def test_vocabulary_stages_the_captions_beside_the_sample(window, tmp_path):
+    """It is where a run is started, so the scope STAGES rather than filters."""
+    root = _make_library(tmp_path)
+    a = root / "Little Bear" / "S01 E01.mp4"
+    b = root / "Little Bear" / "S01 E02.mp4"
+    (root / "Little Bear" / "S01 E01.srt").write_text(
+        "1\n00:00:01,000 --> 00:00:02,000\nhello\n", encoding="utf-8")
+    window.set_root(root)
+    folder = _make_draw(tmp_path, [a, b])
+
+    window.set_scope(scope_from_draw(f"sample:{folder}", "Pilot", folder))
+
+    assert _vocab_files(window) == ["S01 E01.srt"]
+    # The one WITHOUT captions is named, or a short list reads as a small
+    # sample rather than as missing captions.
+    status = window._language.vocabulary._progress.text()
+    assert "1 caption file from Pilot" in status
+    assert "1 of its episodes has no .srt or .vtt" in status
+
+
+def test_a_hand_added_caption_file_survives_a_scope_change(window, tmp_path):
+    root = _make_library(tmp_path)
+    a = root / "Little Bear" / "S01 E01.mp4"
+    b = root / "Curious George" / "S01 E01.mp4"
+    for episode in (a, b):
+        episode.with_suffix(".srt").write_text("x", encoding="utf-8")
+    window.set_root(root)
+    mine = tmp_path / "notes_of_my_own.srt"
+    mine.write_text("x", encoding="utf-8")
+
+    first = _make_draw(tmp_path, [a], name="first")
+    window.set_scope(scope_from_draw(f"sample:{first}", "A", first))
+    window._language.vocabulary._add([str(mine)])
+    assert sorted(_vocab_files(window)) == ["S01 E01.srt",
+                                            "notes_of_my_own.srt"]
+
+    second = _make_draw(tmp_path, [b], name="second")
+    window.set_scope(scope_from_draw(f"sample:{second}", "B", second))
+
+    staged = _vocab_files(window)
+    assert "notes_of_my_own.srt" in staged, \
+        "the hand-added file was thrown away by a scope change"
+    assert len(staged) == 2, "the previous sample's caption file stayed staged"
+
+    window.set_scope(library_scope())
+    assert _vocab_files(window) == ["notes_of_my_own.srt"]
+
+
 # --- the sampler hands its draw to the scope ---------------------------------
 
 def test_drawing_a_sample_makes_it_the_current_scope(window, tmp_path,

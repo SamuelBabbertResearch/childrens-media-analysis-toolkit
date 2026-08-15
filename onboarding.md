@@ -4,9 +4,9 @@ Previously-on, for a session starting with zero memory. Read this, then
 `TODO.md`, then `DECISIONS.md` and `LEARNINGS.md`. `INDEX.md` points at
 everything else.
 
-**Last updated:** 2026-08-15 (the application now has a research context —
-`analyzer/scope.py`; the Library and Index filter to a drawn sample, and the
-toolbar always names which one. 66 duplicate episodes moved out of the library)
+**Last updated:** 2026-08-16 (all six screens now obey the research context —
+the three measurement tabs arrive with the working set staged. Suite green at
+383 passed, 13 skipped)
 
 ---
 
@@ -31,9 +31,9 @@ clean fast-forward and is still an open decision (`TODO.md`).
 | Pipeline | ✅ | node canvas, undo/redo, wiring by dragging ports; nodes show derived status and double-click through to their screen |
 | Library | ✅ | episode report, show aggregate, **Full Series Aggregate**, **Sample Aggregate**, **Pin/Compare**, metadata + notes, chart; **right-click sends a selection to any tab**, multi-select for batch queueing |
 | Index | ✅ | sortable, filterable, over the SQLite index |
-| Automated coding | ✅ | Analyze, **analysis queue**, **Transcribe Missing Subtitles** |
-| Language | ✅ | **new tab** — Speech and Vocabulary sub-views |
-| Human coding | ✅ | Code, **Validate tool**, **Agreement** sub-views |
+| Automated coding | ✅ | Analyze, **analysis queue** (staged from the scope), **Transcribe Missing Subtitles** |
+| Language | ✅ | Speech (filters to the scope) and Vocabulary (stages from it) |
+| Human coding | ✅ | Code, **Validate tool**, **Agreement**; both coding screens carry a **worklist** |
 | Trials | ✅ | 22 recorded runs in this working copy |
 | Settings dialog | ✅ | scoring; **Measurement settings** and **Optional tools** are separate dialogs |
 | Exports | ✅ | **JSON / CSV / PDF** from File, each carrying its provenance |
@@ -47,8 +47,8 @@ two items were left deliberately because they need a product decision rather
 than a port (`TODO.md` item 7). Coverage is still not mileage: everything new
 has been driven headless against the real library, not used for real work.
 
-Run the tests with `python -m pytest -q` from the repo root: **359 passed,
-13 skipped** (372 collected). `tests/test_eras.py` asserts on drawn strata and
+Run the tests with `python -m pytest -q` from the repo root: **383 passed,
+13 skipped**. `tests/test_eras.py` asserts on drawn strata and
 manifest notes rather than on which widgets exist — the level the sampler
 defects were only visible at. `tests/conftest.py` now offers a session-scoped
 `qapp` fixture — an offscreen `QApplication` — so Qt widgets can be tested for
@@ -118,6 +118,58 @@ pipeline is a control surface rather than a picture. What is left is not
 porting but proving: use the Qt build for real work, then retire the Tk
 modules and decide what `master` and `README.md` should say.
 
+## What changed on 2026-08-16: the measurement tabs obey the context
+
+Three commits, one per tab, each verified against the real library before the
+next was started. The rule they settled into is in `DECISIONS.md` § *A view
+narrows to the scope; a workbench stages from it*, and it is the thing to read
+before giving a seventh screen a scope:
+
+> A screen that **reports on work already done** filters to the scope. A screen
+> where **work is started** stages the scope's episodes and gets out of the way.
+
+- **Automated coding** stages the sample into the analysis queue — the list
+  `_start` actually hands the worker — and the queue says which sample, how
+  many already have a cached result, and how many of the draw are off disk.
+  **Queue Scope (N)** re-stages after a run; disabled, with the reason, under
+  the whole library.
+- **Human coding** grew the **worklist** `TODO.md` item 6 had been asking for,
+  on Code *and* Validate tool, each row carrying that episode's coding state
+  read from the engine.
+- **Language** takes it both ways in one tab: Speech filters, Vocabulary
+  stages the caption files beside the sample's episodes.
+
+Three rules every staging screen follows, because a half-staged screen is worse
+than an empty one: the whole library stages nothing; a scope change withdraws
+only its *own* staging, so a hand-queued episode survives; and the screen says
+what it staged **and what it could not**.
+
+### Three real defects found on the way, all invisible from the interface
+
+1. **The analysis queue de-duplicated on the literal path**, so the same
+   episode reaching it through the library walk and through `selected.csv`
+   would have been measured twice in one run. It now normalises.
+2. **Five readers looked for a coding sheet; one looked in one place.**
+   `code_events.py`, `trials.py` and both Tk screens search the validation
+   folder recursively with a prefix fallback; the Qt Code screen built
+   `<validation>/<stem>_events.csv` and asked whether it existed. A sheet filed
+   one folder down read as "not coded" on screen while the command line scored
+   it. `event_coding.find_event_sheet` / `event_sheet_status` are now the one
+   answer.
+3. **Opening a second episode kept the first one's marks.** `_open_episode`
+   never cleared the events list, so Save Sheet would have written one
+   episode's hand-placed timestamps into another episode's file.
+
+### One thing surfaced and deliberately not changed
+
+**An unlinked pipeline inherits whatever scope was current.** Six of the eleven
+pipeline documents here have no `source_key`, and `_follow_pipeline_scope`
+leaves the scope alone for those on the stated grounds that an unlinked
+pipeline has "no opinion about which episodes". That was cheap when the scope
+only hid Library rows; it now pre-fills a run queue from another study's
+sample. Nothing is mis-attributed — the Showing: control and the queue's own
+note both name the sample — but it is a live question in `TODO.md`.
+
 ## What changed on 2026-08-15: the research context
 
 The pipeline could *navigate* to a screen but handed it nothing, and every
@@ -130,10 +182,9 @@ chooser on the toolbar always names which. Drawing a sample makes it current;
 so does choosing a pipeline. It is **not persisted** — the application always
 opens on the whole library, deliberately.
 
-**The Library and the Index obey it; the three measurement tabs do not yet.**
-They still take a single episode from the tree selection. The remaining pieces
-are in `TODO.md` § *The research context, continued* — independent, and each
-needs verifying against real output rather than done in one sitting.
+**All six screens now obey it** — the measurement tabs were done on
+2026-08-16, one at a time, each verified against the real library. See *What
+changed on 2026-08-16* below.
 
 The chooser sits on the **main toolbar**, beside Root folder and Preset, so it
 is visible from every tab. It moved there the moment a second screen obeyed it:
@@ -755,18 +806,23 @@ as its default button (`TODO.md` item 10).
   previous session's manual test created a stray pipeline document that had to
   be removed by hand.
 
-## Picking this up cold on 2026-08-16 or later
+## Picking this up cold on 2026-08-17 or later
 
-Two commits on 2026-08-15 (`6dbca37`, `1818b98`) added the research context and
-scoped the Library and Index. **Everything is committed and the suite is green
-(359 passed, 13 skipped).** Nothing is half-finished.
+The research context is **finished as a feature**: five commits across
+2026-08-15 and 2026-08-16 built it and gave it to all six screens.
+**Everything is committed and the suite is green (383 passed, 13 skipped).**
+Nothing is half-finished.
 
 The three things most worth knowing before choosing what to do next:
 
-1. **The obvious next task is the measurement tabs.** Automated coding, Human
-   coding and Language still take one episode from the Library selection, so
-   double-clicking a pipeline node still lands you on an empty screen.
-   `TODO.md` § *The research context, continued* has the shape of it.
+1. **The scope work is done; the wires are not.** The last bullet of `TODO.md`
+   § *The research context, continued* — making a pipeline's connections carry
+   the working set from stage to stage — is the north-star spec's "output
+   produced here becomes input there", and it is the first thing that would
+   make *drawing* the graph matter. `doc.connections` is still only counted and
+   `node.config` is still written by the templates and read by nothing. It is
+   a bigger piece of work than any of the five so far; do not start it in a
+   session that has other goals.
 2. **A root cause is still open and is generating defects.** The sampler's
    analysis path does not go through `analyzer/show_index.py`, so anything it
    touches is named and listed by different rules. It has produced two
@@ -779,6 +835,8 @@ The three things most worth knowing before choosing what to do next:
    Index now derives around it; `cli.py db --shows` and `gui.py` do not.
    `FOR_PAPER.txt` carries the correction and the "do not quote" note.
 
-Read `TODO.md` items 0–1 first: item 0 is a data question (re-analyse Spongebob
-after the de-duplication), item 1 is the video time counter, which is the
-oldest real defect still open.
+Read `TODO.md` items 0–1 first: item 0 is a data question (re-aggregate
+Spongebob after the de-duplication — no re-analysis needed, the per-episode
+results are correct and cached), item 1 is the video time counter, which is the
+oldest real defect still open. Both are smaller than the pipeline wires and
+neither depends on them.

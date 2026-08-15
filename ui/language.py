@@ -21,6 +21,22 @@ Speech comes from the cached analysis, so this screen runs no measurement of
 its own. Vocabulary does run — `analyzer/vocab_complexity.py` over caption
 files the user picks — on a worker thread, because spaCy takes seconds per
 file.
+
+THE RESEARCH CONTEXT, AND WHY THE TWO VIEWS TAKE IT DIFFERENTLY
+
+`analyzer/scope.py` names the episodes the application is working on, and this
+tab is the one place both answers are right:
+
+* **Speech FILTERS.** It is a results table over episodes already measured, so
+  a scope narrows it exactly as it narrows the Library and the Index. A table
+  of the whole corpus under a header naming one sample is the wrong number
+  displayed correctly.
+* **Vocabulary STAGES.** It is where work is started, so the scope pre-fills
+  the file list with the caption files sitting beside the sample's episodes —
+  and says how many episodes have none, because a short list with no
+  explanation reads as a small sample rather than as missing captions.
+
+Same distinction as `ui/automated.py`: a view narrows, a workbench stages.
 """
 
 from __future__ import annotations
@@ -37,6 +53,7 @@ from PySide6.QtWidgets import (
 
 from analyzer.cache import load_cached, save_cache
 from analyzer.schema import EpisodeResult
+from analyzer.scope import Scope, library_scope, normalize
 from analyzer.show_index import (
     display_show_name, list_episodes, list_shows, show_key,
 )
@@ -219,6 +236,9 @@ class SpeechView(QWidget):
         self._window = window
         self._rows: list[dict] = []
         self._conn = None
+        self._scope: Scope = library_scope()
+        # This table is filled on demand, never on startup — see set_scope.
+        self._loaded = False
 
         from ui.main_window import Panel
         lay = QVBoxLayout(self)
@@ -239,6 +259,24 @@ class SpeechView(QWidget):
         self._note.setWordWrap(True)
         lay.addWidget(self._note)
 
+    # -- the research context --
+    def set_scope(self, scope: Scope) -> None:
+        """Narrow the table to the current context.
+
+        A filter, not a staging: this view reports on episodes already
+        measured, so the scope does here exactly what it does in the Library
+        and the Index.
+
+        Only re-reads if the table has been filled once already. This screen is
+        deliberately lazy — it walks every show and opens every cached result —
+        and refreshing it on the startup scope would put that walk on the cold
+        path, which is the shape of `LEARNINGS.md` § *An import at module scope
+        is a cost paid on every launch*.
+        """
+        self._scope = scope
+        if self._loaded and self._window._root:
+            self.refresh()
+
     # -- data --
     def refresh(self) -> None:
         root = self._window._root
@@ -248,6 +286,7 @@ class SpeechView(QWidget):
             return
         rows: list[dict] = []
         missing: list[str] = []
+        out_of_scope = 0
         try:
             from analyzer.db import get_db
             self._conn = get_db(root)
@@ -257,6 +296,13 @@ class SpeechView(QWidget):
             skey = show_key(root, show_dir)
             dname, _season = display_show_name(root, show_dir)
             for ep in list_episodes(show_dir):
+                if not self._scope.contains(ep):
+                    # Tested before the cache read, so a narrowed refresh does
+                    # not open every cached file in the library — and so
+                    # `_backfill`, which WRITES, never touches an episode the
+                    # user is not looking at.
+                    out_of_scope += 1
+                    continue
                 cached = load_cached(root, skey, ep.stem)
                 if not cached:
                     continue
@@ -280,8 +326,9 @@ class SpeechView(QWidget):
                     "source": speech.source,
                 })
         self._rows = rows
+        self._loaded = True
         self._fill()
-        self._write_note(len(rows), len(missing))
+        self._write_note(len(rows), len(missing), out_of_scope)
 
     def _backfill(self, root, skey: str, ep: Path, cached: dict):
         """Read a caption file that appeared after the episode was analysed.
@@ -343,16 +390,25 @@ class SpeechView(QWidget):
             item.setData(0, Qt.UserRole, r)
             self._table.addTopLevelItem(item)
         self._table.setSortingEnabled(True)
+        # The count names the set it counts. A bare "5 episodes" over a
+        # narrowed table is the wrong number displayed correctly.
         self._count.setText(
             f"{len(self._rows)} episode"
-            f"{'s' if len(self._rows) != 1 else ''}")
+            f"{'s' if len(self._rows) != 1 else ''}"
+            + ("" if self._scope.is_library else f" in {self._scope.label}"))
 
-    def _write_note(self, found: int, gap: int) -> None:
+    def _write_note(self, found: int, gap: int, hidden: int = 0) -> None:
         note = (
             "Words per minute divides by DIALOGUE time, not runtime — it is "
             "how fast characters speak when they speak. Speech density is the "
             "fraction of the episode that carries dialogue; read the two "
             "together.")
+        if not self._scope.is_library:
+            note += (
+                f"\n\nShowing {self._scope.describe()}. "
+                f"{hidden} episode{'s' if hidden != 1 else ''} elsewhere in "
+                f"the library {'are' if hidden != 1 else 'is'} not counted "
+                f"here — choose Whole library in Showing: to see them.")
         if gap:
             note += (
                 f"\n\n{gap} analysed episode{'s are' if gap != 1 else ' is'} "
@@ -393,6 +449,10 @@ class VocabularyView(QWidget):
         self._window = window
         self._results: list = []
         self._worker: VocabWorker | None = None
+        self._scope: Scope = library_scope()
+        # What the current scope put in the list, so a later scope change can
+        # take back its own staging and leave hand-added files alone.
+        self._staged: list[str] = []
 
         from ui.main_window import Panel
         lay = QVBoxLayout(self)
@@ -444,6 +504,66 @@ class VocabularyView(QWidget):
             f"  ·  Concreteness: "
             f"{'found' if conc else 'missing — stays blank'}")
 
+    # -- the research context --
+    def set_scope(self, scope: Scope) -> None:
+        """Stage the caption files sitting beside the current sample's episodes.
+
+        Staging, not filtering: the list still takes any file from Add Files…
+        or Add Folder…, and a hand-added file survives a scope change. Only
+        the previous scope's own staging is withdrawn.
+        """
+        self._scope = scope
+        if self._staged:
+            was = {normalize(p) for p in self._staged}
+            for i in reversed(range(self._files.count())):
+                if normalize(self._files.item(i).text()) in was:
+                    self._files.takeItem(i)
+        self._staged = []
+        if scope.is_library:
+            self._show_scope_status()
+            return
+        found, without = self._captions_for(scope)
+        self._staged = found
+        self._add(found, announce=False)
+        self._show_scope_status(len(found), without)
+
+    @staticmethod
+    def _captions_for(scope: Scope) -> tuple[list[str], int]:
+        """(caption files beside the scope's episodes, episodes with none).
+
+        Uses the engine's own caption discovery — `analyzer.speech`'s — rather
+        than globbing for `.srt`, so this list and the file the measurement
+        actually reads are chosen by one rule.
+        """
+        from analyzer.speech import _find_cc_file
+        found: list[str] = []
+        without = 0
+        for episode in scope.episodes:
+            cc = _find_cc_file(episode)
+            if cc is None:
+                without += 1
+            else:
+                found.append(str(cc))
+        return found, without
+
+    def _show_scope_status(self, staged: int = 0, without: int = 0) -> None:
+        """Say what was staged AND what was not, or a short list misleads.
+
+        A sample of twenty that stages six caption files looks like a sample of
+        six unless the fourteen without captions are named.
+        """
+        if self._scope.is_library:
+            self._progress.setText("")
+            return
+        parts = [f"{staged} caption file{'s' if staged != 1 else ''} from "
+                 f"{self._scope.label}"]
+        if without:
+            parts.append(f"{without} of its episodes "
+                         f"{'have' if without != 1 else 'has'} no .srt or "
+                         f".vtt — Automated coding → Transcribe Missing "
+                         f"Subtitles writes them")
+        self._progress.setText(" · ".join(parts))
+
     # -- file list --
     def add_files(self) -> None:
         paths, _f = QFileDialog.getOpenFileNames(
@@ -460,16 +580,20 @@ class VocabularyView(QWidget):
                        + list(Path(folder).rglob("*.vtt")))
         self._add([str(p) for p in found])
 
-    def _add(self, paths) -> None:
-        existing = {self._files.item(i).text()
+    def _add(self, paths, announce: bool = True) -> None:
+        # Normalised, because a staged path comes from selected.csv and a
+        # hand-added one from a file dialog — two spellings of one file, which
+        # would otherwise be analysed twice and charted as two episodes.
+        existing = {normalize(self._files.item(i).text())
                     for i in range(self._files.count())}
         added = 0
         for p in paths:
-            if p not in existing:
-                self._files.addItem(p)
-                existing.add(p)
+            key = normalize(p)
+            if key not in existing:
+                self._files.addItem(str(p))
+                existing.add(key)
                 added += 1
-        if added:
+        if added and announce:
             self._progress.setText(
                 f"added {added} file{'s' if added != 1 else ''}")
 
@@ -479,6 +603,9 @@ class VocabularyView(QWidget):
 
     def clear_files(self) -> None:
         self._files.clear()
+        # Nothing staged survives an empty list, so a later scope change has
+        # nothing of this one's to withdraw.
+        self._staged = []
 
     # -- run --
     @property
@@ -690,6 +817,16 @@ class LanguageTab(QWidget):
 
     def show_view(self, name: str) -> None:
         self._views.show(name)
+
+    def set_scope(self, scope) -> None:
+        """The research context reaches both views, which use it differently.
+
+        Speech narrows to it — it reports on episodes already measured.
+        Vocabulary stages from it — it is where a run is started. See the
+        module docstring.
+        """
+        self.speech.set_scope(scope)
+        self.vocabulary.set_scope(scope)
 
     def refresh(self) -> None:
         self.speech.refresh()

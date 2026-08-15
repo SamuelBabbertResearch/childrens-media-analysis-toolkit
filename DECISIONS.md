@@ -680,6 +680,31 @@ episodes exist", not "which are coded", and it is already one tab away);
 advancing automatically to the next uncoded episode on save (coding order is
 the coder's, and a screen that moves under you loses work).
 
+### A view narrows to the scope; a workbench stages from it
+**Decision.** The rule the three measurement tabs settled into, stated once so
+the next screen does not have to re-derive it. A screen that **reports on work
+already done** filters to the scope — the Library, the Index, and Language →
+Speech. A screen where **work is started** stages the scope's episodes and then
+gets out of the way — Automated coding's queue, Human coding's worklist,
+Language → Vocabulary's file list. The Language tab is the proof that both are
+right: its two views take the same scope in opposite directions.
+**Reason.** "Obey the scope" is not one behaviour. Filtering a workbench
+forbids work the researcher is entitled to do and still leaves the run empty;
+staging a results table would be meaningless. The distinction that decides it
+is whether the screen's content is a *report* or a *plan*.
+**Consequence.** Every staging screen follows the same three rules: the whole
+library stages nothing, a scope change withdraws only its own staging, and the
+screen says what it staged **and what it could not** — 8 of 9 drawn, 1 off
+disk; 1 caption file, 7 episodes without. A short list with no explanation
+reads as a small sample.
+**Consequence.** Every filtering screen names the set it is showing in its own
+count, rather than printing a bare total under a narrowed table.
+**Date.** 2026-08-16.
+**Rejected.** One `set_scope` contract for all six screens (it forces the wrong
+verb on half of them); filtering the workbenches and adding a separate "load
+the sample" button (two controls for one intent, and the empty state is still
+the thing the user meets first).
+
 ### A validation subset is drawn, not chosen by CMAT
 **Decision.** A sample's `selected.csv` is already a valid registry for the
 sampler — it carries the `episode` column `load_registry_csv` requires plus

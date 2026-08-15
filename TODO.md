@@ -174,9 +174,17 @@ session** — each needs its own verification against real output.
   Two real defects were found on the way and fixed — one sheet lookup instead
   of two, and opening a second episode no longer carries the first one's marks
   (`LEARNINGS.md`).
-- **Scope Language.** Same shape; its Speech view already lists many episodes,
-  so this is closer to filtering the list it already builds than to staging a
-  queue. Check which before building it.
+- ~~Scope Language.~~ **Done 2026-08-16.** Both, as suspected — and the tab is
+  now the worked example of the rule in `DECISIONS.md` § *A view narrows to the
+  scope; a workbench stages from it*. **Speech** filters, and its count names
+  the set. **Vocabulary** stages the caption files beside the sample's
+  episodes and says how many of them have none. Speech stays lazy: it is
+  filled by Refresh, never from `set_root`, because it opens every cached
+  result under the root.
+
+  Worth correcting for the record: Language never took `set_target(path)` at
+  all. It read the whole library and nothing narrowed it, which is why the
+  wrong number here was a table of the corpus rather than an empty screen.
 - ~~Show the scope outside the Library.~~ **Done 2026-08-15** — the chooser is
   on the main toolbar beside Root folder and Preset, so it is visible from
   every tab. The Library keeps the sentence explaining the current context.
