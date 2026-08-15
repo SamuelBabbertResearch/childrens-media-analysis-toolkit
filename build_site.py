@@ -159,6 +159,31 @@ def _find_aggregate(show_key: str) -> dict | None:
     return None
 
 
+def _rescored(ep: dict) -> dict:
+    """A cached episode dict with its composite re-derived against CONFIG.
+
+    The composite is DERIVED — a weighted sum over raw metrics — but the cache
+    stores the value as it stood when the episode was analysed. Publishing the
+    stored copy means publishing a score under ceilings and weights that are no
+    longer in force, which is exactly what happened when the ceilings were
+    retuned on 2026-08-14: the index said 0.2654 for an episode whose cache
+    file, and therefore this site, still said 0.2241.
+
+    `analyzer.cache.load_scored()` is the sanctioned reader and the same
+    mistake had already been fixed in four other places; this was the fifth,
+    and the only one that PUBLISHES. Mirrors load_scored for a dict already in
+    hand, so no second implementation of the derivation exists here.
+    """
+    if ep.get("status") != "ok":
+        return ep
+    try:
+        from analyzer.metrics_sensory import rescore_episode
+        from analyzer.schema import EpisodeResult
+        return rescore_episode(EpisodeResult.from_dict(ep), CONFIG).to_dict()
+    except Exception:
+        return ep
+
+
 def _find_episodes(show_key: str) -> list[dict]:
     d = ROOT / ".analysis" / show_key
     if not d.exists():
@@ -170,7 +195,7 @@ def _find_episodes(show_key: str) -> list[dict]:
         try:
             ep = json.loads(f.read_text(encoding="utf-8"))
             if ep.get("status") == "ok":
-                results.append(ep)
+                results.append(_rescored(ep))
         except Exception:
             pass
     return results
@@ -502,7 +527,7 @@ window.PRESET_DATA = {preset_js};
 </script>
 
 <h1>Open Children's Media Index</h1>
-<p class="lead">A transparent, empirically grounded database of sensory-load profiles for children's television. Every metric is measurable, every score shows its component parts.</p>
+<p class="lead">A transparent database of formal-feature measurements for children's television — pacing, colour, motion, flashing and audio. Every metric is measurable, and every score shows its component parts. The composite that combines them is a configurable summary, not a validated construct.</p>
 <p>This index applies the <a href="{TOOL_URL}">Children's Media Analysis Toolkit (CMAT)</a> to publicly available programming. Analysis is automated and reproducible. This project does not issue verdicts on appropriateness — it presents labeled measurements that researchers and caregivers can interpret in context. All findings are correlational.</p>
 
 <div class="stats-row">
@@ -763,6 +788,24 @@ _METHODOLOGY = """<h1>Methodology</h1>
 <tr><td>Flashing threshold</td><td>0.1 (luminance delta, 0–1 scale)</td></tr>
 <tr><td>Episode sample seed</td><td>42</td></tr>
 </tbody></table>
+
+<h2>Normalization ceilings</h2>
+<p>Each component metric is rescaled to 0–1 against a fixed ceiling before it is
+weighted, using <code>(value − min) / (max − min)</code>, clamped into [0, 1]. A
+ceiling is the <em>denominator</em> that makes six differently-shaped numbers
+addable — it is not a threshold, a limit, or a judgement about the content.
+Values at or above a ceiling all score 1.0 and are not distinguished from each
+other. The composite is not reproducible without these, so they are stated
+here:</p>
+__CEILINGS_TABLE__
+<p>These values are a <strong>scaling convention, not a validated threshold.</strong>
+They were set to span the range observed across the analysed corpus rather than
+to each metric's theoretical maximum, and were last revised on 2026-08-14.
+Because ceilings differ in how much of their range real content occupies, a
+metric's nominal weight is not the same as its effective contribution to the
+composite — the component figures are published for every episode so that both
+can be checked. Composite scores computed before 2026-08-14 are on an earlier
+scale and are not comparable with these.</p>
 <p>For shows with fewer than 15 episodes, all episodes are analyzed. For shows with 15–60 episodes, a spread sample of 10 is drawn. For shows with more than 60 episodes, a spread sample of 20 is drawn. "Spread" sampling selects episodes evenly distributed across the show's full run using CMAT's Episode Sampler.</p>
 <p>For long-running shows (20+ years or a significant production format change), the show is divided into named eras and each era is sampled independently.</p>
 
@@ -1405,6 +1448,21 @@ def build() -> None:
     shows_data: list[tuple[dict, dict | None]] = []
     for entry in MANIFEST["shows"]:
         agg = _find_aggregate(entry["show_key"])
+        # The stored aggregate carries a composite averaged under whatever
+        # ceilings were in force when it was written. Recompute it from the
+        # re-scored episodes so the show page and its episode table cannot
+        # disagree — the same staleness as the per-episode score, one level up.
+        episodes = _find_episodes(entry["show_key"])
+        if episodes:
+            try:
+                from analyzer.aggregate import compute_show_aggregate
+                from analyzer.schema import EpisodeResult
+                agg = compute_show_aggregate(
+                    entry["display_name"],
+                    [EpisodeResult.from_dict(e) for e in episodes]).to_dict()
+            except Exception as exc:
+                print(f"  [warn] could not recompute aggregate for "
+                      f"{entry['show_key']}: {exc}")
         shows_data.append((entry, agg))
         if agg is None:
             print(f"  [warn] no aggregate found: {entry['show_key']}")
@@ -1455,7 +1513,7 @@ def build() -> None:
 
     # Methodology / tool / download
     (SITE / "methodology" / "index.html").write_text(
-        _page("Methodology", _METHODOLOGY, active="methodology"),
+        _page("Methodology", _methodology_html(), active="methodology"),
         encoding="utf-8",
     )
     (SITE / "tool" / "index.html").write_text(
@@ -1491,6 +1549,37 @@ def build() -> None:
     total = sum(1 for _ in SITE.rglob("*.html"))
     print(f"Built {total} HTML pages -> {SITE}/")
     print(f"CNAME set to: {DOMAIN}")
+
+
+# Labels for the published ceilings table. Keys with no entry fall back to the
+# raw metric name, so a metric added to the engine appears rather than vanishing.
+_CEILING_LABEL = {
+    "cuts_per_min": "Cuts per minute",
+    "color_saturation_mean": "Colour saturation (mean)",
+    "color_contrast_mean": "Colour contrast (mean)",
+    "motion_mean": "Motion (mean)",
+    "flashing_events_per_min": "Flashing events per minute",
+    "audio_rms_mean": "Audio RMS (mean)",
+}
+
+
+def _methodology_html() -> str:
+    """Methodology page with the ceilings table generated from config.json.
+
+    Generated rather than written out, because the page claims every result is
+    reproducible from the parameters it documents — and a hand-typed copy of a
+    number that lives in config.json is how that claim quietly stops being
+    true. Retuning the ceilings on 2026-08-14 changed every composite on the
+    site; nothing on the page would have said so.
+    """
+    ranges = CONFIG.get("normalization_reference_ranges", {})
+    rows = "".join(
+        "<tr><td>{}</td><td>{:g} – {:g}</td></tr>".format(
+            _CEILING_LABEL.get(key, key.replace("_", " ")),
+            spec.get("min", 0.0), spec.get("max", 0.0))
+        for key, spec in ranges.items())
+    table = f"<table class=meta><tbody>{rows}</tbody></table>"
+    return _METHODOLOGY.replace("__CEILINGS_TABLE__", table)
 
 
 if __name__ == "__main__":
