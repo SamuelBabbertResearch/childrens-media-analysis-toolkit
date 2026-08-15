@@ -12,6 +12,18 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
 copy and a misfiled `SpongeBob` episode) are reversible by moving them back;
 nothing in the tool reads the folder. That part is yours.
 
+0. **One shared show-aggregate backfill, not three patched copies.**
+   `cli.py _db_backfill`, `ui/main_window.py MainWindow.rescore_index` and
+   `gui.py _backfill_index` all re-derive the `shows` table from cache with
+   the same loop, and all three carried the identical season-overwrite bug
+   until 2026-08-17 (`LEARNINGS.md`, `FOR_PAPER.txt`). Patching each site is
+   what `CLAUDE.md` §6 now calls out explicitly as the weaker fix: nothing
+   stops a fourth copy — a future export script, a batch tool — from
+   reintroducing the same bug. Factor the walk-and-merge-by-`db_show_key`
+   logic into one function in `analyzer/db.py` (or a new small module) that
+   all three call. Not urgent — the bug itself is fixed — but the drift risk
+   stays open until there is one implementation instead of three.
+
 1. **Spot-check for whip-pan cuts coded as `hard_cut`.** The codebook now
    defines whip-pan disguised cuts; a coder not looking for them may have coded
    the join as `hard_cut`. The only subtype whose new definition could

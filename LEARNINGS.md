@@ -54,6 +54,22 @@ Because each site was written by reasoning locally, and each was correct on
 its own reading. Fixing the first instance is the least useful response.
 *Test:* grep for the shape before fixing the instance.
 
+**6. A many-to-one key's writer was never audited alongside its reader.**
+Added 2026-08-17, from a defect outside the original nineteen. `db_show_key`
+deliberately collapses `Show/Season 1` and `Show/Season 2` into one key so
+the Index shows one show, not two — itself the fix for the defect below,
+*Seasons in subfolders get treated as separate shows*. Three functions
+re-derive the `shows` table from cache by looping over `list_shows()` (one
+entry per season folder) and upserting once per loop iteration, so each
+season's aggregate silently overwrote the one before it instead of merging.
+The collapsing key had been applied everywhere results are *read*; nobody
+had checked everywhere they are *written*, so the same show kept producing a
+plausible, wrong, single-season number through two unrelated fixes that both
+looked complete.
+*Test:* when a key merges many sources into one, grep every writer of that
+key, not just its readers — see *The fix for one season-collapsing defect
+became the cause of the next*, below.
+
 ### Why they survived
 
 - **Verification stopped at "it ran".** Rendering, passing tests and a

@@ -202,9 +202,11 @@ Other terms:
 
 ## 6. Coding constraints
 
-The five recurring failure shapes on this project, each with a test for it,
-are in `LEARNINGS.md` § *The shape most of these share*. Read it before
-believing a piece of work is finished.
+The recurring failure shapes on this project, each with a test for it, are in
+`LEARNINGS.md` § *The shape most of these share*. Read it before believing a
+piece of work is finished. Most of this project's real defects are not typos —
+they are one of these shapes recurring in a new location, invisible from the
+interface, surviving because verification stopped at "it ran".
 
 - **Verify against the artefact, not the render.** Run it, then read *what it
   produced* — draw the sample and read the strata, export the CSV and read the
@@ -219,7 +221,26 @@ believing a piece of work is finished.
   button, every dialog opened from another dialog. A tab-by-tab comparison
   reveals nothing.
 - **When a rule must hold at every call site, put it IN the call.**
-  `analyzer.cache.load_scored()` is the shape of the fix.
+  `analyzer.cache.load_scored()` is the shape of the fix. When a bug instead
+  gets fixed at each call site separately (three copies of one backfill loop,
+  patched three times because nothing shares the logic — see
+  `LEARNINGS.md`), that is a standing invitation for a fourth copy to
+  reintroduce it later. Prefer factoring the shared logic into one function
+  over patching each site identically, unless the sites are about to diverge
+  for an unrelated reason.
+- **A function that exists in more than one build is a duplicate waiting to
+  drift.** `gui.py` (Tk) and `ui/*.py` (Qt) implement the same job twice by
+  design (§1). When you fix a bug in one, grep for its twin in the other
+  before calling the fix done — a bug found in the Qt build almost certainly
+  exists in the Tk build too, and vice versa, because both were usually
+  written by reasoning locally about one file.
+- **A key that deliberately collapses many source groupings into one target**
+  (a season-collapsing show key, a normalised name, a content hash) **needs
+  every WRITER of that key audited, not just its readers.** A reader that
+  derives its answer on demand cannot have an overwrite bug by construction;
+  a writer that caches an aggregate under the key can, and it fails silently —
+  a plausible count and mean, not a crash. See `LEARNINGS.md` § *The fix for
+  one season-collapsing defect became the cause of the next*.
 - **Read the neighbouring implementation before writing a parallel one.**
 - **A module that calls itself the source of truth must be READ, not
   restated** — by every consumer, or it is not one.
