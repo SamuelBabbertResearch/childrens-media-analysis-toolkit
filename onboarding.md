@@ -482,11 +482,14 @@ A long UI session that ported the whole interface to Qt. In order:
 
 ## What is in progress
 
-Nothing is half-finished. The seven formerly-untracked root files were swept
-into the Qt-migration commit by a `git add -A` on 2026-08-14; `TODO.md` item 13
-(where each belongs — `docs/`, `ui/reference/`, or deleted) is therefore still
-open, but they are now versioned rather than at risk. Note `docs/` is
-gitignored, so "move it to `docs/`" would untrack it — decide that explicitly.
+Nothing is half-finished. The seven formerly-untracked root files are sorted
+(2026-08-14): four specs and a positioning brief into the new **`design/`**
+folder, the Qt stylesheet sample into `ui/reference/`, and `preview_ui.py`
+deleted — it opened `GeminiPipeline.qss`, a filename that has never existed in
+this repo, so it could not have run. `docs/` was deliberately not used: it is
+gitignored, so moving a document there would have silently untracked it,
+including the north-star spec. What remains is `TODO.md` item 13 — folding the
+two overlapping positioning documents into `ROADMAP.md`.
 
 ## What is blocked
 

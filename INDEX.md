@@ -28,6 +28,7 @@ Retrieval table of contents. Load what the task needs; do not load everything.
 | [STACK.md](STACK.md) | frameworks, libraries, platform constraints, Qt facts that are not guessable |
 | [ROADMAP.md](ROADMAP.md) | positioning, priorities, and what is deliberately not being built |
 | [README.md](README.md) | public-facing description |
+| [design/README.md](design/README.md) | specifications and strategy notes — the pipeline north-star spec, migration strategy, UX audit, positioning. **Inputs, not authority**; never adopt a label, metric or number from them |
 
 ## Interface work
 
@@ -35,6 +36,7 @@ Retrieval table of contents. Load what the task needs; do not load everything.
 |---|---|
 | [ui/DESIGN.md](ui/DESIGN.md) | **§0 is the recipe for building a screen.** Read before touching the interface |
 | `ui/reference/*.css` | the supplied mockups' stylesheets, verbatim. The source of the design — do not hand-edit |
+| `ui/reference/GeminiPipelineSample.qss` | a supplied Qt Style Sheet sample of the target aesthetic. Reference only — nothing loads it, and `reference_css.py` reads `*.css` by name so never sees it |
 | `ui/tokens.py` | every colour and metric. Never write a literal colour into a widget |
 
 ## Research and domain
@@ -45,7 +47,7 @@ Retrieval table of contents. Load what the task needs; do not load everything.
 | [validation/CODEBOOK.md](validation/CODEBOOK.md) | transition hand-coding definitions, including the `other` subtypes |
 | [validation/EVENT_CODEBOOK.md](validation/EVENT_CODEBOOK.md) | fantastical-event hand-coding definitions |
 | `validation/*.csv`, `*_manifest_*.json` | hand coding and trial manifests — authoritative data a person typed |
-| `docs/wiki` | long-form documentation |
+| `docs/wiki` | long-form documentation — **gitignored**, managed separately |
 
 ## Not in version control
 

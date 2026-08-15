@@ -128,11 +128,20 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
    and `gui_handcoding.py` exist as of 2026-08-14 but have not yet been used
    for real work. Not reversible in a hurry; do it deliberately.
 
-13. **Commit or remove the seven untracked root files.**
-   `CMAT_FIRST_TIME_UX_AUDIT.md`, `CMAT_GITHUB_PIPELINE_POSITIONING.md`,
-   `CMAT_PIPELINE_INTERACTION_MODEL.md`, `CMAT_PYSIDE6_MIGRATION_STRATEGY.md`,
-   `cmat_positioning_for_claude.md`, `GeminiPipelineSample.qss`,
-   `preview_ui.py`. Each is either a document that belongs in `docs/`, a
-   reference that belongs in `ui/reference/`, or scratch that should go.
-   `CMAT_PIPELINE_INTERACTION_MODEL.md` is the north-star specification the
-   pipeline work is being measured against and should not stay untracked.
+13. **Fold the two positioning documents into `ROADMAP.md`, then delete them.**
+   `design/CMAT_GITHUB_PIPELINE_POSITIONING.md` and
+   `design/POSITIONING_BRIEF.md` overlap each other and overlap `ROADMAP.md`,
+   which `INDEX.md` already names as the home for "positioning, priorities, and
+   what is deliberately not being built". Three files answering one question is
+   how they drift apart. Bears on item 9 — what `README.md` should say.
+
+   The rest of item 13 is **done** (2026-08-14): the seven root files were
+   sorted into `design/` and `ui/reference/`, and `preview_ui.py` was deleted
+   as dead scratch. `docs/` was deliberately **not** used — it is gitignored,
+   so moving anything there silently untracks it. See `design/README.md`.
+
+14. **Re-check the UX audit against the Qt build.**
+   `design/CMAT_FIRST_TIME_UX_AUDIT.md` traced the *Tk* build (`gui.py`,
+   `gui_sampler.py`, `gui_pipeline.py`), which item 12 retires. Its findings
+   may be fixed, may have moved, or may never have applied to Qt. Do this
+   alongside item 10 rather than acting on the audit as written.
