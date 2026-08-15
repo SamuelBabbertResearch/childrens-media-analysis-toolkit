@@ -52,11 +52,17 @@ CEILING_LABEL = {
 WHISPER_MODELS = ("tiny", "base", "small", "medium", "large")
 
 CEILING_NOTE = (
-    "Note on tight presets. Low ceilings mean many shows exceed the maximum "
-    "on one or more metrics, which compresses the differences between them at "
-    "the top of the range. That is intentional: the preset flags both as over "
-    "the threshold rather than ranking one above the other. For fine-grained "
-    "comparison use a broader preset."
+    "A ceiling sets the top of a metric's 0–1 scale — it is a denominator, "
+    "not a threshold or a limit. Set it against the figures on the right, "
+    "which are what this library actually produces.\n"
+    "• Too LOW and episodes above it all score exactly 1.0, so the most "
+    "intense ones become indistinguishable. That is intentional in the tight "
+    "age presets, which flag rather than rank; use a broader preset for "
+    "fine-grained comparison.\n"
+    "• Too HIGH and the metric barely moves, so it contributes far less than "
+    "its weight suggests. Motion's ceiling was 1.0 against a real range of "
+    "~0.09, so a 25% weight delivered ~7% of the score.\n"
+    "Changing a ceiling changes every score already computed. See CEILINGS.md."
 )
 
 
@@ -64,8 +70,37 @@ def _pretty(key: str) -> str:
     return key.replace("_", " ").capitalize()
 
 
+def _observed_hint(entry: dict | None) -> str:
+    """One-line 'what this library produces' note for a ceiling field."""
+    if not entry:
+        return "library: not analysed yet"
+    text = f"library: median {entry['median']:.3g} · max {entry['max']:.3g}"
+    clamped = entry.get("n_clamped") or 0
+    if clamped:
+        text += f"  ⚠ {clamped} at ceiling"
+    elif entry.get("pct_of_ceiling") is not None:
+        text += f"  ({entry['pct_of_ceiling']:.0f}% of scale)"
+    return text
+
+
 class SettingsDialog(QDialog):
     """Scoring settings. `config` holds the edited copy once accepted."""
+
+    def _observed_distributions(self) -> dict:
+        """What the indexed library produces per scaled metric, or {}.
+
+        Best-effort and never fatal: the dialog must open with no index, no
+        library root, or no analysed episodes — it just shows no figures then.
+        """
+        try:
+            from analyzer.db import ceiling_distributions
+            conn = self.parent()._db()          # MainWindow owns the handle
+            if conn is None:
+                return {}
+            return ceiling_distributions(
+                conn, self.config.get("normalization_reference_ranges", {}))
+        except Exception:
+            return {}
 
     def __init__(self, config: dict, parent=None) -> None:
         super().__init__(parent)
@@ -129,6 +164,7 @@ class SettingsDialog(QDialog):
         cgrid.setVerticalSpacing(3)
         self._ceilings: dict[str, QLineEdit] = {}
         ranges = self.config.get("normalization_reference_ranges", {})
+        observed = self._observed_distributions()
         for r, key in enumerate(ranges):
             cgrid.addWidget(QLabel(CEILING_LABEL.get(key, _pretty(key))), r, 0)
             edit = QLineEdit()
@@ -136,6 +172,12 @@ class SettingsDialog(QDialog):
             edit.setAlignment(Qt.AlignRight)
             self._ceilings[key] = edit
             cgrid.addWidget(edit, r, 1)
+            # A ceiling is only choosable against evidence. Show what this
+            # library actually produces, right beside the box that sets the
+            # top of the scale — see CEILINGS.md.
+            hint = QLabel(_observed_hint(observed.get(key)))
+            hint.setProperty("role", "dim")
+            cgrid.addWidget(hint, r, 2)
         cgrid.setColumnStretch(0, 1)
         pr.addWidget(ceilings_box, 1)
         body.addWidget(pair)

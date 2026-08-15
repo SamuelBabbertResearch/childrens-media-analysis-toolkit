@@ -65,11 +65,22 @@ def test_sensory_load_zero_inputs():
 
 
 def test_sensory_load_max_inputs():
+    """A value AT each ceiling must normalise to 1.0 and produce a score of 1.0.
+
+    The ceilings are read from the config rather than written in here. They
+    were hard-coded as 60/1.0/0.35/1.0/30, which made this test assert against
+    a snapshot of `config.json` rather than against the property it describes —
+    so retuning the ceilings on 2026-08-14 failed it for the wrong reason. See
+    `CEILINGS.md`.
+    """
     cfg = load_config()
-    pacing = ScenePacingMetrics(cuts_per_min=60.0)
-    color = ColorSaturationMetrics(mean=1.0, contrast_mean=0.35)
-    motion = MotionMetrics(mean=1.0)
-    flashing = FlashingMetrics(luminance_delta_events_per_min=30.0)
+    ceil = {k: v["max"] for k, v in cfg["normalization_reference_ranges"].items()}
+    pacing = ScenePacingMetrics(cuts_per_min=ceil["cuts_per_min"])
+    color = ColorSaturationMetrics(mean=ceil["color_saturation_mean"],
+                                   contrast_mean=ceil["color_contrast_mean"])
+    motion = MotionMetrics(mean=ceil["motion_mean"])
+    flashing = FlashingMetrics(
+        luminance_delta_events_per_min=ceil["flashing_events_per_min"])
     result = compute_sensory_load(pacing, color, motion, flashing, AudioMetrics(), cfg)
     # Audio weight redistributes to visual metrics when unavailable, so score still hits 1.0
     assert result.score == pytest.approx(1.0)
