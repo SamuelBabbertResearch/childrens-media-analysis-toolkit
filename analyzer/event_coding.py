@@ -106,7 +106,8 @@ def find_event_sheet(video: Path | str,
 
 
 def event_sheet_status(video: Path | str,
-                       validation_dir: Path | None = None) -> dict:
+                       validation_dir: Path | None = None,
+                       cmap: dict[str, dict] | None = None) -> dict:
     """How far event coding has got for one episode.
 
     `n_events` counts rows `parse_event_csv` accepts, which is what any later
@@ -114,8 +115,16 @@ def event_sheet_status(video: Path | str,
     row carries no timestamp and is not an event. A sheet that exists with
     zero events is a real and different state from no sheet at all: someone
     created it and has not coded yet.
+
+    Pass a `validation.coded_episode_map()` as *cmap* when asking about many
+    episodes at once, as the hand-coding worklist does — it answers from one
+    scan of the folder instead of one glob per episode.
     """
-    sheet = find_event_sheet(video, validation_dir)
+    if cmap is not None:
+        from .validation import coding_for_stem
+        sheet = coding_for_stem(Path(video).stem, cmap)["events"]
+    else:
+        sheet = find_event_sheet(video, validation_dir)
     if sheet is None:
         return {"sheet": None, "exists": False, "n_events": 0,
                 "step": "uncoded"}

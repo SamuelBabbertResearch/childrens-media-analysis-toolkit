@@ -418,6 +418,14 @@ interaction — it walks the validation folder and globs the cache, and it runs
 on every pipeline refresh. Not yet a problem at this corpus size; it is the
 first thing to look at if the library grows.
 
+**Re-measured 2026-08-16 and it has grown: `build_pipelines()` is now 1524 ms.**
+A whole scope change is ~2.0 s and **1761 ms of it is `_sync_scope_choices`**,
+which calls `build_pipelines` every time. Everything else is small and flat in
+sample size: Library + Index + Trials 353 ms, the analysis queue 92 ms, both
+hand-coding worklists 293 ms, both Language views 261 ms. So the toolbar's
+Showing: control costs two seconds, and 87% of that is one pre-existing call
+that cannot change as a result of choosing a scope. See `TODO.md`.
+
 ### Part 3 — the feature audit
 
 Screens were ported; features had not been checked. Walking `gui.py`'s menus

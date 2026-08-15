@@ -188,6 +188,23 @@ session** — each needs its own verification against real output.
 - ~~Show the scope outside the Library.~~ **Done 2026-08-15** — the chooser is
   on the main toolbar beside Root folder and Preset, so it is visible from
   every tab. The Library keeps the sentence explaining the current context.
+- **A scope change costs ~2.0 s, and 1.5 s of it is `build_pipelines()`.**
+  Measured 2026-08-16 on this working copy. `_sync_scope_choices` rebuilds the
+  chooser from `build_pipelines(root)` on **every** `set_scope`, and that call
+  alone is 1524 ms — up from the 420 ms in `onboarding.md`'s table. The rest is
+  small and flat in sample size (Library + Index + Trials 353 ms, the queue
+  92 ms, both worklists 293 ms, both Language views 261 ms), so this is one
+  pre-existing hotspot on a control that now matters more, not a cost the
+  measurement tabs added.
+
+  The list of discovered samples **cannot change as a result of choosing one**,
+  so the fix is to split discovery from selection: rebuild the chooser when the
+  root changes or a sample is drawn, and otherwise only move the current index.
+  Do it deliberately — `_sync_scope_choices` also handles the case of a scope
+  set before its draw is discoverable, and getting that wrong makes the chooser
+  disagree with the tree, which its own comments call the one thing this
+  control must never do. Worth a test that drives a fresh draw.
+
 - **Then, and only then, consider making the wires carry the set.** Sampling
   emits N, selection narrows it, a hand-code branch takes its subset. This is
   the north-star spec's "output produced here becomes input there", and it is

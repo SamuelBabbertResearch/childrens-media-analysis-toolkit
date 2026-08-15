@@ -88,7 +88,7 @@ def _table(headers: list[str]) -> QTreeWidget:
     return table
 
 
-def event_coding_state(episode: Path) -> tuple[str, bool]:
+def event_coding_state(episode: Path, cmap=None) -> tuple[str, bool]:
     """(cell text, has any coding) for this episode's EVENT sheet.
 
     The flag is returned rather than inferred from the text: a worklist that
@@ -96,7 +96,7 @@ def event_coding_state(episode: Path) -> tuple[str, bool]:
     claim was restated instead of read*, and it breaks silently the first time
     the wording changes.
     """
-    status = event_sheet_status(episode, get_validation_dir())
+    status = event_sheet_status(episode, get_validation_dir(), cmap)
     if not status["exists"]:
         return "not coded", False
     if status["step"] == "unreadable":
@@ -107,11 +107,11 @@ def event_coding_state(episode: Path) -> tuple[str, bool]:
     return f"{n} event{'s' if n != 1 else ''}", True
 
 
-def transition_coding_state(episode: Path) -> tuple[str, bool]:
+def transition_coding_state(episode: Path, cmap=None) -> tuple[str, bool]:
     """(cell text, has any coding) for this episode's TRANSITION sheet."""
     from analyzer.validation import episode_status
     try:
-        st = episode_status(episode, get_validation_dir())
+        st = episode_status(episode, get_validation_dir(), cmap)
     except Exception:                       # noqa: BLE001 — a cell, not a crash
         return "unreadable", False
     rows = st.get("coded_rows", 0)
@@ -183,9 +183,18 @@ class Worklist(QWidget):
             self._note.setVisible(True)
             self._count.setText("")
             return
+        # ONE scan of the validation folder for the whole sample. Asking each
+        # episode separately globs it three times per row — 732 ms for sixteen
+        # — and `coded_episode_map`'s own docstring already says this is what
+        # it is for.
+        from analyzer.validation import coded_episode_map
+        try:
+            cmap = coded_episode_map(get_validation_dir())
+        except Exception:                   # noqa: BLE001 — states, not a crash
+            cmap = {}
         done = 0
         for episode in self._scope.episodes:
-            state, coded = self._state_fn(episode)
+            state, coded = self._state_fn(episode, cmap)
             done += bool(coded)
             item = QTreeWidgetItem([episode.name, state, episode.parent.name])
             item.setData(0, Qt.UserRole, str(episode))

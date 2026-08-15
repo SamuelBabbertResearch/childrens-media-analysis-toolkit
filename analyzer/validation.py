@@ -169,12 +169,28 @@ def parse_manual_csv(path: Path, warn_cb: Callable[[str], None] | None = None) -
     return sorted(rows, key=lambda r: r["timestamp_sec"])
 
 
+def empty_coding() -> dict:
+    """The empty slot shape, built fresh each time.
+
+    A function rather than a module-level dict copied with `dict(...)`: the
+    `detections` list would then be ONE list shared by every episode, so the
+    first detector run would appear against all of them.
+    """
+    return {"transitions": None, "events": None, "metrics": None,
+            "detections": [], "detail": None}
+
+
 def coded_episode_map(validation_dir: Path | None = None) -> dict[str, dict]:
     """One pass over the coding folder -> {sheet_base: {...}}.
 
-    Built once and reused across many rows (Library tree, Index table) so
-    provenance markers don't cost a filesystem glob per episode.
-    Values: {"transitions": Path|None, "events": Path|None, "metrics": Path|None}
+    Built once and reused across many rows (Library tree, Index table,
+    hand-coding worklist) so provenance markers don't cost a filesystem glob
+    per episode. `episode_status` takes one of these for the same reason: the
+    worklist asks for a whole sample's state at once, and per-episode globbing
+    cost 732 ms for sixteen rows.
+
+    Values: {"transitions": Path|None, "events": Path|None,
+             "metrics": Path|None, "detections": [Path], "detail": Path|None}
     """
     vdir = validation_dir or get_validation_dir()
     out: dict[str, dict] = {}
@@ -182,8 +198,7 @@ def coded_episode_map(validation_dir: Path | None = None) -> dict[str, dict]:
         return out
 
     def _slot(base: str) -> dict:
-        return out.setdefault(base, {"transitions": None, "events": None,
-                                     "metrics": None})
+        return out.setdefault(base, empty_coding())
 
     for p in vdir.rglob("*_manual.csv"):
         _slot(p.name[: -len("_manual.csv")])["transitions"] = p
@@ -192,6 +207,11 @@ def coded_episode_map(validation_dir: Path | None = None) -> dict[str, dict]:
     for p in sorted(vdir.rglob("*__handcoded_*.json"),
                     key=lambda q: q.stat().st_mtime):
         _slot(p.name.split("__handcoded_")[0])["metrics"] = p  # newest wins
+    for p in sorted(vdir.rglob("*__*_detections.csv")):
+        _slot(p.name.split("__")[0])["detections"].append(p)
+    for p in sorted(vdir.rglob("*__*_match_detail_*.csv"),
+                    key=lambda q: q.stat().st_mtime):
+        _slot(p.name.split("__")[0])["detail"] = p             # newest wins
     return out
 
 
@@ -208,7 +228,7 @@ def coding_for_stem(stem: str, cmap: dict[str, dict]) -> dict:
     for base, slot in cmap.items():
         if len(base) >= 8 and low.startswith(base.lower()) and len(base) > best_len:
             best, best_len = slot, len(base)
-    return best or {"transitions": None, "events": None, "metrics": None}
+    return best or empty_coding()
 
 
 def write_manual_metrics(
@@ -1369,11 +1389,18 @@ def episode_dir(video_path: Path, validation_dir: Path | None = None) -> Path:
 
 # ── Episode workflow status ───────────────────────────────────────────────────
 
-def episode_status(video_path: Path, validation_dir: Path | None = None) -> dict[str, Any]:
+def episode_status(video_path: Path, validation_dir: Path | None = None,
+                   cmap: dict[str, dict] | None = None) -> dict[str, Any]:
     """Where is this episode in the validation workflow?
 
     Steps: template -> coded -> detected -> compared -> annotated.
     Searches the validation dir recursively so per-episode subfolders work.
+
+    Pass a `coded_episode_map()` as *cmap* when asking about many episodes at
+    once — the hand-coding worklist does. Without it this globs the validation
+    folder three times PER EPISODE, which cost 732 ms for a sixteen-episode
+    sample. The step logic below stays in one place either way; only where the
+    paths come from changes.
     """
     vdir = validation_dir or get_validation_dir()
     stem = video_path.stem
@@ -1385,7 +1412,16 @@ def episode_status(video_path: Path, validation_dir: Path | None = None) -> dict
     if not vdir.exists():
         return st
 
-    manual = find_manual(video_path, vdir)
+    if cmap is not None:
+        slot = coding_for_stem(stem, cmap)
+        manual = slot["transitions"]
+        st["detections"] = list(slot["detections"])
+        detail = slot["detail"]
+    else:
+        manual = find_manual(video_path, vdir)
+        st["detections"] = sorted(vdir.rglob(f"{stem}__*_detections.csv"))
+        detail = find_latest(f"{stem}__*_match_detail_*.csv", vdir)
+
     if manual:
         st["manual_path"] = manual
         try:
@@ -1393,9 +1429,6 @@ def episode_status(video_path: Path, validation_dir: Path | None = None) -> dict
         except Exception:
             st["coded_rows"] = 0
 
-    st["detections"] = sorted(vdir.rglob(f"{stem}__*_detections.csv"))
-
-    detail = find_latest(f"{stem}__*_match_detail_*.csv", vdir)
     if detail:
         st["latest_detail"] = detail
         try:

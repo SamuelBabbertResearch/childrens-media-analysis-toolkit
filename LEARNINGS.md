@@ -657,6 +657,29 @@ sheet is recursive because a person filed it; *writing* a new one stays at the
 top of the folder because it needs one predictable home. Asymmetries like that
 are exactly what a comment loses and a function keeps.
 
+### A per-row lookup where a one-pass scan already existed
+**What.** The hand-coding worklist asked `episode_status` for each episode in
+the sample. That function globs the validation folder three times *per
+episode*, so a sixteen-row worklist cost **732 ms** — and grows with the
+sample.
+**Why it is listed here rather than shrugged off.** `validation.py` already
+had `coded_episode_map()`, whose docstring says in as many words that it exists
+so "provenance markers don't cost a filesystem glob per episode", built for the
+Library tree and the Index table. This is shape 4 in miniature: **when one
+function in a module already guards against a mistake, that guard is a
+specification for its neighbours** — the same reading that caught the blended
+F1. The map was one import away and nothing pointed at it from the function
+that needed it.
+**The fix, and the part worth copying.** `episode_status` and
+`event_sheet_status` now take an optional prebuilt map; with one, they read the
+paths from it instead of globbing. **The step logic did not move.** Duplicating
+the derivation into a new "bulk" function would have been the faster edit and
+would have put "what does 'compared' mean" in two places, which is how every
+other entry on this page started. 732 ms → 53 ms, and flat in sample size.
+**Verified by equality, not by the clock:** every episode in every sample was
+run through both paths and the answers compared — 0 mismatches. A faster answer
+that is also a different answer is not an optimisation.
+
 ### The pipeline's derived status was not undisplayed — it was unreachable
 **What.** `TODO.md` item 7 read "`analyzer/pipeline.py` already computes
 `Stage.headline`, `Stage.details` and `Stage.next_action` and nothing displays
