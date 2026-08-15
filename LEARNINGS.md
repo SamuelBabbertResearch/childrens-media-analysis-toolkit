@@ -629,6 +629,34 @@ file could be in the corpus, in the index, and absent from the screen that
 lists the corpus. When two enumerators disagree, suspect that the *other* one
 has already acted on what yours cannot see.
 
+### Five readers looked for the same coding sheet; one looked in one place
+**What.** `code_events.py`, `analyzer/trials.py`, `gui_handcoding.py` and
+`gui_validation.py` all locate an episode's event sheet by searching the
+validation folder **recursively**, with a prefix fallback for shortened
+filenames. The Qt Code screen built one path — `<validation>/<stem>_events.csv`
+— and asked whether it existed. A sheet filed one folder down, or named with a
+shortened stem, therefore read as *no sheet* on screen while the command line
+scored it, and the screen would have opened a fresh empty sheet over the top of
+a real coding pass.
+**Why it had not bitten.** This working copy has exactly one event sheet, at
+the top level, header-only. The defect needed a second coding session filed
+tidily to fire — which is the normal next step, not an exotic case.
+**Also found in the same file.** `_open_episode` never cleared `self._events`,
+so opening a second, uncoded episode kept the first one's marks in the table
+under the second episode's name, and Save Sheet would have written them there.
+Hand-placed timestamps are the only measurement in CMAT a person makes
+themselves; writing them into the wrong file is the worst available kind of
+silent corruption.
+**Avoid.** Both were found by needing the answer for something else — a
+worklist has to say "is this coded?" per episode, and asking that question
+found four implementations of it. `event_coding.find_event_sheet` /
+`event_sheet_status` are now the one answer and `trials.py`'s private copy is
+deleted. Same shape as `load_scored()`: **when a rule must hold at every call
+site, put it IN the call.** And note which half is centralised — *finding* a
+sheet is recursive because a person filed it; *writing* a new one stays at the
+top of the folder because it needs one predictable home. Asymmetries like that
+are exactly what a comment loses and a function keeps.
+
 ### The pipeline's derived status was not undisplayed — it was unreachable
 **What.** `TODO.md` item 7 read "`analyzer/pipeline.py` already computes
 `Stage.headline`, `Stage.details` and `Stage.next_action` and nothing displays

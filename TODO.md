@@ -108,10 +108,9 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
    episode, and a per-episode results table as the run proceeds. Decide
    whether a separate live window still earns its place before porting it.
 
-   Smaller and also decisions: Settings has **Save as Preset** but not *Save
-   as Default*; and the Episode Sampler can send a draw to the analysis queue
-   but not to a hand-coding worklist, because the Qt Human coding tab has no
-   worklist — it takes one episode at a time.
+   Smaller and also a decision: Settings has **Save as Preset** but not *Save
+   as Default*. (The hand-coding worklist that used to be listed here is
+   **done** — 2026-08-16, see *The research context, continued*.)
 
 7. **Decide about `master`.** The branch is pushed (done 2026-08-11), so the
    work is backed up. But `feature/language-analysis` is far ahead of
@@ -169,10 +168,12 @@ session** — each needs its own verification against real output.
     arrives pre-staged in the run queue. It is visible (the Showing: control
     and the queue note both name it) and nothing is mis-attributed, but decide
     whether an unlinked pipeline should reset to the whole library instead.
-- **Scope Human coding.** Still one `set_target(path)` from the Library
-  selection. The sample should arrive as a worklist — which is also item 6's
-  "the sampler can send a draw to the analysis queue but not to a hand-coding
-  worklist, because the Qt Human coding tab has no worklist".
+- ~~Scope Human coding.~~ **Done 2026-08-16.** Code and Validate tool both show
+  the sample as a worklist with each episode's coding state, read from the
+  engine. This also closes item 6's "the Qt Human coding tab has no worklist".
+  Two real defects were found on the way and fixed — one sheet lookup instead
+  of two, and opening a second episode no longer carries the first one's marks
+  (`LEARNINGS.md`).
 - **Scope Language.** Same shape; its Speech view already lists many episodes,
   so this is closer to filtering the list it already builds than to staging a
   queue. Check which before building it.

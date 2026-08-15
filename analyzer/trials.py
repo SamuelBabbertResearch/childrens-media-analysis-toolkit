@@ -342,19 +342,14 @@ def sample_coverage(trial: dict, validation_dir: Path | None = None) -> dict | N
     if not stems:
         return None
 
-    def _has_events_sheet(stem: str) -> bool:
-        if list(vdir.rglob(f"{stem}_events.csv")):
-            return True
-        suffix = "_events.csv"
-        for p in vdir.rglob(f"*{suffix}"):
-            base = p.name[:-len(suffix)]
-            if len(base) >= 8 and stem.lower().startswith(base.lower()):
-                return True
-        return False
+    # Imported here rather than at module scope: event_coding imports this
+    # module's neighbours, and the lookup is only needed on this path.
+    from .event_coding import find_event_sheet
 
     n_manual = sum(1 for s in stems
                    if find_manual(Path(f"{s}.mp4"), vdir) is not None)
-    n_events = sum(1 for s in stems if _has_events_sheet(s))
+    n_events = sum(1 for s in stems
+                   if find_event_sheet(Path(f"{s}.mp4"), vdir) is not None)
     return {"n_episodes": len(stems), "n_transition_coded": n_manual,
             "n_event_coded": n_events}
 

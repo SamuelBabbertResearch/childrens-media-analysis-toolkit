@@ -25,9 +25,9 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 
-from .validation import (_git_commit, episode_dir, get_validation_dir,
-                         hms_to_sec, match_transitions, parse_time_arg,
-                         sec_to_hms)
+from .validation import (_git_commit, episode_dir, find_latest,
+                         get_validation_dir, hms_to_sec, match_transitions,
+                         parse_time_arg, sec_to_hms)
 
 EVENT_TYPES = [
     ("physical",        "Violates intuitive physics: gravity, support, solidity (flying, through walls)"),
@@ -62,6 +62,70 @@ def write_event_template(video: Path | str,
                     "integral | incidental", "new | repeat",
                     "(optional sec)", "premise: <note show premise here>"])
     return out
+
+
+def find_event_sheet(video: Path | str,
+                     validation_dir: Path | None = None) -> Path | None:
+    """Locate the event-coding sheet for a video, wherever it was filed.
+
+    Mirrors `validation.find_manual`: exact stem first, then any
+    `*_events.csv` whose base name is a prefix of the video stem, minimum
+    eight characters. Coders shorten long filenames, and sheets get filed into
+    per-episode subfolders, so a top-level exact-name lookup answers "not
+    coded" for episodes that are.
+
+    ONE definition, because there were four. `code_events.py`, `trials.py`,
+    `gui_handcoding.py` and `gui_validation.py` each searched recursively with
+    this fallback while the Qt Code screen looked only at
+    `<validation>/<stem>_events.csv` — so the screen would have started a
+    fresh empty sheet for an episode the command line scores from an existing
+    one, with nothing on either side to reveal it. `LEARNINGS.md` § *The same
+    one-line mistake, in four independent places*.
+
+    Finding is recursive; WRITING stays at the top of the validation folder
+    (`write_event_template`, and the Code screen's Save). That asymmetry is
+    deliberate — a new sheet needs one predictable home, an old one has to be
+    found where a person put it.
+    """
+    vdir = validation_dir or get_validation_dir()
+    stem = Path(video).stem
+    exact = find_latest(f"{stem}_events.csv", vdir)
+    if exact:
+        return exact
+    if not vdir.exists():
+        return None
+    suffix = "_events.csv"
+    candidates = [
+        p for p in vdir.rglob(f"*{suffix}")
+        if len(p.name) - len(suffix) >= 8
+        and stem.lower().startswith(p.name[:-len(suffix)].lower())
+    ]
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda p: p.stat().st_mtime)[-1]
+
+
+def event_sheet_status(video: Path | str,
+                       validation_dir: Path | None = None) -> dict:
+    """How far event coding has got for one episode.
+
+    `n_events` counts rows `parse_event_csv` accepts, which is what any later
+    rate is computed from — not the line count, because a template's guidance
+    row carries no timestamp and is not an event. A sheet that exists with
+    zero events is a real and different state from no sheet at all: someone
+    created it and has not coded yet.
+    """
+    sheet = find_event_sheet(video, validation_dir)
+    if sheet is None:
+        return {"sheet": None, "exists": False, "n_events": 0,
+                "step": "uncoded"}
+    try:
+        events = parse_event_csv(sheet)
+    except Exception:
+        return {"sheet": sheet, "exists": True, "n_events": 0,
+                "step": "unreadable"}
+    return {"sheet": sheet, "exists": True, "n_events": len(events),
+            "step": "coded" if events else "started"}
 
 
 def parse_event_csv(path: Path,

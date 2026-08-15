@@ -1721,6 +1721,7 @@ class MainWindow(QMainWindow):
         self._scope = library_scope()
         self._sync_scope_choices()
         self._automated.set_scope(self._scope)
+        self._handcoding.set_scope(self._scope)
         self.populate()
         # Pipelines live under the root (<root>/.analysis/pipelines), so the
         # list has to be rebuilt when the root changes. Without this the tab
@@ -1789,6 +1790,7 @@ class MainWindow(QMainWindow):
         # The measurement tabs stage the working set rather than filtering to
         # it: a scope is a view, and these screens are where work is started.
         self._automated.set_scope(scope)
+        self._handcoding.set_scope(scope)
         if announce:
             self.statusBar().showMessage(
                 f"Showing {scope.describe()}.", 8000)

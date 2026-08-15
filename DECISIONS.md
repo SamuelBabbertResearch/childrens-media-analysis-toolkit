@@ -654,6 +654,32 @@ from a pipeline node would differ from the same run started from the tab bar);
 replacing the whole queue on every scope change (throws away what the user
 queued by hand).
 
+### Hand coding gets a worklist, and it is the sample
+**Decision.** `Worklist` in `ui/handcoding.py` shows the current sample's
+episodes with each one's coding state, on **both** Code and Validate tool.
+Double-clicking a row opens that episode. Under the whole-library scope it
+shows no rows and says why. Agreement is deliberately left out — it compares
+two coders' *sheets*, which are not episodes and are not drawn by a sample.
+**Reason.** Hand coding is a pass over a set, and the screen took one file from
+the Library tree, so the researcher tracked "what is left?" against
+`selected.csv` by hand. `TODO.md` item 6 already named the gap from the other
+end: the sampler could send a draw to the analysis queue but not to a
+hand-coding worklist, because there was no worklist.
+**Consequence.** Each row's state comes from the engine —
+`event_coding.event_sheet_status` for event sheets,
+`validation.episode_status` for transition sheets — so the worklist and
+`code_events.py` cannot disagree about whether an episode is coded. The state
+function returns `(text, coded)`; the widget never infers "done" by reading its
+own label.
+**Consequence.** The whole library gets no worklist. A worklist of 137 episodes
+is a library, and what makes a worklist useful is that it ends.
+**Date.** 2026-08-16.
+**Rejected.** A worklist on Code only (it leaves Validate as the half-done half
+of one tab); reusing the Library tree inside the tab (it answers "which
+episodes exist", not "which are coded", and it is already one tab away);
+advancing automatically to the next uncoded episode on save (coding order is
+the coder's, and a screen that moves under you loses work).
+
 ### A validation subset is drawn, not chosen by CMAT
 **Decision.** A sample's `selected.csv` is already a valid registry for the
 sampler — it carries the `episode` column `load_registry_csv` requires plus
