@@ -1241,7 +1241,7 @@ def aggregate_summary(directory: Path | None = None,
     what a reader wants: this working copy holds runs of ContentDetector and
     TransNetV2 over the same two episodes, and summing them produced a single
     "AGGREGATE F1 0.891" describing no detector that exists.
-    `local_hard_cut_f1` has always filtered for exactly this reason — its
+    `local_boundary_f1` has always filtered for exactly this reason — its
     docstring calls the unfiltered version "one meaningless average" — but
     this function, which the CLI's `summary` command and the Validate tool
     screen both display, did not.
