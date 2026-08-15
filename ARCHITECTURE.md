@@ -58,6 +58,38 @@ Two things follow from the diagram that are easy to get wrong:
 same title sequence for every episode of a season is transcription rather than
 judgement, and it inflates agreement statistics. Code it once, label it, reuse.
 
+### The research context: which episodes the application is working on
+
+The stages above describe a *study*. The **research context** is the smaller,
+live question the interface has to answer every moment it draws a list: which
+episodes am I showing right now?
+
+`analyzer/scope.py` owns it. A `Scope` is either the whole library or exactly
+the episodes one documented draw selected, and `MainWindow._scope` is the
+current one. It is set by drawing a sample, by choosing a pipeline, or from the
+**Showing:** chooser on the toolbar.
+
+Three properties that are load-bearing:
+
+- **It is a view, never a filter on the record.** Narrowing it hides rows. It
+  deletes nothing, re-measures nothing, and changes no cached result.
+- **It is never persisted.** The application always opens on the whole library.
+  Restoring a narrowed library with no memory of having narrowed it is the
+  failure the visible chooser exists to prevent.
+- **Paths are normalised on entry.** A draw's `selected.csv` and the library
+  walk produce two spellings of one path, so `Scope.contains()` is the only
+  sanctioned membership test — see `LEARNINGS.md` on the sampler's CSV paths.
+
+Not every screen obeys it yet. The Library and the Index do; the measurement
+tabs still take one episode from the Library selection. `TODO.md` § *The
+research context, continued* has the rest, and
+`design/CMAT_PIPELINE_INTERACTION_MODEL.md` Phase 2 is where the idea comes
+from.
+
+**Scope is not Selection.** Selection is the pipeline stage — which episodes
+belong to a study. Scope is what the interface is currently showing. They
+usually coincide, and they are still different questions; see `CLAUDE.md` §3.
+
 ## 2. Authoritative state versus derived state
 
 This distinction decides where a change belongs.
@@ -72,6 +104,8 @@ This distinction decides where a change belongs.
 | **Derived** | Show aggregates | computed on demand from cached results | yes |
 | **Derived** | The SQLite index | `<root>/.analysis/index.db` | yes — re-analyse |
 | **Derived** | Pipeline *status* | computed by `analyzer/pipeline.py` from disk | yes |
+| **Derived** | The research context | `analyzer/scope.py`, from a draw's `selected.csv` | yes — and deliberately **not** persisted between launches |
+| **Derived** | Show-level rows in the Index | `db.summarise_shows()`, from the episode rows on screen | yes |
 
 Derived state is never the record. If a derived file disagrees with the
 authoritative source, the source wins and the derived file is stale.
@@ -108,6 +142,13 @@ MP4 ─→ analyzer/engine.py ─→ EpisodeResult ─→ cache (.analysis/<show
   folder orphans its cache** — see `LEARNINGS.md`.
 - The index is keyed on the **resolved absolute** `file_path`. It is derived,
   so rebuilding it is always safe.
+- **The Index tab does not read the `shows` table.** It queries episode rows,
+  narrows them to the research context, and summarises them with
+  `db.summarise_shows()`, so its Shows view is its Episodes view by
+  construction. The stored table is written by `upsert_show` on a whole-show
+  analysis only, and goes stale when episodes are analysed one at a time —
+  measured at 2 episodes / 0.3071 against a true 5 / 0.2557. `cli.py db
+  --shows` and `gui.py` still read it. See `LEARNINGS.md`.
 
 ## 5. Front-end structure
 
@@ -117,6 +158,8 @@ protecting.
 
 ```
 analyzer/   engine + data model      (no GUI imports — enforced by test)
+  scope.py    the research context — which episodes are current, and the only
+              reader of a draw's selected.csv
 cli.py      thin layer over analyzer
 gui*.py     Tk front-end             (THE CURRENT SOFTWARE)
 ui/         Qt front-end             (in progress — not yet the product)

@@ -5,7 +5,8 @@ Previously-on, for a session starting with zero memory. Read this, then
 everything else.
 
 **Last updated:** 2026-08-15 (the application now has a research context —
-`analyzer/scope.py`; the Library filters to a drawn sample and names which one)
+`analyzer/scope.py`; the Library and Index filter to a drawn sample, and the
+toolbar always names which one. 66 duplicate episodes moved out of the library)
 
 ---
 
@@ -124,10 +125,10 @@ screen worked out "which episodes?" for itself from the Library tree. A sample
 could be drawn, documented and manifested with no screen any the wiser.
 
 `analyzer/scope.py` is now the answer to that question: a `Scope` is either the
-whole library or exactly the episodes one draw selected. The Library filters to
-it, and a **Showing:** chooser above the tree always names which. Drawing a
-sample makes it current; so does choosing a pipeline. It is **not persisted** —
-the application always opens on the whole library, deliberately.
+whole library or exactly the episodes one draw selected, and the **Showing:**
+chooser on the toolbar always names which. Drawing a sample makes it current;
+so does choosing a pipeline. It is **not persisted** — the application always
+opens on the whole library, deliberately.
 
 **The Library and the Index obey it; the three measurement tabs do not yet.**
 They still take a single episode from the tree selection. The remaining pieces
@@ -742,7 +743,40 @@ as its default button (`TODO.md` item 10).
   table. **It is not a hard-cut figure** — that is a different, real number
   (0.841 / 0.964), and calling it hard-cut is the mistake that cost this
   project a published contradiction.
-- This working copy has real data: 32 shows, 202 episodes, 13 indexed, 29
-  pipeline documents, 22 trials. Tests must not write into it — a previous
-  session's manual test created a stray pipeline document that had to be
-  removed by hand.
+- **The research context is a thing now.** `analyzer/scope.py` decides which
+  episodes a screen is showing. `CLAUDE.md` §3 rules on *scope* vs *selection*
+  — they are not synonyms and the difference matters. `ARCHITECTURE.md` §1 has
+  the concept.
+- This working copy has real data: **32 shows, 137 episodes, 14 indexed**, 29
+  pipeline documents, 22 trials. (It was 203 episodes until 2026-08-15, when
+  66 duplicates were moved out — see below.) Tests must not write into it — a
+  previous session's manual test created a stray pipeline document that had to
+  be removed by hand.
+
+## Picking this up cold on 2026-08-16 or later
+
+Two commits on 2026-08-15 (`6dbca37`, `1818b98`) added the research context and
+scoped the Library and Index. **Everything is committed and the suite is green
+(359 passed, 13 skipped).** Nothing is half-finished.
+
+The three things most worth knowing before choosing what to do next:
+
+1. **The obvious next task is the measurement tabs.** Automated coding, Human
+   coding and Language still take one episode from the Library selection, so
+   double-clicking a pipeline node still lands you on an empty screen.
+   `TODO.md` § *The research context, continued* has the shape of it.
+2. **A root cause is still open and is generating defects.** The sampler's
+   analysis path does not go through `analyzer/show_index.py`, so anything it
+   touches is named and listed by different rules. It has produced two
+   separate defects already: a drawn `.mkv` invisible in the Library (fixed by
+   unifying the extension set) and an index row whose show name is a raw
+   relative path (**not** fixed — `TODO.md`). Fixing the path is probably worth
+   more than fixing the next symptom.
+3. **Some stored numbers are stale and are not all fixed.** The `shows` table
+   goes stale because `upsert_show` only runs on a whole-show analysis. The Qt
+   Index now derives around it; `cli.py db --shows` and `gui.py` do not.
+   `FOR_PAPER.txt` carries the correction and the "do not quote" note.
+
+Read `TODO.md` items 0–1 first: item 0 is a data question (re-analyse Spongebob
+after the de-duplication), item 1 is the video time counter, which is the
+oldest real defect still open.
