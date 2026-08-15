@@ -7,30 +7,10 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
 
 ## Now
 
-0. **Re-analyse Spongebob and re-check any figure quoted from it.** The
-   duplicate episodes were removed on 2026-08-15 (see below), and the index
-   row for the removed copy is gone — so the live double count is fixed. What
-   is *not* done is re-deriving anything that was computed while it was there.
-   Any Spongebob show-level aggregate produced before 2026-08-15 counted
-   `S01E08B Squeaky Boots` twice. `FOR_PAPER.txt` has the detail.
-
-   **What was done.** A scan found 66 duplicated filename stems among 203
-   video files. `Little Bear (Full Series) - Copy/` (65 episodes, a whole-series
-   duplicate carrying its own 81-result `.analysis`) and the misfiled
-   `Season 2/SpongeBob SquarePants S01E08B Squeaky Boots.mp4` were **moved, not
-   deleted**, to `_duplicates_quarantined_2026-08-15/` at the project root —
-   outside the library, gitignored, and reversible by moving them back. The
-   `.mkv` under `Season 1/` was kept: `S01E08B` is a season-one episode, so it
-   is the correctly-filed copy, and it is the one the sample manifests
-   reference. The library is now 137 files with **0 duplicated stems**.
-
-   **Expected consequence, not a defect.** Two Spongebob draws referenced the
-   removed copy and now report "1 no longer on disk". Manifests are historical
-   records of what was drawn and are deliberately not rewritten. The 9-episode
-   draw was always 8 distinct episodes.
-
-   **Delete the quarantine folder when you are satisfied** — that part is
-   yours; nothing in the tool reads it.
+**Delete `_duplicates_quarantined_2026-08-15/` when you are satisfied.** The
+66 duplicate files moved there on 2026-08-15 (a whole-series `Little Bear`
+copy and a misfiled `SpongeBob` episode) are reversible by moving them back;
+nothing in the tool reads the folder. That part is yours.
 
 1. **Spot-check for whip-pan cuts coded as `hard_cut`.** The codebook now
    defines whip-pan disguised cuts; a coder not looking for them may have coded

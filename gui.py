@@ -3485,11 +3485,19 @@ class App(tk.Tk):
         """Seed the DB from all existing cached episode JSONs, rescored with current config."""
         if not self._db_conn or not self._root_folder:
             return
+        # Keyed by db_show_key, not by show_dir — a show split across season
+        # subfolders gives list_shows() one entry PER SEASON, and every
+        # season's db_show_key collapses to the same parent show. Upserting
+        # per show_dir called upsert_show once per season, each with only
+        # that season's episodes — the season walked last silently
+        # overwrote every earlier season's aggregate instead of merging with
+        # it (same bug, same fix, as cli.py's _db_backfill and Qt's
+        # MainWindow.rescore_index — found 2026-08-17 on Spongebob).
+        by_key: dict[str, tuple[str, list]] = {}
         for show_dir in list_shows(self._root_folder):
             skey = show_key(self._root_folder, show_dir)
             stable_key = db_show_key(self._root_folder, show_dir)
             dname, auto_s = display_show_name(self._root_folder, show_dir)
-            show_results = []
             for ep in list_episodes(show_dir):
                 c = load_cached(self._root_folder, skey, ep.stem)
                 if c:
@@ -3500,15 +3508,18 @@ class App(tk.Tk):
                             upsert_episode(self._db_conn, result, dname, str(ep), show_key=stable_key)
                             if auto_s is not None:
                                 auto_set_season(self._db_conn, str(ep), auto_s)
-                            show_results.append(result)
+                            _, results = by_key.setdefault(stable_key, (dname, []))
+                            results.append(result)
                     except Exception:
                         pass
-            if show_results:
-                try:
-                    agg = compute_show_aggregate(dname, show_results)
-                    upsert_show(self._db_conn, agg, dname, show_key=stable_key)
-                except Exception:
-                    pass
+        for stable_key, (dname, show_results) in by_key.items():
+            if not show_results:
+                continue
+            try:
+                agg = compute_show_aggregate(dname, show_results)
+                upsert_show(self._db_conn, agg, dname, show_key=stable_key)
+            except Exception:
+                pass
 
     # -----------------------------------------------------------------------
     # Language tab

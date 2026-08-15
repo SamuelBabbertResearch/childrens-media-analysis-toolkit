@@ -4,12 +4,66 @@ Previously-on, for a session starting with zero memory. Read this, then
 `TODO.md`, then `DECISIONS.md` and `LEARNINGS.md`. `INDEX.md` points at
 everything else.
 
-**Last updated:** 2026-08-17 (the sampler can fetch a live YouTube channel or
-playlist and sample it before downloading anything — playlists tag as a
-stratify axis, eras work for a channel with no folder. Suite green at 398
-passed, 13 skipped)
+**Last updated:** 2026-08-17, later still (TODO.md item 0 closed — the
+Spongebob show-level aggregate is recomputed, and a real bug that was
+silently defeating the fix is found and closed in all three places it lived.
+Suite green at 400 passed, 13 skipped)
 
 ---
+
+## What changed on 2026-08-17, latest of all: closing TODO.md item 0 found a third bug
+
+Item 0 asked for one thing — recompute Spongebob's show-level aggregate now
+that the duplicate `S01E08B Squeaky Boots` copy is gone — and said it needed
+no re-analysis, just reading the cache correctly. `cli.py db shows Shows`
+(which backfills the index from cache before printing) should have produced
+that number. It produced **"1 episode, avg_load 0.292"** instead — worse
+than either number the entries below already knew was wrong.
+
+**Root cause, distinct from the duplicate-count and raw-path bugs already on
+record:** `cli.py _db_backfill`, `ui/main_window.py MainWindow.rescore_index`
+and `gui.py`'s own `_backfill_index` all looped `for show_dir in
+list_shows(root)` and called `upsert_show` once per `show_dir`. Spongebob's
+episodes sit under `Season 1/` and `Season 2/` subfolders, so `list_shows()`
+returns **one entry per season** — and `db_show_key` deliberately collapses
+every season's key to the same parent show, so all three functions'
+`upsert_show` calls kept **overwriting** the previous season's aggregate
+instead of merging with it. Only the season walked last ever survived a
+backfill. This is why the raw-path fix and the de-duplication below were
+never actually visible as a corrected number: whichever fix landed, the next
+backfill silently discarded all but one season before anyone could read the
+result.
+
+**Fixed in all three places** (the fourth reader, `ui/index_tab.py`'s
+`summarise_shows`, was never affected — it derives from the episode rows
+already on screen rather than reading the stored table, exactly the design
+`DECISIONS.md` records for it). Each now accumulates results keyed by
+`db_show_key` across every `show_dir` that shares one, and upserts once per
+key after the full walk. Two regression tests build a synthetic show split
+across two season folders and check the merged count and mean survive a
+backfill — `tests/test_derived_consistency.py::test_backfill_merges_a_show_split_across_season_folders`
+and `tests/test_scope.py::test_rescore_index_merges_a_show_split_across_seasons`
+(the third instance, `gui.py`'s `_backfill_index`, is exercised by neither —
+the Tk build has no test harness for it; read the source alongside the other
+two if it is ever touched again).
+
+**Verified against the real library**: Spongebob Squarepants Season 1, 6
+episodes analysed (of 8 on disk in `Shows/`), avg_load **0.2668** — not the
+stale duplicate-inflated 0.3071 nor the season-overwrite artifact's 0.292.
+The raw-path show-name defect is also fixed for free, since the same
+backfill re-keys every episode from `db_show_key` on every run. Full detail,
+including why the public site's own published Spongebob figures were never
+affected (a different, older, unsplit cache — `TODO.md` item 5), is in
+`FOR_PAPER.txt`. Suite: 400 passed (2 new), 13 skipped.
+
+**Left alone:** `gui.py`'s `_maybe_save_show_aggregate` (the incremental
+save that fires after a season's episodes finish analysing, distinct from
+the backfill sweep above) still computes an aggregate from one `show_dir`'s
+episodes only, so it can still write a single-season aggregate between one
+analysis run and the next backfill. Narrower and shorter-lived than the bug
+above, and the Tk build is being retired (`TODO.md` item 7) rather than
+extended — noted here so it isn't mistaken for new if `gui.py` is audited
+again.
 
 ## Where the project stands
 
@@ -385,11 +439,12 @@ Two things worth knowing before touching it:
 - The scope is a **view**. It hides rows; it deletes nothing and re-measures
   nothing. Because it can hide things it is always visible and always one click
   from *Whole library*.
-- Building it surfaced a real inconsistency: the sampler draws six video
-  extensions and the library walk reads `.mp4` only, so a draw can contain
-  episodes the Library cannot list. The header says what is not shown, but
-  whether to widen the walk is a corpus-level decision — `TODO.md` item 0, and
-  recorded in `FOR_PAPER.txt` because it changes N.
+- Building it surfaced a real inconsistency: the sampler drew six video
+  extensions while the library walk read `.mp4` only, so a draw could contain
+  episodes the Library could not list. **Resolved**: `analyzer/show_index.py`'s
+  `VIDEO_EXTENSIONS` is now the one definition both modules share, so the
+  Library lists everything the sampler can draw. Recorded in `FOR_PAPER.txt`
+  because it changed N for at least one existing draw.
 
 Everything else in `TODO.md` is real but blocks nothing. The **F1
 contradiction is now closed** (2026-08-14, see below); the composite rationale
@@ -1014,20 +1069,22 @@ The three things most worth knowing before choosing what to do next:
    `node.config` is still written by the templates and read by nothing. It is
    a bigger piece of work than any of the five so far; do not start it in a
    session that has other goals.
-2. **A root cause is still open and is generating defects.** The sampler's
-   analysis path does not go through `analyzer/show_index.py`, so anything it
-   touches is named and listed by different rules. It has produced two
-   separate defects already: a drawn `.mkv` invisible in the Library (fixed by
-   unifying the extension set) and an index row whose show name is a raw
-   relative path (**not** fixed — `TODO.md`). Fixing the path is probably worth
-   more than fixing the next symptom.
-3. **Some stored numbers are stale and are not all fixed.** The `shows` table
-   goes stale because `upsert_show` only runs on a whole-show analysis. The Qt
-   Index now derives around it; `cli.py db --shows` and `gui.py` do not.
-   `FOR_PAPER.txt` carries the correction and the "do not quote" note.
+2. **A root cause is still open, though its known symptoms are now fixed.**
+   The sampler's analysis path does not go through `analyzer/show_index.py`,
+   so anything it touches is named and listed by different rules. It produced
+   two defects: a drawn `.mkv` invisible in the Library (fixed by unifying the
+   extension set) and an index row whose show name was a raw relative path
+   (fixed 2026-08-17, as a side effect of the backfill bug below, not by
+   routing the sampler through `show_index` — that root cause is still open).
+3. **The stored `shows` table's staleness is fixed where it mattered, plus a
+   second bug found on the way.** `cli.py db --shows`, `ui/main_window.py`'s
+   `rescore_index` and `gui.py`'s `_backfill_index` all shared one bug: a show
+   split across season subfolders had its aggregate overwritten by whichever
+   season was walked last, rather than merged. Fixed in all three 2026-08-17 —
+   see *What changed on 2026-08-17, latest of all* above. `ui/index_tab.py`'s
+   `summarise_shows` was never affected; it derives from the episodes on
+   screen instead of reading the stored table.
 
-Read `TODO.md` item 0 first: a data question (re-aggregate Spongebob after the
-de-duplication — no re-analysis needed, the per-episode results are correct
-and cached). The video time counter (formerly item 1) was fixed 2026-08-17 —
-see *What changed on 2026-08-17* above. Item 0 is smaller than the pipeline
-wires and does not depend on them.
+All three items above are closed as of 2026-08-17 — this section is kept as a
+record of what "picking it up cold" looked like that day, not as live status.
+For current status read the top of this file.

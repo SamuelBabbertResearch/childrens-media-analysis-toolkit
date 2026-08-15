@@ -185,6 +185,50 @@ Library reporting "groups shows" is the tree layer; the Index showing one
 view, and as of 2026-08-14 it exists in both builds — it goes around the tree
 layer entirely, aggregating every cached episode under the root.
 
+### The fix for one season-collapsing defect became the cause of the next
+**What.** The entry above records the fix: `db_show_key` deliberately collapses
+`Show/Season 1` and `Show/Season 2` to the same parent key, so the index shows
+one `Show` rather than two. Three places re-derive the whole `shows` table
+from cache — `cli.py _db_backfill`, `ui/main_window.py MainWindow
+.rescore_index`, `gui.py _backfill_index` — and all three looped `for
+show_dir in list_shows(root): ... upsert_show(...)`, once per `show_dir`.
+Reported 2026-08-17 while closing `TODO.md` item 0 (recompute Spongebob's
+aggregate after de-duplication): `cli.py db shows` read "1 episode,
+avg_load 0.292" — worse than either number already on record as wrong.
+**Why.** `list_shows()` returns one entry **per season folder**, not per
+show. Grouping by `db_show_key` was the fix for the *display* layer (one
+`Show` row, not two); it was never applied to the *write* layer. Each
+season's `upsert_show` call is a full replace (`INSERT OR REPLACE` keyed by
+`show_key`), so the season walked last silently overwrote every earlier
+season's aggregate rather than merging with it. A show that fits in one
+folder never exercises this path — it was invisible on Curious George and
+Arthur, both single-folder in this library, and would stay invisible on any
+show until it happened to be the one laid out with season subfolders.
+**The trap.** Two entries above this one already record a duplicate-count bug
+and a raw-path show-name bug on this exact show. Both looked fixed after
+their own commits. Neither ever produced a *visible*, correct number,
+because every backfill after either fix silently threw away all but one
+season's episodes before anyone read the result — a fix downstream of an
+unrelated bug can look like it didn't work, when the real fault is a third
+thing neither fix touched.
+**Fix.** All three functions now accumulate `(EpisodeResult, dname)` keyed by
+`db_show_key` across every `show_dir` sharing one, and call `upsert_show`
+once per key after the whole walk — not once per `show_dir`. Two regression
+tests build a synthetic show split across two season folders and assert the
+merged count and mean survive a backfill/rescore:
+`tests/test_derived_consistency.py::test_backfill_merges_a_show_split_across_season_folders`,
+`tests/test_scope.py::test_rescore_index_merges_a_show_split_across_seasons`.
+`ui/index_tab.py`'s `summarise_shows` was never affected — it derives from
+episode rows already on screen rather than reading the stored table, which
+is exactly why `DECISIONS.md` gives it that design.
+**Avoid.** When a stable key intentionally maps many source groupings to one
+target row (a season-collapsing key, a normalised name, a content hash),
+grep every writer of that key for a loop that upserts once per *source*
+grouping rather than once per *target* key. A reader that derives on demand
+cannot have this bug by construction; a writer that caches an aggregate can,
+silently, and will keep looking plausible — a valid, if wrong, count and
+mean, not a crash.
+
 ### The sampler's CSV paths did not match the cache's keys
 **What.** Loading a sampling template failed to find already-analysed episodes;
 it recurred after a restart.

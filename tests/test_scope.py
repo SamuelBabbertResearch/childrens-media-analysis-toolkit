@@ -770,3 +770,35 @@ def test_the_index_show_means_follow_the_context(window, tmp_path):
     assert whole == "0.300"          # mean of both
     assert narrowed == "0.200"       # the drawn one only
     assert index._table.topLevelItem(0).text(1) == "1"    # Episodes count
+
+
+def test_rescore_index_merges_a_show_split_across_seasons(window, tmp_path):
+    """cli.py's _db_backfill has an equivalent test for the same bug in the
+    CLI path; this is the Qt build's rescore_index(). A show split across
+    Season 1/ and Season 2/ subfolders gives list_shows() one entry per
+    season, and both seasons' db_show_key collapse to the same parent show —
+    upserting the show row once per show_dir let the season walked last
+    overwrite every earlier season's aggregate instead of merging with it.
+    """
+    from analyzer.cache import save_cache
+    from analyzer.db import get_db, query_shows
+    from analyzer.schema import EpisodeResult
+    from analyzer.show_index import show_key
+
+    root = tmp_path / "Library"
+    for season, cuts in (("Season 1", 10.0), ("Season 2", 20.0)):
+        d = root / "Show" / season
+        d.mkdir(parents=True)
+        ep = d / "E01.mp4"
+        ep.write_bytes(b"")
+        r = EpisodeResult(file="E01.mp4", duration_sec=600.0)
+        r.metrics.scene_pacing.cuts_per_min = cuts
+        save_cache(root, show_key(root, d), "E01", r.to_dict())
+
+    window.set_root(root)
+    window.rescore_index()
+
+    rows = query_shows(get_db(root))
+    assert len(rows) == 1, "the two seasons must merge into one show row"
+    assert rows[0]["episode_count"] == 2
+    assert rows[0]["avg_cuts_per_min"] == pytest.approx(15.0)

@@ -215,11 +215,20 @@ def _db_backfill(root: Path) -> None:
 
     cfg = load_config()
     conn = get_db(root)
+    # Keyed by db_show_key, not by show_dir: a show split across season
+    # subfolders (Season 1/, Season 2/, ...) gives list_shows() one entry PER
+    # SEASON, and every season's db_show_key collapses to the same parent
+    # show. Upserting per show_dir called upsert_show once per season, each
+    # with only that season's episodes — the season processed last silently
+    # overwrote every earlier season's aggregate instead of merging with it
+    # (found 2026-08-17 on Spongebob: the stored row read as one episode,
+    # the last one walked). Accumulate across every show_dir sharing a key,
+    # then upsert once per key after the whole walk.
+    by_key: dict[str, tuple[str, list]] = {}
     for show_dir in list_shows(root):
         skey = show_key(root, show_dir)
         stable_show_key = db_show_key(root, show_dir)
         dname, _auto_s = display_show_name(root, show_dir)
-        show_results = []
         for ep in list_episodes(show_dir):
             try:
                 # Re-scored: the index stores the composite, so backfilling it
@@ -228,15 +237,18 @@ def _db_backfill(root: Path) -> None:
                 result = load_scored(root, skey, ep.stem, cfg)
                 if result is not None and result.status == "ok":
                     upsert_episode(conn, result, dname, str(ep), show_key=stable_show_key)
-                    show_results.append(result)
+                    _, results = by_key.setdefault(stable_show_key, (dname, []))
+                    results.append(result)
             except Exception:
                 pass
-        if show_results:
-            try:
-                agg = compute_show_aggregate(dname, show_results)
-                upsert_show(conn, agg, dname, show_key=stable_show_key)
-            except Exception:
-                pass
+    for stable_show_key, (dname, show_results) in by_key.items():
+        if not show_results:
+            continue
+        try:
+            agg = compute_show_aggregate(dname, show_results)
+            upsert_show(conn, agg, dname, show_key=stable_show_key)
+        except Exception:
+            pass
     conn.close()
 
 

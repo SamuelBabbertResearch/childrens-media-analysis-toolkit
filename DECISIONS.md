@@ -711,7 +711,8 @@ platform difference — `glob("*.mp4")` is case-sensitive on Linux and not on
 Windows, so the same library listed differently depending on where it opened.
 **Consequence, less comfortable.** The `.mp4`-only filter had been hiding a
 duplicate. Making the corpus honest made the duplicate visible, which is the
-right order but means `TODO.md` item 0 must be done before the next draw.
+right order but meant the Spongebob show-level aggregate needed recomputing
+before the next draw — done 2026-08-17, see `FOR_PAPER.txt`.
 **Date.** 2026-08-15.
 **Rejected.** Narrowing the sampler to `.mp4` (it would make existing manifests
 undrawable); leaving the two definitions apart and describing the gap in the
