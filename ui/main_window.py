@@ -699,6 +699,20 @@ class MainWindow(QMainWindow):
                              spacer.sizePolicy().verticalPolicy().Preferred)
         tb.addWidget(spacer)
 
+        # The research context lives on the toolbar rather than inside the
+        # Library, because more than one screen now obeys it. A control that
+        # narrows the Index while sitting on another tab would be a filter the
+        # user cannot see from the screen it is filtering.
+        tb.addWidget(QLabel("Showing:"))
+        self._scope_pick = QComboBox()
+        self._scope_pick.setMinimumWidth(230)
+        self._scope_pick.setToolTip(
+            "Which episodes the Library and Index show: the whole library, or "
+            "exactly the episodes one documented sample drew. This narrows "
+            "the view only — nothing is deleted, and no measurement changes.")
+        self._scope_pick.currentIndexChanged.connect(self._on_scope_picked)
+        tb.addWidget(self._scope_pick)
+
         tb.addWidget(QLabel("Preset:"))
         self._preset = QComboBox()
         self._preset.addItems(list(self._cfg.get("presets", {})) or
@@ -1231,27 +1245,13 @@ class MainWindow(QMainWindow):
             "below to see its analysis.")
         lay.addWidget(self._hint)
 
-        # The scope control. It sits above the tree rather than in the panel
-        # header because it governs what the tree contains, and because a
-        # filter the user cannot see is a filter they will forget: the
-        # application opens on the whole library and this row always says
-        # which set is on screen.
-        scope_row = QHBoxLayout()
-        scope_row.setContentsMargins(0, 0, 0, 0)
-        scope_row.setSpacing(6)
-        scope_row.addWidget(QLabel("Showing:"))
-        self._scope_pick = QComboBox()
-        self._scope_pick.setMinimumWidth(240)
-        self._scope_pick.setToolTip(
-            "Which episodes this screen shows: the whole library, or exactly "
-            "the episodes one documented sample drew. This narrows the view "
-            "only — nothing is deleted, and no measurement changes.")
-        self._scope_pick.currentIndexChanged.connect(self._on_scope_picked)
-        scope_row.addWidget(self._scope_pick)
+        # The chooser itself is on the toolbar (window-level, because the Index
+        # obeys it too). What stays here is the sentence explaining the current
+        # context, next to the tree it is filtering.
         self._scope_note = QLabel("")
         self._scope_note.setProperty("role", "dim")
-        scope_row.addWidget(self._scope_note, 1)
-        lay.addLayout(scope_row)
+        self._scope_note.setWordWrap(True)
+        lay.addWidget(self._scope_note)
 
         split = QSplitter(Qt.Horizontal)
         lay.addWidget(split, 1)
@@ -1784,7 +1784,7 @@ class MainWindow(QMainWindow):
         """Make *scope* current and redraw the Library."""
         self._scope = scope
         self._sync_scope_choices()
-        self.populate()
+        self.populate()          # also refreshes the Index, which obeys it too
         if announce:
             self.statusBar().showMessage(
                 f"Showing {scope.describe()}.", 8000)

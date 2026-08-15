@@ -394,3 +394,107 @@ def test_extension_matching_ignores_case(tmp_path):
     (show / "LOUD.MP4").write_bytes(b"")
     (show / "quiet.mp4").write_bytes(b"")
     assert len(list_episodes(show)) == 2
+
+
+# --- the Index obeys the context, and its Shows view is derived --------------
+
+def test_show_rows_are_derived_from_the_episodes_on_screen():
+    """The stored `shows` table goes stale; a summary of the rows cannot.
+
+    Live example on 2026-08-15: the stored Spongebob row read
+    episode_count=2, avg_load=0.3071 while the index held five Spongebob
+    episodes averaging 0.2557, because `upsert_show` only runs on a
+    whole-show analysis.
+    """
+    from analyzer.db import summarise_shows
+    episodes = [
+        {"show_key": "S", "show_name": "S", "sensory_load_score": 0.20,
+         "cuts_per_min": 10.0, "analyzed_at": "2026-01-01"},
+        {"show_key": "S", "show_name": "S", "sensory_load_score": 0.40,
+         "cuts_per_min": 20.0, "analyzed_at": "2026-02-02"},
+    ]
+    rows = summarise_shows(episodes)
+    assert len(rows) == 1
+    assert rows[0]["episode_count"] == 2
+    assert rows[0]["avg_load"] == pytest.approx(0.30)
+    assert rows[0]["avg_cuts_per_min"] == pytest.approx(15.0)
+    assert rows[0]["updated_at"] == "2026-02-02"
+
+
+def test_a_column_no_episode_carries_is_none_not_zero():
+    """An em dash and a 0.000 are different claims about a measurement."""
+    from analyzer.db import summarise_shows
+    rows = summarise_shows([{"show_name": "S", "sensory_load_score": None}])
+    assert rows[0]["avg_load"] is None
+    assert rows[0]["avg_motion"] is None
+
+
+def test_shows_without_a_value_sort_last_in_both_directions():
+    from analyzer.db import summarise_shows
+    eps = [{"show_name": "has", "sensory_load_score": 0.3},
+           {"show_name": "none", "sensory_load_score": None}]
+    for ascending in (True, False):
+        rows = summarise_shows(eps, sort_by="avg_load", ascending=ascending)
+        assert rows[-1]["show_name"] == "none", ascending
+
+
+def _seed_index(root: Path, episodes: list[tuple[Path, str, float]]) -> None:
+    """Put (path, show_name, load) rows straight into the index."""
+    from analyzer.db import get_db
+    conn = get_db(root)
+    for path, show, load in episodes:
+        conn.execute(
+            """INSERT OR REPLACE INTO episodes
+               (file_path, show_key, show_name, file_name, sensory_load_score,
+                cuts_per_min, analyzed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (str(path), show, show, path.name, load, 12.0, "2026-08-15"))
+    conn.commit()
+
+
+def test_the_index_lists_only_the_episodes_in_the_current_context(
+        window, tmp_path):
+    root = _make_library(tmp_path)
+    drawn = root / "Little Bear" / "S01 E01.mp4"
+    _seed_index(root, [
+        (drawn, "Little Bear", 0.30),
+        (root / "Little Bear" / "S01 E02.mp4", "Little Bear", 0.40),
+        (root / "Curious George" / "S01 E01.mp4", "Curious George", 0.20),
+    ])
+    window.set_root(root)
+    index = window._index
+    index.refresh()
+    assert index._table.topLevelItemCount() == 3
+
+    folder = _make_draw(tmp_path, [drawn])
+    window.set_scope(scope_from_draw(f"sample:{folder}", "Pilot", folder))
+
+    assert index._table.topLevelItemCount() == 1
+    assert index._table.topLevelItem(0).text(0) == "S01 E01.mp4"
+    assert "Pilot" in index._count.text()
+
+
+def test_the_index_show_means_follow_the_context(window, tmp_path):
+    """Otherwise a narrowed index shows whole-corpus means under its own header.
+
+    This is the wrong number that displays correctly: every row plausible,
+    every figure describing a set the user is not looking at.
+    """
+    root = _make_library(tmp_path)
+    a = root / "Little Bear" / "S01 E01.mp4"
+    b = root / "Little Bear" / "S01 E02.mp4"
+    _seed_index(root, [(a, "Little Bear", 0.20), (b, "Little Bear", 0.40)])
+    window.set_root(root)
+    index = window._index
+    index._scope.setCurrentText("Shows")
+    index.refresh()
+    whole = index._table.topLevelItem(0).text(2)          # Mean load
+
+    folder = _make_draw(tmp_path, [a])
+    window.set_scope(scope_from_draw(f"sample:{folder}", "Pilot", folder))
+    index.refresh()
+    narrowed = index._table.topLevelItem(0).text(2)
+
+    assert whole == "0.300"          # mean of both
+    assert narrowed == "0.200"       # the drawn one only
+    assert index._table.topLevelItem(0).text(1) == "1"    # Episodes count

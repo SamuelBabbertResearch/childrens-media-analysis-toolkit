@@ -562,6 +562,26 @@ episode_reader` does this, and was confirmed by reverting the fix and watching
 it fail. Grepping for a moved symbol (`grep -rn "_read_selected"`) found it in
 two seconds; the suite never would have.
 
+### A derived table nobody refreshes is a wrong number with a timestamp on it
+**What.** The Index's Shows view read `Spongebob Squarepants Season 1:
+2 episodes, mean load 0.3071`. The index held **five** Spongebob episodes,
+averaging **0.2557**. Both figures were on screen in the same tab — one on the
+Shows view, one derivable from the Episodes view.
+**Why.** The `shows` table is written by `upsert_show`, which runs when a
+**whole show** is analysed. Analysing episodes individually updates `episodes`
+and never touches `shows`. The row keeps its old `updated_at`, so it looks
+current. Shape 1 — the display and the calculation disagreed — with the
+disagreement stored on disk rather than computed twice.
+**Avoid.** A summary of rows the user can see should be **computed from those
+rows**, not looked up. `db.summarise_shows()` now does that, so the two views
+cannot diverge. Where a derived table must be stored, the refresh has to hang
+off the same event as the thing it summarises — and if it cannot, do not read
+it. Note what this did **not** fix: `cli.py db --shows` and `gui.py` still read
+the stored table.
+**Also.** Sorting the derived rows with `(value is None, value)` and
+`reverse=True` floats the blank rows to the **top** — `reverse` flips the flag
+as well as the value. Partition into have/haven't and sort only the first.
+
 ### Three settings each looked like they painted the widget black; none did
 **What.** The coding screen showed the **Trials tab's list and "Trial detail"
 panel** where the video should be, with the transport controls beneath it —

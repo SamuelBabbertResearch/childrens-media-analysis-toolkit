@@ -575,6 +575,30 @@ nodes do not vary it, and single-click already means "inspect"); scoping the
 Index and the measurement tabs in the same change — the Library was the ask,
 and the rest is a separate piece of work with its own verification.
 
+### The Index's Shows view is derived from its episode rows, not from `shows`
+**Decision.** `db.summarise_shows()` builds show rows from whatever episode
+rows are on screen. The Index uses it for both scopes; the stored `shows` table
+is no longer read there.
+**Reason.** Two reasons that arrived together. The stored table goes stale —
+`upsert_show` runs on a whole-show analysis, so analysing episodes one at a
+time never refreshes it, and this library's Spongebob row read
+`episode_count = 2, avg_load = 0.3071` against five indexed episodes averaging
+**0.2557**. And under a sample scope a stored whole-show aggregate answers a
+question nobody asked. Deriving fixes both: the Shows view is a summary of the
+Episodes view *by construction*, so they cannot disagree.
+**Consequence.** `cli.py db --shows` and the Tk build still read the stored
+table and can still show stale figures — recorded in `FOR_PAPER.txt` and
+`TODO.md`. The derived view groups by the displayed show name and deliberately
+does **not** normalise it, so an episode indexed with a raw relative path
+(`Show/Season 1`) splinters into its own row and stays visible. Hiding it in a
+summary would leave the index defect unfixed and unseen.
+**Date.** 2026-08-15.
+**Rejected.** Refreshing `shows` on every episode upsert (it makes a derived
+table authoritative-by-habit and still leaves scoped views wrong); reading the
+stored table under the library scope and deriving only when scoped — switching
+scope would then change both the set and the arithmetic, making any difference
+unattributable.
+
 ### One definition of what counts as an episode
 **Decision.** `show_index.VIDEO_EXTENSIONS` — `.mp4 .mkv .avi .mov .wmv .m4v` —
 is the single answer, matched on the lowercased suffix rather than by globbing.

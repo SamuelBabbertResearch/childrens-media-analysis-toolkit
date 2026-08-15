@@ -46,8 +46,8 @@ two items were left deliberately because they need a product decision rather
 than a port (`TODO.md` item 7). Coverage is still not mileage: everything new
 has been driven headless against the real library, not used for real work.
 
-Run the tests with `python -m pytest -q` from the repo root: **354 passed,
-13 skipped** (367 collected). `tests/test_eras.py` asserts on drawn strata and
+Run the tests with `python -m pytest -q` from the repo root: **359 passed,
+13 skipped** (372 collected). `tests/test_eras.py` asserts on drawn strata and
 manifest notes rather than on which widgets exist — the level the sampler
 defects were only visible at. `tests/conftest.py` now offers a session-scoped
 `qapp` fixture — an offscreen `QApplication` — so Qt widgets can be tested for
@@ -129,10 +129,21 @@ it, and a **Showing:** chooser above the tree always names which. Drawing a
 sample makes it current; so does choosing a pipeline. It is **not persisted** —
 the application always opens on the whole library, deliberately.
 
-**Only the Library obeys it so far.** The Index and the three measurement tabs
-still take a single episode from the tree selection. That is the next work and
-it is broken up in `TODO.md` § *The research context, continued* — the pieces
-are independent and each needs verifying against real output, not one sitting.
+**The Library and the Index obey it; the three measurement tabs do not yet.**
+They still take a single episode from the tree selection. The remaining pieces
+are in `TODO.md` § *The research context, continued* — independent, and each
+needs verifying against real output rather than done in one sitting.
+
+The chooser sits on the **main toolbar**, beside Root folder and Preset, so it
+is visible from every tab. It moved there the moment a second screen obeyed it:
+a control that narrows the Index while hidden inside the Library is a filter
+you cannot see from the screen it is filtering.
+
+Scoping the Index turned up a live wrong number worth knowing about: the stored
+`shows` table goes stale, because `upsert_show` only runs on a whole-show
+analysis. The Qt Index now derives its Shows view from the episode rows on
+screen, so the two views cannot disagree — but **`cli.py db --shows` and the Tk
+build still read the stored table**. See `LEARNINGS.md` and `TODO.md`.
 
 Two things worth knowing before touching it:
 

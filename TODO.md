@@ -142,20 +142,28 @@ The scope exists and the Library obeys it (2026-08-15, `DECISIONS.md`). These
 are the rest of it, in the order they pay off. **Do not do them all in one
 session** — each needs its own verification against real output.
 
-- **Scope the Index tab.** It queries SQLite with a show-name filter, so
-  restricting it to an episode list is real work rather than a flag. It is the
-  screen where "over my sample" matters most: an aggregate over the whole
-  corpus when the header says *Pilot Study* would be a wrong number displaying
-  correctly.
+- ~~Scope the Index tab.~~ **Done 2026-08-15.** It filters to the context and
+  its Shows view is now derived from the episode rows on screen. Doing it
+  surfaced two things that are NOT done:
+  - **`cli.py db --shows` and `gui.py` still read the stored `shows` table**,
+    which goes stale (see `LEARNINGS.md`). Either make them derive too, or
+    make `upsert_show` refresh on every episode upsert. Until then those two
+    surfaces can print show means that describe an older, smaller set.
+  - **One index row has a raw relative path as its show name** —
+    `Spongebob Squarepants Season 1/Season 1`, from the `.mkv` indexed through
+    the sampler's path, which does not apply `show_index`'s naming. It shows
+    as its own show in any grouping. Re-index it, and check whether the
+    sampler's analysis path should be routed through `db_show_key` /
+    `display_show_name` so it cannot recur.
 - **Scope the measurement tabs.** Automated coding, Human coding and Language
   still take a single `set_target(path)` from the Library selection. Giving
   them the scope means arriving with the working set staged — the analysis
   queue pre-filled, the coding worklist showing the sample — instead of "No
   episode or show selected". `_open_stage_screen` in `ui/main_window.py` is
   where a pipeline node would hand it over.
-- **Show the scope outside the Library.** Once more than one screen obeys it,
-  the chooser belongs above the tabs rather than inside one of them, so the
-  current context is visible wherever you are.
+- ~~Show the scope outside the Library.~~ **Done 2026-08-15** — the chooser is
+  on the main toolbar beside Root folder and Preset, so it is visible from
+  every tab. The Library keeps the sentence explaining the current context.
 - **Then, and only then, consider making the wires carry the set.** Sampling
   emits N, selection narrows it, a hand-code branch takes its subset. This is
   the north-star spec's "output produced here becomes input there", and it is
