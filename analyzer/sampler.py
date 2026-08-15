@@ -47,9 +47,26 @@ TOOLTIPS: dict[str, str] = {
         "and each video inside as one episode. One folder = one show-era — "
         "keep reboots and eras in separate folders."
     ),
+    "entry_root_movies": (
+        "Pick the folder containing your movie files. Every video inside "
+        "becomes one item; a subfolder (e.g. by decade or franchise) is read "
+        "as a group, the same way a season folder is for a TV show — leave "
+        "movies flat in one folder if grouping does not apply."
+    ),
+    "entry_root_youtube": (
+        "Pick the folder of already-downloaded YouTube videos. Each file "
+        "becomes one item. If you downloaded with yt-dlp's --write-info-json, "
+        "upload date, title and channel are read automatically from the "
+        "matching .info.json file; without it, only the filename is used, the "
+        "same as Movies. CMAT does not fetch video lists itself yet — see "
+        "Load Registry CSV for sampling before download."
+    ),
     "load_registry": (
-        "Advanced: load a prepared episode list instead of scanning folders. "
-        "Use this if your files aren't in season folders."
+        "Advanced: load a prepared list instead of scanning a folder — for "
+        "TV episodes not in season folders, for movies or YouTube videos "
+        "with metadata but no local file yet (leave the filepath column "
+        "blank), or for any other content type. Extra columns become "
+        "grouping options."
     ),
     "season_regex": (
         "How season numbers are read from folder names. Default reads "
@@ -345,6 +362,45 @@ def scan_entry_root(
             for i, e in enumerate(unparsed, 1):
                 e.episode = i
 
+    return episodes
+
+
+def scan_youtube_folder(root: Path, entry_id: str | None = None) -> list[Episode]:
+    """Like `scan_entry_root`, but reads a yt-dlp `<file>.info.json` sidecar
+    beside each video when present: upload date, title, channel, video id,
+    URL. Silently identical to `scan_entry_root`'s result when no sidecar
+    exists — a strict improvement, never a regression, for anyone who
+    downloaded with `--write-info-json`.
+
+    Never infers a date from the file's mtime/ctime — that is the download
+    date, not the upload date, and a wrong-but-plausible date under a
+    real-sounding label is worse than a blank field that admits it doesn't
+    know.
+    """
+    episodes = scan_entry_root(root, entry_id=entry_id)
+    for ep in episodes:
+        if ep.filepath is None:
+            continue
+        sidecar = ep.filepath.with_suffix(".info.json")
+        if not sidecar.exists():
+            continue
+        try:
+            meta = json.loads(sidecar.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        upload_date = str(meta.get("upload_date") or "")
+        if len(upload_date) == 8:
+            ep.air_date = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:]}"
+        if meta.get("title"):
+            ep.title = str(meta["title"])
+        channel = meta.get("channel") or meta.get("uploader")
+        if channel:
+            ep.extra["channel"] = str(channel)
+        if meta.get("id"):
+            ep.extra["video_id"] = str(meta["id"])
+        url = meta.get("webpage_url") or meta.get("original_url")
+        if url:
+            ep.extra["url"] = str(url)
     return episodes
 
 

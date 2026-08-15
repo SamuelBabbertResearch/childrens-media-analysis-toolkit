@@ -4,9 +4,10 @@ Previously-on, for a session starting with zero memory. Read this, then
 `TODO.md`, then `DECISIONS.md` and `LEARNINGS.md`. `INDEX.md` points at
 everything else.
 
-**Last updated:** 2026-08-16 (all six screens now obey the research context —
-the three measurement tabs arrive with the working set staged. Suite green at
-383 passed, 13 skipped)
+**Last updated:** 2026-08-17 (the sampler can fetch a live YouTube channel or
+playlist and sample it before downloading anything — playlists tag as a
+stratify axis, eras work for a channel with no folder. Suite green at 398
+passed, 13 skipped)
 
 ---
 
@@ -117,6 +118,188 @@ new and immediately migrating it.
 pipeline is a control surface rather than a picture. What is left is not
 porting but proving: use the Qt build for real work, then retire the Tk
 modules and decide what `master` and `README.md` should say.
+
+## What changed on 2026-08-17, latest: the sampler fetches a live channel
+
+Following the day's other sampler work, the user asked to think through how
+a new user would actually sample a channel like Game Theory — and pushed on
+two more things directly: playlists, and time eras for a channel with no
+downloaded folder. Walking through the real scenario found the actual gap:
+today's sampler could only draw from a folder already on disk or a
+hand-built registry CSV — neither helps someone who wants to sample *before*
+downloading, which is the whole point of sampling.
+
+**What shipped**: `analyzer/youtube_fetch.py` (new) — retargets the
+now-deleted `sample_youtube.py` script's `yt-dlp --flat-playlist` fetch at
+real `Episode` objects instead of its own duplicated spread algorithm and ad
+hoc CSV. `ui/youtube_fetch.py` (new) — a small dialog accepting several
+channel/playlist URLs at once, run on a worker thread (a real channel takes
+30-60s; the interface must not freeze). Content type = YouTube now shows
+three source buttons together — Fetch, Choose Downloaded Folder, Load
+Registry CSV — so a new user finds live fetching without needing to already
+know it exists.
+
+**Playlists**: each fetched video is tagged `extra["playlist"]` when the
+source URL is a real playlist (not a bare channel listing) — sampling across
+several playlists at once turns this into a real, usable "By playlist"
+stratify option, through the same generic mechanism `channel` already used.
+
+**Eras, for free**: investigated `analyzer/eras.py` before writing anything
+new — `assign_eras()` was already a pure function needing no database or
+folder, and the DB's `show_eras` table already treats its key as an
+arbitrary string. So a live-fetched channel just needed `_show_key()` to
+return `f"youtube:{fetch_id}"` instead of falling back to `""` — the entire
+existing `ErasDialog`/persistence system works unchanged, and a channel
+fetched again next session gets its eras back automatically. Verified the
+namespace can't collide with a real show: folder-derived keys are always
+POSIX relative paths and never contain `:`.
+
+**Explicitly declined, per discussion**: download automation. The drawn
+`selected.csv` (each row carrying its URL) is the complete deliverable this
+pass — actually fetching the sampled videos is left to the researcher.
+`sample_youtube.py` is deleted, its logic fully absorbed. `DECISIONS.md` §
+*Live YouTube fetch reuses the eras system unchanged…* has the full
+reasoning. 12 new tests in `tests/test_sampler_youtube.py` (fetch parsing
+against canned yt-dlp output, no network call; dialog wiring against a
+stubbed fetch dialog). Suite: 398 passed (12 new), 13 skipped.
+
+## What changed on 2026-08-17, later still: the sampler stops reading as TV-only
+
+The user asked for the sampler to support movies and YouTube, not just TV
+shows. Investigating `analyzer/sampler.py` in full found the engine already
+did: `Episode.season`/`.episode` are nullable, `scan_entry_root()` already
+degrades to a flat folder with sequential numbering when there's no season
+structure, every sampling method is already generic over `list[Episode]`, and
+`load_registry_csv()` already tolerates a blank `filepath` (metadata with no
+downloaded file yet). **Nothing in the engine needed to change** — the
+confusion was entirely `ui/sampler.py`'s copy ("Choose Show Folder…", "Pick
+the show's top folder… each season subfolder… each video as one episode")
+and two fixed preview columns.
+
+There's also a standalone `sample_youtube.py` at the repo root — a working
+`yt-dlp` channel/playlist fetcher, entirely disconnected from the real
+sampler (its own duplicated algorithm, its own CSV format, no manifest, no
+queue integration). Discussed with the user: this session ships the
+folder-of-already-downloaded-videos path for YouTube (cheap, reuses the
+engine unmodified); absorbing `sample_youtube.py`'s live fetch into the real
+engine is real, separate work, now `TODO.md` item 9.
+
+**What shipped**: a Content type selector (TV show / Movies / YouTube videos)
+in `ui/sampler.py` that changes the browse button's text and tooltip, the
+folder-dialog title, the preview table's "Season"/"Episode" headers ("Group"/
+"#" for non-TV — the underlying `ep.season`/`ep.episode` data is unchanged,
+just relabelled), the "By season" stratify option's label ("By group"), and
+the post-scan status line (no more "12 episodes across 0 seasons" for a flat
+folder). The preview table's File column now falls back to a registry row's
+`url` extra column when there's no local file. The written manifest records
+which content type a draw was, appended to `SampleManifest.notes` — no schema
+change. Verified headless against the real `Shows/Arthur` folder (TV,
+unchanged: 6 episodes, season {1}) and synthetic movies/YouTube fixtures (flat
+scan, no seasons, correct headers, URL fallback, manifest note, and switching
+content type mid-session clears stale episodes rather than leaving them under
+new headers). `DECISIONS.md` § *The sampler's content-type selector is
+presentation only…* has the reasoning and what was deliberately not touched
+(the dialog's own title, the toolbar button, the Sampling pipeline node —
+wider blast radius for no functional gain).
+
+**Corrected within the hour**, pointed out directly: "YouTube (downloaded)"
+called the identical `scan_entry_root()` as Movies, so it extracted nothing a
+generic flat-folder scan couldn't — YouTube in name only. Checked this
+project's own real YouTube content first (`Shows/Game Theory/`,
+`Shows/iShowSpeed/`): plain filenames, no metadata sidecars, nothing on disk
+beyond a filename to extract. So a relabeled "Upload date" column would have
+just always been blank for the library this project actually holds — a
+smaller version of the same hollow-label problem.
+
+**What's real**: yt-dlp's `--write-info-json` (a standard option) writes a
+`<file>.info.json` sidecar carrying upload date, title, channel, video id and
+URL. `analyzer.sampler.scan_youtube_folder()` is new: identical to
+`scan_entry_root()` when no sidecar exists (verified against the real `Shows/
+Game Theory/` folder — field-for-field identical result), and fills real
+metadata from the sidecar when one does. `extra["channel"]` falls out of this
+for free and becomes a real "By channel" stratify option through the
+mechanism already built for registry CSVs; `video_id`/`url` are deliberately
+excluded from that list (unique per row, not a group). The preview table's
+date column is now content-type-specific — "Air date" / "Release date" /
+"Upload date" — on the same `Episode.air_date` field, the direct part of what
+was asked. **Explicitly not done**: inferring an upload date from the file's
+mtime — that is the download date, not the upload date, and CLAUDE.md's core
+anti-pattern is exactly a wrong-but-plausible number that displays correctly.
+`DECISIONS.md` § *YouTube gets a real scan function after all* has the
+reasoning; `TODO.md` item 9 (the deferred live channel fetch) now notes the
+two loaders should agree on the same sidecar shape when it's built.
+
+## What changed on 2026-08-17, later the same day: marking now guarantees an exact timestamp
+
+Following straight on from the counter fix below, the user asked why the
+playing-state display still "isn't live and accurate." Measuring it against
+wall-clock time (not just watching the window) found something more
+consequential than a display lag: `ui/player.py`'s own docstring claimed
+*"Pause before marking; the coding UI enforces that"* — and nothing did.
+`handcoding.py`'s `_mark()` read `player.position()` unconditionally, and
+libvlc's live clock only refreshes every 0.2–0.5s during playback (measured,
+independent of the file's real frame rate — confirmed 23.976fps via
+`ffprobe`, not a polling artifact). A mark taken while playing could
+therefore be stamped up to ~0.5s stale relative to what the coder just saw.
+
+**Fixed with a new `VideoPlayer.stamp(callback)`** (`ui/player.py`): already
+paused, calls back immediately with today's exact value; playing, pauses
+first and waits for libvlc to confirm it (bounded settle, ~20ms in the
+measured steady-state case) before calling back. `_mark()` now routes
+through it instead of reading `position()` directly, capturing every
+dropdown value at the click so nothing changes during the settle. Verified
+with a real (non-offscreen — the offscreen QApplication turned out to give
+unreliable playback state, a separate finding) VLC window: a mark taken
+while playing now pauses the video and stamps the exact post-settle value,
+not the stale pre-pause one.
+
+**Also smoothed, cosmetic only:** `_sync()`'s digital counter now
+extrapolates between libvlc's real ticks using wall-clock time, snapping back
+in sync on every real tick — so a coder watching playback sees the number
+move continuously instead of sitting frozen for 3–5 ticks at a stretch. This
+never feeds a stamp; `position()`/`stamp()` are untouched by it.
+
+**Documented for the coder, not just the code**: the "Mark at playhead"
+button now carries a tooltip explaining that it pauses the video first on
+purpose, and that the moving counter during playback is an estimate, not
+what gets written. `DECISIONS.md` § *Marking auto-pauses the video…* records
+why auto-pause was chosen over blocking the click, and why switching away
+from VLC was considered and declined (`LEARNINGS.md` has the measurement
+detail; both explain the coarse live clock is a general property of how
+media libraries throttle position reporting, not a VLC weakness).
+
+**Not fixed:** the identical gap in `gui_coding_editor.py` (Tk) — noted in
+`LEARNINGS.md` so it isn't rediscovered as new when that build is eventually
+audited. Suite: 386 passed (three new), 13 skipped.
+
+## What changed on 2026-08-17: the video time counter, characterised and fixed
+
+`TODO.md` item 1 (the oldest open real defect, reported 2026-08-14 as "the time
+readout in the Qt player is wrong", uncharacterised) is closed. Measured
+`ui/player.py`'s `VideoPlayer` headless against a real episode rather than
+watching the window, per `LEARNINGS.md`'s method:
+
+- **Seeking, frame-stepping and the playing-state clock jumps all measured
+  correct** — `position()` and the displayed label agreed with `get_time()`
+  and `get_position()` to the millisecond in every case tried.
+- **The real defect was narrower: the counter froze during a seek-bar drag.**
+  `_sync()` wrote the slider from the player's position only when *not*
+  scrubbing, but always wrote the digital *label* from the player's position
+  regardless of scrubbing — so while the player itself is not moving, the bar
+  tracks the mouse and the label stays stale until release. Measured: dragging
+  to 764.4s left the counter reading `00:00:10.00`, the pre-drag position,
+  for the whole drag.
+- **The written mark was never affected.** `handcoding.py`'s `_mark()` reads
+  `player.position()` directly, never the label text, so no hand-coded
+  timestamp was ever corrupted by this — it was a display-only defect, and the
+  ~0.55 s early bias and the ±2 s floor documented in the earlier timestamp
+  assessment stand as they were.
+- **Fix:** `_sync()` now derives the displayed time from the slider's own
+  value while scrubbing, so the counter previews where the thumb points; the
+  real seek still happens on release, unchanged.
+
+See `LEARNINGS.md` § *The Qt counter froze during a scrub drag* for the
+measurement method and numbers. Suite: 383 passed, 13 skipped, unchanged.
 
 ## What changed on 2026-08-16: the measurement tabs obey the context
 
@@ -843,8 +1026,8 @@ The three things most worth knowing before choosing what to do next:
    Index now derives around it; `cli.py db --shows` and `gui.py` do not.
    `FOR_PAPER.txt` carries the correction and the "do not quote" note.
 
-Read `TODO.md` items 0–1 first: item 0 is a data question (re-aggregate
-Spongebob after the de-duplication — no re-analysis needed, the per-episode
-results are correct and cached), item 1 is the video time counter, which is the
-oldest real defect still open. Both are smaller than the pipeline wires and
-neither depends on them.
+Read `TODO.md` item 0 first: a data question (re-aggregate Spongebob after the
+de-duplication — no re-analysis needed, the per-episode results are correct
+and cached). The video time counter (formerly item 1) was fixed 2026-08-17 —
+see *What changed on 2026-08-17* above. Item 0 is smaller than the pipeline
+wires and does not depend on them.

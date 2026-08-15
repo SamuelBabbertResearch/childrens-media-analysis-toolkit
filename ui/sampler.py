@@ -49,13 +49,29 @@ from analyzer.eras import (
 )
 from analyzer.sampler import (
     TOOLTIPS, SampleResult, load_registry_csv, sample, scan_entry_root,
-    stratification_columns, write_outputs,
+    scan_youtube_folder, stratification_columns, write_outputs,
 )
 from analyzer.show_index import show_key
 from ui.modal import ModalDialogFrame
 
 DIALOG_W = 900
 DIALOG_H = 640
+
+# (value, label, entry-root tooltip key, season-column header, episode-column
+# header, date-column header). Mostly presentation — season/episode/air_date
+# still mean exactly what they always did; only the words on screen change,
+# because calling a movie folder's grouping "season" or a YouTube video's
+# upload date "air date" reads as a TV assumption the tool doesn't actually
+# have. The one real behaviour difference is which scan function "youtube"
+# uses — see scan_youtube_folder() in analyzer/sampler.py.
+CONTENT_TYPES = (
+    ("tv", "TV show (seasons)", "entry_root", "Season", "Episode",
+     "Air date"),
+    ("movies", "Movies / flat collection", "entry_root_movies",
+     "Group", "#", "Release date"),
+    ("youtube", "YouTube videos (already downloaded)", "entry_root_youtube",
+     "Group", "#", "Upload date"),
+)
 
 # (value, label, tooltip key). The value is what analyzer.sampler expects.
 METHODS = (
@@ -102,6 +118,7 @@ class SamplerDialog(QDialog):
         self.written_dir: Path | None = None
         self._folder: Path | None = None
         self._registry: Path | None = None
+        self._fetch_id: str | None = None
         self._eras_from_registry = False
         self._eras: list[dict] = []
         self._era_counts: dict[str, int] = {}
@@ -150,51 +167,111 @@ class SamplerDialog(QDialog):
 
     # -- source ------------------------------------------------------------
     def _source_box(self) -> QWidget:
-        box = QGroupBox("1 · Which show")
+        box = QGroupBox("1 · Source")
         grid = QGridLayout(box)
         grid.setContentsMargins(10, 8, 10, 8)
         grid.setHorizontalSpacing(6)
         grid.setVerticalSpacing(4)
 
-        self._folder_label = QLabel("no folder chosen")
-        self._folder_label.setProperty("role", "dim")
-        browse = QPushButton("Choose Show Folder…")
-        browse.setToolTip(TOOLTIPS["entry_root"])
-        browse.clicked.connect(self._choose_folder)
-        grid.addWidget(browse, 0, 0)
+        grid.addWidget(QLabel("Content type:"), 0, 0)
+        self._content_type = QComboBox()
+        for value, label, _tip, _season_h, _episode_h, _date_h in CONTENT_TYPES:
+            self._content_type.addItem(label, value)
+        self._content_type.currentIndexChanged.connect(
+            self._content_type_changed)
+        grid.addWidget(self._content_type, 0, 1, 1, 3)
+
+        self._btn_browse = QPushButton("Choose Show Folder…")
+        self._btn_browse.setToolTip(TOOLTIPS["entry_root"])
+        self._btn_browse.clicked.connect(self._choose_folder)
+        grid.addWidget(self._btn_browse, 1, 0)
+        # YouTube-only: sample a live channel/playlist before downloading
+        # anything, rather than only from files already on disk. Content
+        # type = YouTube reveals BOTH this and the folder button at once —
+        # the whole point being a new user shouldn't have to already know
+        # this exists to find it.
+        self._btn_fetch = QPushButton("Fetch from Channel/Playlist…")
+        self._btn_fetch.setToolTip(
+            "Ask a channel or playlist for its video list — title, upload "
+            "date, duration — with nothing downloaded. Design the sample "
+            "first, then decide what's worth downloading.")
+        self._btn_fetch.clicked.connect(self._choose_fetch)
+        self._btn_fetch.setVisible(False)
+        grid.addWidget(self._btn_fetch, 1, 1)
         registry = QPushButton("Load Registry CSV…")
         registry.setToolTip(TOOLTIPS["load_registry"])
         registry.clicked.connect(self._choose_registry)
-        grid.addWidget(registry, 0, 1)
-        grid.addWidget(self._folder_label, 0, 2, 1, 2)
+        grid.addWidget(registry, 1, 2)
 
-        grid.addWidget(QLabel("Name this sample:"), 1, 0)
+        self._folder_label = QLabel("no folder chosen")
+        self._folder_label.setProperty("role", "dim")
+        grid.addWidget(self._folder_label, 2, 0, 1, 4)
+
+        grid.addWidget(QLabel("Name this sample:"), 3, 0)
         self._name = QLineEdit()
         self._name.setPlaceholderText(
             "shown in the Trials tab and in the pipeline, e.g. "
             "“Little Bear S1, spread, n=2”")
-        grid.addWidget(self._name, 1, 1, 1, 3)
+        grid.addWidget(self._name, 3, 1, 1, 3)
         grid.setColumnStretch(1, 1)
         return box
 
+    def _content_type_entry(self) -> tuple:
+        """The CONTENT_TYPES row for the current selector value."""
+        current = self._content_type.currentData()
+        for entry in CONTENT_TYPES:
+            if entry[0] == current:
+                return entry
+        return CONTENT_TYPES[0]
+
+    def _content_type_changed(self) -> None:
+        """Switching type mid-draw would leave stale rows under new headers
+        — a folder chosen as "TV show" and a folder chosen as "Movies" mean
+        different things even when they list the same files, so a change
+        here starts the source over rather than reinterpreting what's
+        already loaded."""
+        value, _label, tip_key, _season_h, _episode_h, _date_h = \
+            self._content_type_entry()
+        self._btn_browse.setText(
+            "Choose Show Folder…" if value == "tv" else "Choose Folder…")
+        self._btn_browse.setToolTip(TOOLTIPS[tip_key])
+        self._btn_fetch.setVisible(value == "youtube")
+        if hasattr(self, "_preview_table"):
+            self._preview_table.setHeaderLabels(list(self._preview_headers()))
+        self._episodes = []
+        self._folder = None
+        self._registry = None
+        self._fetch_id = None
+        self._folder_label.setText("no folder chosen")
+        self._apply_eras()
+        self._refresh_stratify()
+        self._sync_enabled()
+
     def _choose_folder(self) -> None:
+        content_type = self._content_type.currentData()
+        title = ("Choose the show's top folder" if content_type == "tv"
+                 else "Choose the movies' folder" if content_type == "movies"
+                 else "Choose the folder of downloaded videos")
         chosen = QFileDialog.getExistingDirectory(
-            self, "Choose the show's top folder",
-            str(self._window._root or ""))
+            self, title, str(self._window._root or ""))
         if not chosen:
             return
         self._folder = Path(chosen)
         self._registry = None
+        self._fetch_id = None
+        scan = scan_youtube_folder if content_type == "youtube" else scan_entry_root
         try:
-            self._episodes = scan_entry_root(self._folder)
+            self._episodes = scan(self._folder)
         except Exception as exc:               # noqa: BLE001 — shown, not hidden
             QMessageBox.warning(self, "Could not read that folder", str(exc))
             self._episodes = []
+        noun = "episode" if content_type == "tv" else "file"
         seasons = {e.season for e in self._episodes if e.season is not None}
         self._folder_label.setText(
-            f"{self._folder.name} — {len(self._episodes)} episode"
+            f"{self._folder.name} — {len(self._episodes)} {noun}"
             f"{'s' if len(self._episodes) != 1 else ''}"
-            f" across {len(seasons)} season{'s' if len(seasons) != 1 else ''}"
+            + (f" across {len(seasons)} season{'s' if len(seasons) != 1 else ''}"
+               if seasons else "")
             if self._episodes else
             f"{self._folder.name} — no video files found")
         if not self._name.text().strip():
@@ -223,16 +300,49 @@ class SamplerDialog(QDialog):
             return
         self._folder = None
         self._registry = Path(chosen)
+        self._fetch_id = None
+        noun = "episode" if self._content_type.currentData() == "tv" else "item"
         dated = sum(1 for e in self._episodes if e.air_date)
         columns = stratification_columns(self._episodes)
         self._folder_label.setText(
-            f"{self._registry.name} — {len(self._episodes)} episode"
+            f"{self._registry.name} — {len(self._episodes)} {noun}"
             f"{'s' if len(self._episodes) != 1 else ''}, {dated} with an air "
             f"date"
             + (f"; grouping columns: {', '.join(columns)}" if columns else
                "; no extra grouping columns"))
         if not self._name.text().strip():
             self._name.setText(self._registry.stem)
+        self._apply_eras()
+        self._refresh_stratify()
+        self._sync_enabled()
+
+    def _choose_fetch(self) -> None:
+        """Ask a channel/playlist for its video list — no download.
+
+        The dialog does the actual yt-dlp work on a worker thread; this just
+        adopts its result as the source, the same shape as choosing a folder
+        or a registry (filepath=None throughout — sample()/write_outputs()
+        already tolerate that, built for exactly this by the registry path).
+        """
+        from ui.youtube_fetch import YouTubeFetchDialog
+        dialog = YouTubeFetchDialog(self)
+        if dialog.exec() != QDialog.Accepted or not dialog.episodes:
+            return
+        self._episodes = dialog.episodes
+        self._folder = None
+        self._registry = None
+        self._fetch_id = dialog.channel_id
+        dated = sum(1 for e in self._episodes if e.air_date)
+        columns = [c for c in stratification_columns(self._episodes)
+                  if c not in ("video_id", "url")]
+        self._folder_label.setText(
+            f"{self._fetch_id} — {len(self._episodes)} video"
+            f"{'s' if len(self._episodes) != 1 else ''} fetched, {dated} "
+            f"with an upload date, none downloaded"
+            + (f"; grouping columns: {', '.join(columns)}" if columns else
+               ""))
+        if not self._name.text().strip():
+            self._name.setText(self._fetch_id)
         self._apply_eras()
         self._refresh_stratify()
         self._sync_enabled()
@@ -245,19 +355,27 @@ class SamplerDialog(QDialog):
         this line of work started from.
         """
         current = self._stratify.currentData()
+        by_tv = self._content_type.currentData() == "tv"
         self._stratify.blockSignals(True)
         self._stratify.clear()
         for value, label, tip in STRATIFY:
+            # "season" still means ep.season — grouping by a movie/YouTube
+            # folder's subfolders is exactly as valid, just not a TV season,
+            # so only the label changes here, never the value sample() gets.
+            if value == "season" and not by_tv:
+                label = "By group"
             self._stratify.addItem(label, value)
             self._stratify.setItemData(self._stratify.count() - 1,
                                        TOOLTIPS[tip], Qt.ToolTipRole)
         for column in stratification_columns(self._episodes):
             if column == ERA_KEY:
                 continue                       # already offered above
-            self._stratify.addItem(f"By {column} (from the registry)", column)
+            if column in ("video_id", "url"):
+                continue                       # unique per row — not a group
+            self._stratify.addItem(f"By {column}", column)
             self._stratify.setItemData(
                 self._stratify.count() - 1,
-                f"Group by the “{column}” column in the loaded registry CSV.",
+                f"Group by the “{column}” column in the loaded data.",
                 Qt.ToolTipRole)
         values = [self._stratify.itemData(i)
                   for i in range(self._stratify.count())]
@@ -267,7 +385,18 @@ class SamplerDialog(QDialog):
 
     # -- eras --------------------------------------------------------------
     def _show_key(self) -> str:
-        """The show's index key, which is what eras are stored against."""
+        """The index key eras are stored against.
+
+        A live-fetched channel has no folder to derive one from, but it does
+        have a stable identity of its own — the `youtube:` prefix keeps it
+        out of the same namespace as folder-derived keys, which are always
+        POSIX relative paths and never contain a colon (`show_index.
+        show_key`), so this cannot collide with a real show's eras. A
+        researcher who fetches the same channel again later gets their era
+        definitions back, the same guarantee a TV show already has.
+        """
+        if self._fetch_id:
+            return f"youtube:{self._fetch_id}"
         root = self._window._root
         if root and self._folder:
             try:
@@ -534,13 +663,23 @@ class SamplerDialog(QDialog):
         self._design_line.setText(", ".join(parts) + ".")
 
     # -- output panels -----------------------------------------------------
+    def _preview_headers(self) -> tuple:
+        """PREVIEW_COLUMNS with the season/episode/date headers swapped for
+        the content type — the data is still ep.season/ep.episode/ep.air_date
+        either way, just under a name that fits (a movie's release date, a
+        YouTube video's upload date) instead of implying every list is a TV
+        show's air dates."""
+        _value, _label, _tip, season_h, episode_h, date_h = \
+            self._content_type_entry()
+        return (season_h, episode_h, "Title", date_h, "File")
+
     def _preview_box(self) -> QWidget:
         box = QGroupBox("3 · Episodes this design selects")
         lay = QVBoxLayout(box)
         lay.setContentsMargins(8, 8, 8, 8)
         self._preview_table = QTreeWidget()
         self._preview_table.setColumnCount(len(PREVIEW_COLUMNS))
-        self._preview_table.setHeaderLabels(list(PREVIEW_COLUMNS))
+        self._preview_table.setHeaderLabels(list(self._preview_headers()))
         self._preview_table.setRootIsDecorated(False)
         self._preview_table.setUniformRowHeights(True)
         self._preview_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -598,7 +737,9 @@ class SamplerDialog(QDialog):
             result = sample(self._episodes,
                             entry_id=(self._folder.name if self._folder
                                       else self._registry.stem
-                                      if self._registry else "entry"),
+                                      if self._registry
+                                      else self._fetch_id
+                                      if self._fetch_id else "entry"),
                             **self._params())
         except Exception as exc:               # noqa: BLE001 — shown, not hidden
             QMessageBox.warning(self, "Sampling failed", str(exc))
@@ -644,14 +785,20 @@ class SamplerDialog(QDialog):
               "record the draw itself.")
 
     def _fill(self, result: SampleResult) -> None:
+        self._preview_table.setHeaderLabels(list(self._preview_headers()))
         self._preview_table.clear()
         for ep in result.selected:
+            # A registry row can carry metadata with no local file yet (a
+            # fetched-but-not-downloaded YouTube video, say) — show its URL
+            # rather than an empty cell with nothing to identify the row.
+            location = (ep.filepath.name if ep.filepath
+                        else ep.extra.get("url", ""))
             self._preview_table.addTopLevelItem(QTreeWidgetItem([
                 str(ep.season) if ep.season is not None else "",
                 str(ep.episode) if ep.episode is not None else "",
                 ep.title or "",
                 ep.air_date or "",
-                ep.filepath.name if ep.filepath else ""]))
+                location]))
         head = self._preview_table.header()
         for col in range(len(PREVIEW_COLUMNS) - 1):
             head.setSectionResizeMode(col, QHeaderView.ResizeToContents)
@@ -686,6 +833,13 @@ class SamplerDialog(QDialog):
         result = self._result or self._draw()
         if result is None:
             return
+        # Which content type this draw was is otherwise only recoverable by
+        # re-reading the folder it came from — worth a line in the record a
+        # manifest already exists to be.
+        _value, label, _tip, _season_h, _episode_h, _date_h = \
+            self._content_type_entry()
+        if not any(n.startswith("Content type:") for n in result.manifest.notes):
+            result.manifest.notes.append(f"Content type: {label}.")
         base = (self._folder.parent if self._folder
                 else self._registry.parent if self._registry
                 else Path(self._window._root or Path.home()))
