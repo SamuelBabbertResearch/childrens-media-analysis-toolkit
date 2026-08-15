@@ -136,11 +136,66 @@ def test_the_published_site_reads_the_statement_rather_than_restating_it():
     assert "color, motion, flashing and audio" not in src
 
 
+def test_no_shipped_preset_presents_flashing_as_a_safety_matter():
+    """`config.json` preset descriptions are rendered in the Settings dialog
+    (`ui/settings.py`), so they are interface strings. The Toddler preset read
+    "Flashing weighted higher (safety)", which is exactly the safety claim
+    CLAUDE.md §2.2 forbids — the measure implements neither the area threshold
+    nor the red-flash criterion and is unvalidated.
+    """
+    import json, pathlib
+    cfg = json.loads(pathlib.Path("config.json").read_text(encoding="utf-8"))
+    for name, preset in cfg.get("presets", {}).items():
+        desc = (preset.get("description") or "")
+        low = desc.lower()
+        if "safety" in low:
+            assert "not a safety assessment" in low, (
+                f"preset {name!r} mentions safety without disclaiming it: {desc}")
+
+
+# ---------------------------------------------------------------------------
+# The headline figure's NAME must match its basis
+# ---------------------------------------------------------------------------
+
+def test_the_exported_f1_is_not_called_hard_cut():
+    """It is scored on the ALL row, and hard_cut-only figures for the SAME two
+    runs exist and differ (0.841 / 0.964). A key named `hard_cut_f1` therefore
+    named a real but different quantity, with nothing in the file to reveal it.
+    Schema 1 wrote that key; schema 2 writes `boundary_f1`.
+    """
+    exported = validation_dict()
+    assert "hard_cut_f1" not in exported
+    assert "hard_cut_f1_source" not in exported
+    assert exported["boundary_f1"]
+    assert exported["provenance_schema"] >= 2
+
+
+def test_the_exported_figure_states_its_own_basis():
+    """The file must not require its reader to infer the estimand from a field
+    name — that is the failure this rename is fixing."""
+    basis = validation_dict()["boundary_f1_basis"].lower()
+    assert "all row" in basis
+    assert "±2 s" in basis or "+/-2 s" in basis
+    assert "single coder" in basis and "preliminary" in basis
+
+
+def test_the_basis_describes_the_run_that_produced_the_figure():
+    """A live figure pools however many comparison runs this install has; the
+    reference study's two episodes are a different claim."""
+    from analyzer.provenance import local_boundary_f1
+    exported = validation_dict()
+    live = local_boundary_f1()
+    if live:
+        assert exported["boundary_f1"] == live[0]
+        assert f"{live[1]} comparison run(s)" in exported["boundary_f1_basis"]
+        assert exported["boundary_f1_source"] == "local validation runs"
+
+
 def test_an_aggregate_score_is_for_one_detector_configuration():
     """Summing ContentDetector and TransNetV2 runs over the same episodes
     gave AGGREGATE F1 0.891 — against their real 0.855 and 0.928 — and hid
     that the shipped detector scores 0.133 on dissolves where TransNetV2
-    scores 1.000. `local_hard_cut_f1` has always filtered; this did not.
+    scores 1.000. `local_boundary_f1` has always filtered; this did not.
     """
     import inspect
     from analyzer.validation import aggregate_summary
@@ -155,3 +210,31 @@ def test_the_summary_command_reports_per_detector():
     src = inspect.getsource(validate_cuts.cmd_summary)
     assert "detector_tag=tag" in src
     assert "describes no" in src and "detector you can actually run" in src
+
+
+def test_no_public_text_claims_the_composite_is_grounded_or_validated():
+    """README and the generated site are where overclaims reach an audience.
+
+    The composite's weights and ceilings are AI-generated defaults never traced
+    to a source (`ARCHITECTURE.md` §8.1a). Huston & Wright and Lang justify
+    WHICH properties are measured and say nothing about how to combine them, so
+    a phrase like "empirically grounded database of sensory-load profiles"
+    claims a derivation that does not exist. Four such phrasings were live on
+    2026-08-14, including the site's landing page.
+    """
+    import pathlib
+    import re
+
+    banned = re.compile(
+        r"empirically[- ]grounded|scientifically[- ]validated|"
+        r"literature[- ]grounded|evidence[- ]based (composite|score|index)",
+        re.I)
+    targets = [pathlib.Path("README.md"), pathlib.Path("build_site.py")]
+    for path in targets:
+        if not path.exists():
+            continue
+        hit = banned.search(path.read_text(encoding="utf-8"))
+        assert not hit, (
+            f"{path} claims the composite is grounded/validated "
+            f"({hit.group(0)!r}); the measurement set is grounded, the "
+            f"weighting is not. See ARCHITECTURE.md §8.1a and CEILINGS.md")

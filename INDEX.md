@@ -25,6 +25,7 @@ Retrieval table of contents. Load what the task needs; do not load everything.
 | Document | Covers |
 |---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | the pipeline model, authoritative vs derived state, data flow, metric definitions, data conventions |
+| [CEILINGS.md](CEILINGS.md) | what the normalization ceilings are, how the current values were set, and **when to revisit them** — read before quoting a composite score |
 | [STACK.md](STACK.md) | frameworks, libraries, platform constraints, Qt facts that are not guessable |
 | [ROADMAP.md](ROADMAP.md) | positioning, priorities, and what is deliberately not being built |
 | [README.md](README.md) | public-facing description |

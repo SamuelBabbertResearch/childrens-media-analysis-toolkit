@@ -49,10 +49,22 @@ Consequences that keep coming up:
 temperament, sensory-processing profile and viewing dose are not captured.
 
 **Never quote an accuracy figure without its qualifiers.** The headline is
-hard-cut F1 **0.85** (range 0.75–0.91), matched **type-agnostically within
-±2 s**, from a **PRELIMINARY single-coder pilot**. Type classification scores
-lower and is reported separately. Event-level accuracy and count accuracy are
-different claims and both must be labelled as such.
+transition-**boundary** F1 **0.85** (range 0.75–0.91), matched
+**type-agnostically within ±2 s** on the `ALL` row, from a **PRELIMINARY
+single-coder pilot**. Type classification scores lower and is reported
+separately. Event-level accuracy and count accuracy are different claims and
+both must be labelled as such.
+
+**"Two episodes" means the first ~5 minutes of each** — 0–300 s and 0–320 s,
+~10 minutes of video in total. Say the window, not just the episode count.
+**The hand coding is quantised to whole seconds** and runs ~0.55 s early, so
+**±2 s is a floor, not a choice**: any tighter tolerance measures the coding
+resolution rather than the detector.
+
+**Never call it hard-cut F1.** The hard_cut-only figures for the same two runs
+are 0.841 / 0.964 — real numbers, different question. `REFERENCE_BOUNDARY_F1_*`
+and the exported `boundary_f1` key are named for the basis they are scored on;
+keep it that way.
 
 **Flashing is never presented as a safety assessment.** It is a whole-frame
 luminance mean that implements neither the area threshold nor the red-flash

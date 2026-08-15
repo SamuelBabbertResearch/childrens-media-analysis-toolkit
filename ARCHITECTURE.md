@@ -214,6 +214,103 @@ weighted index whose defaults are a working judgement*, not as an operational
 measure of a construct. That framing is honest and defensible; claiming more
 would not be. See `TODO.md`.
 
+#### What IS recorded, and what the corpus shows (2026-08-14)
+
+An evidence pass, to separate "undocumented" from "undocumentable". Nothing
+below is a reconstructed rationale — it is what the repository and the measured
+data actually contain.
+
+**Recoverable.** The per-preset `description` fields do give reasons for each
+preset's *departure* from the base weighting, and they are substantive:
+Animated raises saturation because "vivid cartoon palettes are a meaningful
+stimulation dimension in animation"; Live-Action zeroes saturation because
+"blown-out production style makes it unreliable" and moves that weight to
+contrast. Preschool cites Lillard & Peterson (2011) — but **for the age band,
+not for the ceilings**. `DECISIONS.md` states that "`Toddler (0-2)` names the
+literature the ceilings come from"; no citation appears in `config.json` or
+anywhere else, so that claim is currently unsupported by the artefact.
+
+**Not recoverable from the repository.** The base weights and every ceiling
+arrive in the initial commit (`62d402f`) with no derivation in the history.
+`git log -S` on `config.json` returns that commit alone.
+
+**The finding that changes how gaps 2 and 3 must be written up: the weights and
+the ceilings are not separable, and the nominal weights are not what the
+components actually contribute.** Over the 15 episodes in the live index:
+
+| Component | Nominal weight | Mean normalised value | Share of the mean composite |
+|---|---|---|---|
+| Pacing | 25% | 0.253 | 28.0% |
+| Saturation | 5% | 0.451 | 10.0% |
+| Colour contrast | 10% | 0.549 | **24.3%** |
+| Motion | 25% | 0.064 | **7.0%** |
+| Flashing | 15% | 0.210 | 13.9% |
+| Audio | 20% | 0.191 | 16.9% |
+
+Motion is nominally joint-heaviest at 25% and contributes **7%** — less than
+saturation, which is nominally weighted five times lower. Colour contrast is
+nominally 10% and contributes **24%**. The cause is the ceilings: observed
+`motion_mean` reaches 0.086 against a ceiling of 1.0 (8.6% of range), while
+`color_contrast_mean` reaches 0.216 against 0.35 (62%). A weight only means
+what its ceiling lets it mean.
+
+Consequently the composite occupies a narrow band — scores here run **0.132 to
+0.295** on a 0–1 scale. This is not an argument that the defaults are wrong; a
+ceiling chosen as a fixed absolute reference rather than a corpus maximum is a
+legitimate choice, and §8.2 already explains why fixed ranges make runs
+comparable. It is an argument that **"the weights are 25/5/10/25/15/20" is not
+a description a reader can act on**, and that any write-up must give the
+effective contributions beside the nominal weights.
+
+**Therefore, three things must be recorded together or none of them mean
+anything:** the model form, the weights, *and* the ceilings the weights operate
+against.
+
+#### The actual provenance of the defaults (established 2026-08-14)
+
+The question "why these numbers" was put to the project's author, who is the
+researcher rather than the implementer. **The answer is that no one derived
+them.** The weights, the ceilings and the additive form were produced by an AI
+coding assistant during implementation as plausible-looking starting values, and
+were never traced back to a source. They are not the researcher's expert
+judgement, and they are not from the literature.
+
+This is recorded here deliberately, because the alternative failure is worse:
+a gap in the record invites a later reader — including a future session — to
+assume a rationale existed and reconstruct one. There is none to reconstruct.
+
+**What the theory citations do and do not cover.** Huston & Wright's formal
+features and Lang's LC4MP legitimately motivate **which properties are
+measured** — cuts, motion, saturation, contrast, luminance change and audio
+intensity are formal features, and that framing is sound. Neither framework
+specifies **how to combine them into one number**, and neither supplies a
+weight or a ceiling. The citations support the measurement set; they do not
+support the composite.
+
+**What the repository does record** is two occasions where the researcher's
+judgement corrected the measure — audio was added after a dance video scored
+below an episode of *Little Bear*, and colour contrast after saturation alone
+favoured gentle animation (`DECISIONS.md` § Foundations). Note what those are:
+decisions about **which metrics exist**, driven by outputs contradicting an
+expert's expectation. There is no recorded instance of the **weights or
+ceilings** being tuned that way.
+
+**Consequences that are now settled rather than open:**
+
+1. The composite must be described as *a configurable weighted index with
+   unvalidated default parameters*, never as an operational measure of a
+   construct — which is what this section already said, now for a definite
+   reason rather than a missing one.
+2. `DECISIONS.md`'s statement that "`Toddler (0-2)` names the literature the
+   ceilings come from" is **not supported** and should not be repeated.
+3. Any public wording implying the *composite* is empirically or theoretically
+   grounded overstates it. The measurement set is grounded; the weighting is
+   not. See `TODO.md`.
+4. The defaults being arbitrary is **not** a reason to change them. Changing
+   them now would break comparability with every score already computed, for no
+   gain in justification. The fix is disclosure, plus the effective-contribution
+   table above.
+
 ### 8.2 Normalization, and the ceiling that discards information
 
 ```python
@@ -384,7 +481,7 @@ Five statuses, and they mean different things. The table above shows only the fi
 ### The headline accuracy figure
 
 ```
-hard-cut F1 = 0.85 aggregate, range 0.75–0.91 across production styles
+transition-boundary F1 = 0.85 aggregate, range 0.75–0.91 across production styles
 matched type-agnostically within ±2 s
 ```
 
@@ -412,13 +509,39 @@ range endpoints are those two episodes, not a distribution. TransNetV2
 (`transnet-t0.5-solo`) scores 0.902 / 0.942, pooled **0.928**, and is reported
 separately; the two detectors are never pooled.
 
-**The figure is misnamed.** It is scored on the `ALL` row — every transition
-type a human coded — not on `hard_cut` alone. The hard_cut-only figures for the
-same two runs are 0.841 and 0.964, and that pair is the superseded "0.84–0.96"
-reference range. Both numbers are correct; they answer different questions. The
-2026-08-08 log entry moved the published basis to `ALL` because the tool is
-scored against everything a coder marked. `REFERENCE_HARD_CUT_F1_*` and the
-prose above still carry the old name.
+**Coverage is the first ~5 minutes of each, not whole episodes.** Every
+comparison manifest records a scoring window: Charlie Brown 0–300 s (43 of 45
+marks), Little Bear 0–320 s (81 of 86). The figure therefore rests on **~10
+minutes 20 seconds of video in total**. Stated here because "two episodes"
+overstates it, and `CLAUDE.md` §2.2 forbids the figure without its qualifiers.
+
+**The human reference is quantised to whole seconds** and biased ~0.55 s early
+(mean human − tool: −0.523 s CB, −0.610 s LB), because the marks were hand-typed
+in `mm:ss` while watching rather than stamped from the player clock. Correcting
+the full bias moves pooled F1 by +0.008 — the ±2 s tolerance absorbs it. The
+consequence that matters: **the tolerance cannot be tightened below ~1 s without
+recoding at frame resolution**, because below that it measures the coding
+resolution rather than the detector. Assessed 2026-08-14; see
+`validation/VALIDATION_LOG.md`.
+
+**It is scored on the `ALL` row** — every transition type a human coded — not
+on `hard_cut` alone. The hard_cut-only figures for the same two runs are 0.841
+and 0.964, and that pair is the superseded "0.84–0.96" reference range. Both
+numbers are correct; they answer different questions. The 2026-08-08 log entry
+moved the published basis to `ALL` because the tool is scored against
+everything a coder marked.
+
+**The name was fixed 2026-08-14.** Until then the constants, the function and
+the exported JSON key all said *hard-cut* for this type-agnostic figure — a
+name pointing at a real but different pair of numbers, which is the worst kind
+of wrong name. They are now `REFERENCE_BOUNDARY_F1_RANGE` / `_AGG`,
+`local_boundary_f1()`, and `boundary_f1` / `boundary_f1_source` in
+`validation_dict()`. The exported block also gained `boundary_f1_basis`, which
+states the estimand in words, and `provenance_schema` (now **2**) so a file
+written before the rename is identifiable: **schema 1 is any file with no
+`provenance_schema` key, and its `hard_cut_f1` field holds this same ALL-row
+figure despite the name.** Nothing in CMAT reads the block back, so no
+in-repo artefact needed converting.
 
 ### Two different accuracy claims
 
