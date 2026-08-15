@@ -495,7 +495,7 @@ two overlapping positioning documents into `ROADMAP.md`.
 
 Nothing is blocked on an external dependency. One item needs a **product
 decision, not code**: whether the startup wizard should keep *Create Pipeline*
-as its default button (`TODO.md` item 10).
+as its default button (`TODO.md` item 11).
 
 ## Next three concrete steps
 
