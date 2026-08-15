@@ -17,8 +17,15 @@ is the module all of them read. `tests/test_provenance.py` now pins them
 together.
 
 When local validation runs exist (comparison CSVs under validation/), the
-hard-cut figure is computed live from them; otherwise the reference figure from
+boundary figure is computed live from them; otherwise the reference figure from
 CMAT's validation study is used.
+
+NAMING. The headline figure is BOUNDARY detection scored on the `ALL` row — was
+a transition found here, across every transition type a human coded. It is not
+hard-cut-only, and the hard_cut-only figures for the same runs exist and differ
+(0.841 / 0.964). Everything here is named `boundary` for that reason; the old
+`hard_cut` spelling survives only in JSON files written before 2026-08-14, which
+are schema 1. See `PROVENANCE_SCHEMA`.
 """
 
 from __future__ import annotations
@@ -48,13 +55,25 @@ from typing import Any
 # changed the published basis to the clean ALL row and says it supersedes the
 # earlier entries; this comment had simply not been updated to match.
 #
-# The name is the trap that produced the contradiction: these constants are NOT
-# hard_cut-only despite REFERENCE_HARD_CUT_F1_*. See TODO.md for the rename.
-REFERENCE_HARD_CUT_F1_RANGE = "0.75–0.91"
-REFERENCE_HARD_CUT_F1_AGG = "0.85"
+# RENAMED 2026-08-14 from REFERENCE_HARD_CUT_F1_*. The old name was the trap
+# that produced the contradiction above: it says hard_cut for a figure scored
+# type-agnostically, and the hard_cut-only figures for these same two runs
+# really exist (0.841 / 0.964). A name pointing at a real but different number
+# is worse than a vague one — a reader has no way to notice.
+REFERENCE_BOUNDARY_F1_RANGE = "0.75–0.91"
+REFERENCE_BOUNDARY_F1_AGG = "0.85"
+
+# What those numbers are, in one string, so no consumer has to infer it from a
+# field name. Exported alongside the figure for exactly that reason.
+REFERENCE_BOUNDARY_F1_BASIS = (
+    "transition-boundary detection, ALL row (every coded transition type), "
+    "matched type-agnostically within ±2 s, detector content-t27-diss, "
+    "2 episodes scored over their FIRST ~5 MINUTES ONLY (0–300 s and 0–320 s; "
+    "~10 min of video in total), hand coding quantised to whole seconds and "
+    "biased ~0.55 s early, single coder, PRELIMINARY")
 
 
-def local_hard_cut_f1(validation_dir: Path | None = None,
+def local_boundary_f1(validation_dir: Path | None = None,
                       detector_tag: str = "content") -> tuple[str, int] | None:
     """Live boundary-detection F1 for one detector, from local comparison CSVs.
 
@@ -124,7 +143,7 @@ METRIC_STATUS: dict[str, dict[str, str]] = {
         "status": "validated",
         "note": f"transition-boundary detection (type-agnostic, ±2s match) "
                 f"agrees with human coding at F1 "
-                f"{REFERENCE_HARD_CUT_F1_RANGE} across production styles; "
+                f"{REFERENCE_BOUNDARY_F1_RANGE} across production styles; "
                 f"type classification is scored separately and is lower",
     },
     "dissolves": {
@@ -177,7 +196,7 @@ METRIC_STATUS: dict[str, dict[str, str]] = {
 def validation_short(validation_dir: Path | None = None) -> str:
     """One-line accuracy statement for compact placements. Deliberately hedged:
     the evidence base is a small, single-coder pilot."""
-    live = local_hard_cut_f1(validation_dir)
+    live = local_boundary_f1(validation_dir)
     if live:
         f1, n = live
         return (f"Detection accuracy (preliminary): transition-BOUNDARY "
@@ -195,7 +214,7 @@ def validation_short(validation_dir: Path | None = None) -> str:
     return (f"Detection accuracy (preliminary): transition-BOUNDARY detection "
             f"on human-coded hard cuts — whether a transition was found there, "
             f"not whether it was labelled correctly — agreed with human coding "
-            f"at F1 {REFERENCE_HARD_CUT_F1_RANGE} (±2s match). "
+            f"at F1 {REFERENCE_BOUNDARY_F1_RANGE} (±2s match). "
             f"Content-dependent, weakest on dissolve-heavy/low-contrast "
             f"footage. Single-coder pilot; larger sample and inter-rater "
             f"reliability in progress. Type classification is scored "
@@ -207,13 +226,13 @@ def validation_short(validation_dir: Path | None = None) -> str:
 
 def validation_statement(validation_dir: Path | None = None) -> str:
     """Full multi-line honest statement for results views and reports."""
-    live = local_hard_cut_f1(validation_dir)
+    live = local_boundary_f1(validation_dir)
     if live:
         f1, n = live
         pacing = (f"F1 {f1} vs human coding (this install, {n} comparison "
                   f"run(s), single coder)")
     else:
-        pacing = (f"F1 {REFERENCE_HARD_CUT_F1_RANGE} vs blind human coding "
+        pacing = (f"F1 {REFERENCE_BOUNDARY_F1_RANGE} vs blind human coding "
                   f"(single-coder pilot)")
     return (
         "How far to trust this measurement (CMAT reports its own accuracy — "
@@ -234,16 +253,48 @@ def validation_statement(validation_dir: Path | None = None) -> str:
     )
 
 
+# Bumped when the shape or the MEANING of a key in validation_dict() changes,
+# so a file written by an older build is identifiable by inspection rather than
+# by guessing which era it came from.
+#   1  (unversioned) — `hard_cut_f1` / `hard_cut_f1_source`. The figure was
+#      never hard-cut-only; the key was a misnomer for a type-agnostic ALL-row
+#      score. A file with no `provenance_schema` key is schema 1.
+#   2  2026-08-14 — renamed to `boundary_f1` / `boundary_f1_source`, and
+#      `boundary_f1_basis` added. Same number, honest name, and the file now
+#      states what the figure is instead of implying it in a field name.
+PROVENANCE_SCHEMA = 2
+
+
 def validation_dict(validation_dir: Path | None = None) -> dict[str, Any]:
-    """Machine-readable provenance for JSON exports."""
-    live = local_hard_cut_f1(validation_dir)
+    """Machine-readable provenance for JSON exports.
+
+    The key is `boundary_f1`, NOT `hard_cut_f1` (schema 1, superseded): the
+    figure is scored on the ALL row, so the old name pointed at a real but
+    different pair of numbers (0.841 / 0.964). Nothing in CMAT reads this block
+    back — it exists for whoever opens the exported file — which is why
+    `boundary_f1_basis` travels with the number rather than living only here.
+    """
+    live = local_boundary_f1(validation_dir)
     return {
+        "provenance_schema": PROVENANCE_SCHEMA,
         "statement": "CMAT reports its own detection accuracy against human "
                      "coding. PRELIMINARY — small single-coder pilot; accuracy "
                      "is content-dependent. See validation/VALIDATION_LOG.md.",
-        "hard_cut_f1": (live[0] if live else REFERENCE_HARD_CUT_F1_AGG),
-        "hard_cut_f1_source": ("local validation runs" if live
+        "boundary_f1": (live[0] if live else REFERENCE_BOUNDARY_F1_AGG),
+        "boundary_f1_source": ("local validation runs" if live
                                else "CMAT reference study"),
+        # The basis must describe the figure ACTUALLY exported. A live figure
+        # is pooled over however many comparison runs this install has, which
+        # is not the reference study's two episodes.
+        "boundary_f1_basis": (
+            f"transition-boundary detection, ALL row (every coded transition "
+            f"type), matched type-agnostically within ±2 s, detector "
+            f"content-t27-diss, pooled over {live[1]} comparison run(s) in "
+            f"this install — each scored over a WINDOW recorded in its own "
+            f"comparison manifest, not necessarily a whole episode; hand "
+            f"coding may be quantised to whole seconds, single coder, "
+            f"PRELIMINARY"
+            if live else REFERENCE_BOUNDARY_F1_BASIS),
         "metric_status": {k: {"status": v["status"], "note": v["note"]}
                           for k, v in METRIC_STATUS.items()},
     }

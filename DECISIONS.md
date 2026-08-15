@@ -227,13 +227,21 @@ supports a claim about a viewer, and a rating would be believed anyway.
 colouring of metric cells.
 
 ### Age-named presets are reference ranges, not suitability ratings
-**Decision.** `Toddler (0-2)` names the literature the ceilings come from, not
-an audience the show is suitable for.
+**Decision.** `Toddler (0-2)` names **the age group a study using that preset is
+about**, not an audience the show is suitable for.
 **Reason.** Researchers need comparison ranges; presenting them as suitability
 would be the verdict the tool refuses to give.
 **Date.** Foundational.
 **Rejected.** Dropping age names entirely — they are the clearest label for the
 range, provided the framing is explicit.
+**Corrected 2026-08-14.** This entry previously read "names the literature the
+ceilings come from". **No such literature exists.** Checked: no citation appears
+in `config.json`, in this file, or anywhere in the repository, and the ceilings
+were AI-generated defaults never traced to a source (`ARCHITECTURE.md` §8.1a).
+The only literature reference in any preset is `Preschool (2-5)`, which cites
+Lillard & Peterson (2011) **for the age band, not for the ceiling values**. The
+decision itself — age names denote the study population, not suitability — is
+unaffected and still stands; only the false provenance claim is withdrawn.
 
 ### Unusual values are marked with a glyph and a named comparison set
 **Decision.** ▲/▽ plus a legend naming the set (e.g. "the 24 episodes listed
@@ -658,7 +666,60 @@ returns `('0.85', 2)`, reproducing the constants exactly.
 **Rejected.** Quoting the higher 0.91; averaging the two detectors.
 **Both logs.** Methodology in `validation/VALIDATION_LOG.md` (2026-08-08);
 `ARCHITECTURE.md` §9 now names which runs the aggregate covers. The constants
-remain *misnamed* `REFERENCE_HARD_CUT_F1_*` — see `TODO.md` item 1.
+were *misnamed* `REFERENCE_HARD_CUT_F1_*` until the rename below.
+
+### The accuracy figure is named `boundary_f1`, and the export schema is versioned
+**Decision.** `REFERENCE_HARD_CUT_F1_*` → `REFERENCE_BOUNDARY_F1_*`,
+`local_hard_cut_f1()` → `local_boundary_f1()`, and the exported JSON keys
+`hard_cut_f1` / `hard_cut_f1_source` → `boundary_f1` / `boundary_f1_source`.
+**No deprecated alias is emitted.** Two keys added: `boundary_f1_basis`, which
+states the estimand in words, and `provenance_schema`, now **2**. A file with
+no `provenance_schema` key is schema 1, and its `hard_cut_f1` field holds this
+same ALL-row figure despite the name.
+**Reason.** The old name did not merely read vaguely — it named a real,
+different quantity. The hard_cut-only F1 for the same two runs is 0.841 / 0.964,
+so a reader who trusted the key got the wrong number with nothing in the file to
+reveal it. Keeping a deprecated `hard_cut_f1` alongside the new key would have
+re-published the misnomer in every new export, which is what the item existed to
+stop. `boundary_f1_basis` is the durable half of the fix: a field name is a bad
+place to carry an estimand, so the file now says what the figure is instead of
+implying it.
+**Migration.** Not a data migration. Nothing in CMAT parses the block back — all
+four sites are writes (`gui.py`, `ui/main_window.py`) — and no exported JSON
+carrying the key exists in this working copy. Exposure is limited to JSON files
+already saved outside the repo; those stay readable and are now identifiable as
+schema 1.
+**Date.** 2026-08-14.
+**Rejected.** Emitting both keys for a release (re-publishes the wrong name);
+renaming internals only (leaves the lie in the artefact that actually leaves the
+tool, which inverts the priority).
+
+### Normalization ceilings are fitted to observed content, and dated
+**Decision.** Retuned five of six ceilings on 2026-08-14 from 78 analysed
+episodes: `cuts_per_min` 60→45, `color_saturation_mean` 1.0→0.85,
+`motion_mean` 1.0→0.35, `flashing_events_per_min` 30→40, `audio_rms_mean`
+0.2→0.35. `color_contrast_mean` stays 0.35 — already well matched. Motion was
+additionally corrected in **every** preset (0.5/0.7/0.85/1.0 →
+0.18/0.25/0.30/0.35). The age presets keep their own ceiling ladder otherwise.
+**Reason.** Two opposite defects were live at once. Motion's ceiling was its
+*theoretical* maximum of 1.0 while real video produces ~0.09, so a component
+weighted 25% contributed ~7% of the composite — the weight said one thing and
+the arithmetic did another. Flashing and audio ceilings sat *below* real
+content, clamping the most intense episodes to an identical 1.0. Neither is
+visible from a score; both are visible from the distribution.
+**Migration.** Every composite already computed sits on the old scale. The
+index was re-scored (13 of 15 rows; the two that did not are stale rows for
+files outside the library root). The public site still publishes old-scale
+figures — a separate, deliberate step.
+**Provisional on purpose.** n=78, not a random sample, thin on live-action and
+fast-cut content. `CEILINGS.md` records the basis, the limitations and the
+triggers for revisiting; Settings now shows each metric's observed median and
+maximum beside its input so the next revision is made against evidence.
+**Date.** 2026-08-14.
+**Rejected.** Fitting ceilings tightly to the corpus maximum (scores become
+relative to 78 episodes and lose cross-library comparability, and one faster
+show forces another migration); leaving motion wrong to preserve comparability
+(the composite would keep contradicting its own stated weights).
 
 ### A show aggregate weights every episode equally
 **Decision.** Every episode counts once regardless of length, **and the choice

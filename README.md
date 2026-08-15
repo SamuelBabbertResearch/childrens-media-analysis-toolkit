@@ -14,7 +14,7 @@ Then **validate one against the other**: grade the automated detection against y
 
 CMAT does **not** issue a verdict on appropriateness. Every composite score shows its component parts, and every design decision in the scoring model is adjustable.
 
-> **Part of the Open Children's Media Index** — an ongoing effort to build a publicly accessible, empirically grounded database of sensory-load profiles for children's television.
+> **Part of the Open Children's Media Index** — an ongoing effort to build a publicly accessible database of formal-feature measurements for children's television.
 
 ---
 
@@ -43,7 +43,9 @@ CMAT does **not** issue a verdict on appropriateness. Every composite score show
 | **Age of Acquisition** | Mean age at which vocabulary words are typically learned, from Kuperman et al. norms. |
 | **Lexical diversity (MTLD)** | Measure of Textual Lexical Diversity — how widely the dialogue draws on the available vocabulary, robust to text length. |
 
-Grounded in the Huston & Wright formal features framework, Lang's Limited Capacity Model (LC4MP), and Lillard & Peterson (2011).
+The **measurement set** is grounded in the Huston & Wright formal features framework and Lang's Limited Capacity Model (LC4MP); Lillard & Peterson (2011) is among the correlational findings usually cited.
+
+Those frameworks motivate *which* properties are worth measuring. They do not specify how to combine them into one number, and nothing else does either: the composite's weights and normalization ceilings are a configurable scaling convention, not derived from theory and not validated. Component measures are reported separately everywhere for that reason. See [CEILINGS.md](CEILINGS.md).
 
 > **Honest limitation:** This tool measures the stimulus, not the viewer. It cannot account for a child's age, temperament, or sensory-processing profile. Output is a profile to inform judgment, not a rating or verdict. All findings are correlational.
 
@@ -219,7 +221,7 @@ Open a coding sheet from the **Validation** tab and you get a form-style editor 
 
 ### Use *your* coding system — fully customizable
 
-**Every dropdown is editable.** Type your lab's own category and it's added to the list for reuse — CMAT ships with a literature-grounded default vocabulary, but you are never locked into it. Bring your own transition taxonomy, your own event categories, your own scene-relation scheme; the tool adapts to your system rather than imposing one. The same flexibility runs through the analysis side: **every metric weight, normalization range, and scoring preset is adjustable**, so CMAT can be tuned to whatever constructs and thresholds your study uses.
+**Every dropdown is editable.** Type your lab's own category and it's added to the list for reuse — CMAT ships with a default vocabulary, but you are never locked into it. (The default transition typology is the study's own working scheme and does not yet cite a source; the shot-boundary literature generally uses a coarser CUT/GRADUAL split. Treat it as a starting point, not an authority.) Bring your own transition taxonomy, your own event categories, your own scene-relation scheme; the tool adapts to your system rather than imposing one. The same flexibility runs through the analysis side: **every metric weight, normalization range, and scoring preset is adjustable**, so CMAT can be tuned to whatever constructs and thresholds your study uses.
 
 ### Grade the tool against your coding
 

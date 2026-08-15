@@ -609,3 +609,59 @@ def save_show_eras(
             ),
         )
     conn.commit()
+
+
+# The metrics that feed the sensory-load composite, mapped to the ceiling key
+# that scales each one. Keyed by the `normalization_reference_ranges` name so a
+# caller can look a ceiling's own distribution up directly.
+CEILING_METRIC_COLUMN = {
+    "cuts_per_min": "cuts_per_min",
+    "color_saturation_mean": "color_saturation_mean",
+    "color_contrast_mean": "color_contrast_mean",
+    "motion_mean": "motion_mean",
+    "flashing_events_per_min": "flashing_events_per_min",
+    "audio_rms_mean": "audio_rms_mean",
+}
+
+
+def ceiling_distributions(conn: sqlite3.Connection,
+                          ranges: dict | None = None) -> dict[str, dict]:
+    """What the indexed library actually produces for each scaled metric.
+
+    Returned per ceiling key: ``n``, ``median``, ``max``, and — when *ranges*
+    is given — ``ceiling``, ``pct_of_ceiling`` (where the maximum sits on the
+    scale) and ``n_clamped`` (episodes at or above the ceiling, which score an
+    identical 1.0 and are therefore indistinguishable from each other).
+
+    This exists so a ceiling can be chosen against evidence rather than
+    intuition. Both failure modes are invisible from the number alone: motion's
+    ceiling of 1.0 sat ~10x above anything real content produces, so a
+    component weighted 25% contributed ~7%; flashing's sat below real content,
+    flattening the top of the scale. See `CEILINGS.md`.
+
+    Pure query, no GUI, and safe on an empty or partial index — a metric with
+    no rows is simply absent from the result.
+    """
+    import statistics as st
+
+    out: dict[str, dict] = {}
+    for key, column in CEILING_METRIC_COLUMN.items():
+        try:
+            rows = conn.execute(
+                f"select {column} from episodes where {column} is not null"
+            ).fetchall()
+        except sqlite3.Error:
+            continue
+        values = [r[0] for r in rows if r[0] is not None]
+        if not values:
+            continue
+        entry = {"n": len(values),
+                 "median": st.median(values),
+                 "max": max(values)}
+        ceiling = (ranges or {}).get(key, {}).get("max")
+        if ceiling:
+            entry["ceiling"] = ceiling
+            entry["pct_of_ceiling"] = 100.0 * entry["max"] / ceiling
+            entry["n_clamped"] = sum(1 for v in values if v >= ceiling)
+        out[key] = entry
+    return out

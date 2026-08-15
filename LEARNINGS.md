@@ -317,6 +317,52 @@ guard is a specification for its neighbours, not a local detail. `aggregate_summ
 now takes a `detector_tag` and returns which one it used, so a caller cannot
 show the number without being able to say what it is OF.
 
+### The estimand lived in a field name, and the field name was wrong
+**What.** The headline accuracy figure was carried as `REFERENCE_HARD_CUT_F1_*`,
+`local_hard_cut_f1()` and an exported JSON key `hard_cut_f1` — for a figure
+scored type-agnostically on the `ALL` row. Every piece of *prose* around it was
+correct; only the identifiers lied. Renamed to `boundary_f1` on 2026-08-14.
+**Why it was worse than a vague name.** The hard_cut-only F1 for the same two
+runs exists and differs: 0.841 / 0.964 against the exported 0.85. So the name
+did not merely under-describe the number — it named a different, real quantity,
+and a reader who trusted it would get a wrong figure with nothing in the file to
+catch them. A vague name prompts a question; a plausible wrong name does not.
+**Avoid.** **Do not encode an estimand in a key.** A machine-readable export
+should state what a number is *as a value* next to it — `boundary_f1_basis` now
+carries "ALL row … ±2 s … detector content-t27-diss … single coder,
+PRELIMINARY" — because a field name cannot be qualified, cannot be dated, and
+is the one part of the file nobody re-reads. And version the block
+(`provenance_schema`) the moment a key's *meaning* changes, so an old artefact
+is identifiable by inspection rather than by remembering which era wrote it.
+**Related.** This is the same defect family as the published F1 contradiction
+that preceded it — see §4 and `DECISIONS.md`. Both came from a number and its
+description drifting apart while each looked fine alone.
+
+### The fifth reader of a cached composite — and the only one that publishes
+**What.** `build_site.py` read `ep["metrics"]["sensory_load"]["score"]`
+straight from the cache file, and built each show's aggregate from a stored
+`aggregate.json`. Both are DERIVED values frozen at analysis time. When the
+normalization ceilings were retuned on 2026-08-14 the index re-scored to 0.2654
+for one episode while the site went on publishing 0.2241 — and a rebuild
+changed nothing, because the rebuild was faithfully republishing a stale number.
+**Why.** The identical one-line mistake had already been found and fixed in four
+places (Qt Library, `cli._analyze_single`, `cli._db_backfill`, `batch.py`), and
+`analyzer.cache.load_scored()` was created as the one sanctioned reader with a
+docstring naming all four. `build_site.py` was not in that sweep — it does not
+call `load_scored`, it opens the JSON itself, so a grep for the function name
+could never have found it.
+**Avoid.** **When you fix a repeated shape, grep for the SHAPE, not the fix.**
+The sweep looked for callers of the cache API; this reader bypassed the API
+entirely. Searching for `["sensory_load"]["score"]` — the *access pattern* —
+would have found it immediately. The general rule: after centralising a rule
+into a function, search for the raw operation that function wraps, because
+anything still doing it by hand is exactly what you missed.
+**Also.** A page that claims "every result is reproducible from the parameters
+documented here" must generate those parameters from the config it actually
+ran with. The methodology page listed sample rate and preset but not the
+ceilings, so the claim was false the moment the ceilings changed. It is now
+generated from `config.json`.
+
 ### A maintenance script pointed at a stale copy of the data
 **What.** `patch_speech_cache.py` set `ROOT = Path(__file__).parent` and looked
 for `<project>/.analysis`. That stopped being the library when the shows moved
@@ -671,3 +717,27 @@ invisible to tests and to code review.
 moving it into a category, or renaming episode files orphans the cache and the
 analysis appears to vanish. "Remove Stale" finds the reverse. *Future
 improvement:* key on a content hash (size + duration).
+
+### A missing rationale was assumed to be a lost one
+**What.** `ARCHITECTURE.md` §8.1a recorded that the composite's weights,
+ceilings and additive form had "no recorded rationale anywhere", and `TODO.md`
+framed the fix as a question only the author could answer from memory. Asked
+directly, the author — a psychology researcher, not the implementer — said they
+did not know, because the code and those values had been produced by an AI
+coding assistant during development. There was never a rationale to recover.
+**Why it matters.** For weeks the record described the gap in a way that
+implied a human decision had simply gone unwritten. That framing is an
+invitation to reconstruct: a later reader, human or model, fills a
+plausible-looking justification into a space that was never occupied, and the
+result is indistinguishable from a real derivation. The theory citations sitting
+next to the composite (Huston & Wright, Lang) made this worse — they justify
+which properties are *measured* and say nothing about how to combine them, but
+proximity reads as derivation.
+**Avoid.** **Distinguish "undocumented" from "underived" in the record itself.**
+When a parameter has no source, write that it *has* no source, not that the
+source is missing. And on a project where an assistant writes the code and a
+domain expert owns the claims, treat every generated constant as underived until
+someone states otherwise — the expert cannot audit a number they never chose,
+and the assistant will not remember choosing it.
+**Related.** Same family as the misnamed F1 and the flashing claim: a
+description and a number drifting apart, each looking fine alone.

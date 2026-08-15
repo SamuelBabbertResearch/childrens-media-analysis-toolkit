@@ -4,7 +4,8 @@ Previously-on, for a session starting with zero memory. Read this, then
 `TODO.md`, then `DECISIONS.md` and `LEARNINGS.md`. `INDEX.md` points at
 everything else.
 
-**Last updated:** 2026-08-14 (four output audits: nineteen defects, two published)
+**Last updated:** 2026-08-14 (ceilings retuned — every composite score moved;
+F1 identifiers renamed to `boundary_f1`; frame-step timestamp question closed)
 
 ---
 
@@ -230,7 +231,7 @@ real defects in the sampler, all fixed:
 Also documented rather than changed: `Episode.runtime` is read by nothing, and
 `Episode.label()` concatenates without a separator (`S01E02Birthday Soup`) —
 it is the manual-lookup key *and* the episode list in every written manifest,
-so changing it needs a migration decision. Both are in `TODO.md` item 7.
+so changing it needs a migration decision. Both are in `TODO.md` item 6.
 
 ### Part 6 — era stratification, which had never worked
 
@@ -260,7 +261,7 @@ each, all three represented, `stratify_by: era` recorded in the manifest.
 **The method lesson is in `LEARNINGS.md`:** the audit that found the other
 sixteen gaps compared menus and buttons, which cannot detect a control whose
 data path is empty — and scores a feature broken in both builds as present.
-`TODO.md` item 7 is now a re-audit by *output*, with the specific fields a
+`TODO.md` item 6 is now a re-audit by *output*, with the specific fields a
 folder scan cannot fill listed.
 
 ### Part 5 — the rest of the feature gap
@@ -407,8 +408,11 @@ unknown. Measurement settings now reports both numbers.
 
 ## The F1 contradiction, closed (2026-08-14, later session)
 
-`TODO.md` item 1 — the top item, and the number the product's honesty claim
-rests on — is **resolved**, by recomputation rather than by picking a side.
+The number the product's honesty claim rests on is **resolved**, by
+recomputation rather than by picking a side — and as of the 2026-08-14 rename
+below, the identifiers no longer contradict it either. This item is **closed
+and off `TODO.md`**, which is why the list now starts at the composite
+rationale.
 
 **What was wrong:** `analyzer/provenance.py` carried a comment quoting
 "0.84–0.96, aggregate ~0.91" directly above constants saying "0.75–0.91,
@@ -434,16 +438,188 @@ already moved the published basis to `ALL` and said it superseded earlier
 entries — the code comment had simply never been updated. `LEARNINGS.md` §4
 independently records the same pooled 0.855 / 0.928.
 
-**What remains:** the constants are **misnamed**. `REFERENCE_HARD_CUT_F1_*`,
-`local_hard_cut_f1()` and the exported `"hard_cut_f1"` key all say *hard-cut*
-for a type-agnostic figure — and the hard-cut name points at real but different
-numbers (0.841 / 0.964). That is `TODO.md` item 1 now, and it touches the JSON
-export schema, so it is a migration. **The prose everywhere is already
-correct**; only the identifiers lie.
-
 Updated: `analyzer/provenance.py`, `ARCHITECTURE.md` §9 (now names which runs
 the aggregate covers), `build_site.py` comment, `DECISIONS.md`, `TODO.md`,
 `FOR_PAPER.txt`. Tests: 322 passed, 13 skipped.
+
+### Public wording brought in line with the evidence
+
+The last thread from the composite finding. Four public claims asserted a
+grounding that does not exist, and all four are now corrected:
+
+- **The site's landing page** said "empirically grounded database of
+  **sensory-load profiles**" — the profile *is* the composite, so this was the
+  strongest live overclaim. Now "a transparent database of formal-feature
+  measurements … the composite that combines them is a configurable summary,
+  not a validated construct."
+- **`README.md`** said "Grounded in Huston & Wright … Lang's LC4MP …" without
+  qualification. Now attributes the grounding to the **measurement set** and
+  states plainly that nothing specifies how to combine them.
+- **`README.md` also claimed a "literature-grounded default vocabulary"** for
+  the coding dropdowns. Found by grepping for the *shape* rather than the three
+  known instances. `CODEBOOK.md` contains **zero citations** — confirmed — so
+  this contradicted `TODO.md`'s own open item about the typology. Now says the
+  typology is the study's own working scheme.
+- **`DECISIONS.md`** said "`Toddler (0-2)` names the literature the ceilings
+  come from". No such literature exists anywhere in the repo. The entry now
+  carries a dated correction; the underlying decision (age names denote the
+  study population, not suitability) is unaffected and stands.
+
+A test now fails if "empirically grounded", "scientifically validated" or
+"literature-grounded" reappears in `README.md` or `build_site.py`.
+
+**The wording is mine and should be reviewed.** Samuel raised that AI-generated
+text carries an embedded watermark and that paper prose must be his own; these
+edits were kept deliberately subtractive for that reason, but they are
+public-facing copy and deserve a human pass.
+
+### The ceilings were retuned, and the site was republishing frozen scores
+
+Following directly from the finding below — that nominal weights are not
+effective weights — the normalization ceilings were fitted to observed content
+on 2026-08-14. **Every composite score in the project moved.** Component
+metrics did not: raw measurements are unchanged, only the 0–1 rescaling.
+
+- **Five of six ceilings changed**, from 78 analysed episodes: `cuts_per_min`
+  60→45, saturation 1.0→0.85, `motion_mean` 1.0→**0.35**, flashing 30→**40**,
+  audio RMS 0.2→**0.35**. Contrast stays 0.35, already well matched.
+- **Two opposite defects were live at once.** Motion's ceiling was its
+  *theoretical* maximum against a real range of ~0.09, so a 25% weight
+  delivered 7%. Flashing and audio ceilings sat *below* real content, clamping
+  the most intense episodes to an identical 1.0. Neither is visible from a
+  score; both are visible from the distribution.
+- **Motion was corrected in every preset** (0.5/0.7/0.85/1.0 →
+  0.18/0.25/0.30/0.35) — a scale error rather than a design choice. The age
+  presets keep their deliberate ladder otherwise.
+- **`CEILINGS.md` is new** and is the home for this: what a ceiling is, how the
+  current values were set, their limitations, and explicit triggers for
+  revisiting (~150 episodes, materially different content, any metric clamping
+  >5%, or before any submission quoting composite scores). Registered in
+  `INDEX.md`. The basis is **provisional** — n=78, not random, thin on
+  live-action and fast-cut content.
+- **Settings now shows the evidence.** Each ceiling field carries its metric's
+  observed median and maximum for the current library, and warns when episodes
+  are clamping. `analyzer.db.ceiling_distributions()` computes it; the dialog
+  only displays it.
+
+**A fifth reader of a frozen composite, and the only one that publishes.**
+`build_site.py` read the stored score straight from the cache and the show
+aggregate from a stored `aggregate.json`. The index re-scored to 0.2654 for one
+episode while the site kept publishing 0.2241 — and rebuilding changed nothing,
+because the rebuild republished the stale number faithfully. The same one-line
+mistake had been fixed in four places, but the sweep looked for callers of
+`load_scored()` and this file opens the JSON itself. **Grep for the shape, not
+the fix.** Both now re-derive; verified against the built HTML, not the build
+log. The methodology page also generates the ceilings table from `config.json`,
+because it claims every result is reproducible from the parameters it documents.
+
+**`<project>/.analysis` MUST NOT BE DELETED.** `TODO.md` previously called it a
+stale duplicate to archive. `build_site.py` reads it, and **7 of the 15
+published shows exist only there** — including every baseline comparison.
+`TODO.md` item 6 now says so.
+
+The site is **built to `_site/` but not pushed**; pushing is manual.
+
+### The composite's defaults have no derivation — settled, not open
+
+`TODO.md`'s long-standing item ("write down why the composite is shaped as it
+is") is **answered**, and the answer is that nobody derived it. Put to the
+author, the reply was that they did not know, because the code — including the
+weights, the ceilings and the additive form — was written by an AI coding
+assistant. The author is a psychology researcher, not the implementer.
+
+**Do not treat this as a gap to be filled.** For weeks the record said "no
+recorded rationale", which reads as *a human decided this and forgot to write it
+down*, and invites the next reader to reconstruct a plausible justification into
+a space that was never occupied. `ARCHITECTURE.md` §8.1a now says the defaults
+are underived, in those words.
+
+Three things follow, all recorded:
+
+- **The theory citations cover the measurement set, not the composite.** Huston
+  & Wright and Lang justify measuring cuts, motion, saturation, contrast,
+  luminance change and audio. Neither says how to combine them into one number.
+- **Nominal weights are not effective weights.** Measured over the 15 indexed
+  episodes: motion is nominally 25% and contributes **7%**; colour contrast is
+  nominally 10% and contributes **24%** — motion reaches 8.6% of its ceiling,
+  contrast 62%. This quantifies the ceiling-compression effect `LEARNINGS.md`
+  already recorded for pacing. Report both columns or neither.
+- **Do not change the defaults.** Arbitrary is not the same as wrong, and
+  rewriting them breaks comparability with every score already computed while
+  buying no justification. Disclosure is the fix, and it is written.
+
+What is left is `TODO.md` item 1: three public wordings that are stronger than
+the evidence, including the site's "empirically grounded database of
+sensory-load profiles". A product decision, not code.
+
+**Also fixed on the way:** the shipped `Toddler (0-2)` preset described flashing
+as "weighted higher (safety)" — an interface string, rendered in Settings,
+claiming a photosensitivity safety assessment the tool explicitly does not
+make. Rewritten; a test now fails if any preset mentions safety without
+disclaiming it.
+
+### The timestamp question, closed the same day
+
+Whether the frame-step defect (libvlc's frozen clock, fixed 2026-08-11) had
+biased the timestamps **already collected**. It had not, and the evidence is
+decisive rather than a judgement call.
+
+- **The marks were never stamped.** The defect can only reach a timestamp
+  through the Stamp button, and `_fmt_hms()` writes tenths unless the clock is
+  within 0.05 s of a whole second. Charlie Brown is 44 of 45 whole seconds;
+  Little Bear is 86 of 86. Under a stamped hypothesis that is P ≈ 10⁻⁴⁴ and
+  10⁻⁸⁶. They were hand-typed in `mm:ss` while watching.
+- **A larger bias is real, from a different cause.** Second-truncation, mean
+  −0.523 s (CB) and −0.610 s (LB), with 29/32 and 64/71 marks early — about 12×
+  a single frame, so frame-stepping was never the dominant term.
+- **It does not move the headline.** Re-scored with the project's own
+  `compare_detections` in a scratch directory: correcting the full bias takes
+  pooled F1 from 0.855 to **0.863**, one true positive. The uncorrected row
+  reproduced the published 0.753 / 0.910 exactly, which is what makes the rest
+  of the column trustworthy.
+- **The limitation that matters:** ±2 s is a *floor*, not a free parameter. Any
+  tolerance below ~1 s measures the whole-second coding resolution rather than
+  the detector, so a sub-second claim needs frame-resolution recoding first.
+
+**And a coverage claim that was overstated where it was published.** Every
+comparison manifest records a window — CB 0–300 s, LB 0–320 s — so "two
+episodes" is really **~10 min 20 s of video**, the first ~5 minutes of each.
+`FOR_PAPER.txt` had this right all along; `ARCHITECTURE.md` §9, `CLAUDE.md`
+§2.2 and `analyzer/provenance.py` did not, and provenance.py feeds the PDF, the
+CSV sidecar, the JSON export and the public site. Same shape as the flashing and
+F1 defects: the private notes were correct while the published claim was not.
+All three now state the window, as does the exported `boundary_f1_basis`. **No
+number changed.**
+
+### The rename that followed (2026-08-14, same day)
+
+The prose was already correct everywhere; **only the identifiers lied**, and
+they lied in the worst available way — `REFERENCE_HARD_CUT_F1_*`,
+`local_hard_cut_f1()` and the exported `"hard_cut_f1"` key all said *hard-cut*
+for a type-agnostic ALL-row figure, while the hard_cut-only numbers for the
+same two runs really exist (0.841 / 0.964). The name pointed at a real but
+different quantity, so a reader who trusted it had nothing to catch them.
+
+- Now `REFERENCE_BOUNDARY_F1_RANGE` / `_AGG`, `local_boundary_f1()`, and
+  `boundary_f1` / `boundary_f1_source` in `validation_dict()`. **The number did
+  not move**: `local_boundary_f1()` still returns `('0.85', 2)`.
+- **`boundary_f1_basis`** is new and is the durable half of the fix: the
+  exported file now *states* the estimand ("ALL row … ±2 s … detector
+  content-t27-diss … single coder, PRELIMINARY") instead of encoding it in a
+  field name. When the figure is computed live it names the run count for
+  *this install*, not the reference study's two episodes.
+- **`provenance_schema` is now 2.** A file with no such key is schema 1, and
+  its `hard_cut_f1` field holds this same ALL-row figure despite its name — the
+  one thing anyone re-reading an old export needs to know.
+- **No deprecated alias.** Emitting both keys would have re-published the
+  misnomer in every new export, which is what the item existed to stop. Safe
+  because nothing in CMAT parses the block back: all four sites are writes, and
+  no exported JSON carrying the old key exists in this working copy.
+
+Rationale and rejected options in `DECISIONS.md`; the old-file caveat is in
+`FOR_PAPER.txt` because it bears on any number quoted from a pre-rename export.
+Tests: **325 passed, 13 skipped** — three new ones pin the key name, the basis
+string, and that the basis describes the run that produced the figure.
 
 ## What happened before that (2026-08-10 → 08-11)
 
@@ -455,8 +631,8 @@ Late additions, after the Qt port:
   `next_frame()` advances the picture but freezes the clock, and corrupts the
   next seek. Frame-stepping is now a seek of one frame duration in both
   `ui/player.py` and `gui_coding_editor.py`; backward stepping now works.
-  **Timestamps already collected are unaffected by the fix** — assessing them
-  is `TODO.md` item 3.
+  **Timestamps already collected are unaffected by the fix**, and were
+  confirmed unaffected by the DEFECT too — assessed 2026-08-14, see below.
 - **Codebook `other` subtypes defined** — wipe, iris, whip-pan cut, page turn.
 - **`ARCHITECTURE.md` §8 rewritten from the metric source**, plus §8.1a naming
   the composite's unjustified choices, §9 validation status, §10 config
@@ -488,14 +664,14 @@ folder, the Qt stylesheet sample into `ui/reference/`, and `preview_ui.py`
 deleted — it opened `GeminiPipeline.qss`, a filename that has never existed in
 this repo, so it could not have run. `docs/` was deliberately not used: it is
 gitignored, so moving a document there would have silently untracked it,
-including the north-star spec. What remains is `TODO.md` item 13 — folding the
+including the north-star spec. What remains is `TODO.md` item 12 — folding the
 two overlapping positioning documents into `ROADMAP.md`.
 
 ## What is blocked
 
 Nothing is blocked on an external dependency. One item needs a **product
 decision, not code**: whether the startup wizard should keep *Create Pipeline*
-as its default button (`TODO.md` item 11).
+as its default button (`TODO.md` item 10).
 
 ## Next three concrete steps
 
@@ -522,8 +698,11 @@ as its default button (`TODO.md` item 11).
 - **Scoring settings ≠ measurement settings.** See `ARCHITECTURE.md` §3.
 - **Know what is validated before quoting a number.** Flashing and scene
   relation are *unvalidated*; dissolves and TransNetV2 are *experimental*. The
-  headline hard-cut F1 of 0.85 is type-agnostic, ±2 s, and from a preliminary
-  single-coder pilot. `ARCHITECTURE.md` §9 has the full table.
+  headline **boundary** F1 of 0.85 is type-agnostic (the `ALL` row), ±2 s, and
+  from a preliminary single-coder pilot. `ARCHITECTURE.md` §9 has the full
+  table. **It is not a hard-cut figure** — that is a different, real number
+  (0.841 / 0.964), and calling it hard-cut is the mistake that cost this
+  project a published contradiction.
 - This working copy has real data: 32 shows, 202 episodes, 13 indexed, 29
   pipeline documents, 22 trials. Tests must not write into it — a previous
   session's manual test created a stray pipeline document that had to be

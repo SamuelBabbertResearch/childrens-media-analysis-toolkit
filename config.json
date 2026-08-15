@@ -22,11 +22,11 @@
   "normalization_reference_ranges": {
     "cuts_per_min": {
       "min": 0.0,
-      "max": 60.0
+      "max": 45.0
     },
     "color_saturation_mean": {
       "min": 0.0,
-      "max": 1.0
+      "max": 0.85
     },
     "color_contrast_mean": {
       "min": 0.0,
@@ -34,15 +34,15 @@
     },
     "motion_mean": {
       "min": 0.0,
-      "max": 1.0
+      "max": 0.35
     },
     "flashing_events_per_min": {
       "min": 0.0,
-      "max": 30.0
+      "max": 40.0
     },
     "audio_rms_mean": {
       "min": 0.0,
-      "max": 0.2
+      "max": 0.35
     }
   },
   "presets": {
@@ -60,11 +60,11 @@
       "normalization_reference_ranges": {
         "cuts_per_min": {
           "min": 0.0,
-          "max": 60.0
+          "max": 45.0
         },
         "color_saturation_mean": {
           "min": 0.0,
-          "max": 1.0
+          "max": 0.85
         },
         "color_contrast_mean": {
           "min": 0.0,
@@ -72,21 +72,21 @@
         },
         "motion_mean": {
           "min": 0.0,
-          "max": 1.0
+          "max": 0.35
         },
         "flashing_events_per_min": {
           "min": 0.0,
-          "max": 30.0
+          "max": 40.0
         },
         "audio_rms_mean": {
           "min": 0.0,
-          "max": 0.2
+          "max": 0.35
         }
       }
     },
     "Toddler (0-2)": {
       "builtin": true,
-      "description": "Tight ceilings for infants and toddlers. Even a few cuts/min is meaningful at this age. Flashing weighted higher (safety).",
+      "description": "Tight ceilings for infants and toddlers. Even a few cuts/min is meaningful at this age. Flashing weighted higher, so a difference in flashing moves the composite more at these ceilings. NOT a safety assessment \u2014 the flashing measure is unvalidated and implements neither the area threshold nor the red-flash criterion.",
       "sensory_load_weights": {
         "pacing": 0.2,
         "saturation": 0.05,
@@ -110,7 +110,7 @@
         },
         "motion_mean": {
           "min": 0.0,
-          "max": 0.5
+          "max": 0.18
         },
         "flashing_events_per_min": {
           "min": 0.0,
@@ -148,7 +148,7 @@
         },
         "motion_mean": {
           "min": 0.0,
-          "max": 0.7
+          "max": 0.25
         },
         "flashing_events_per_min": {
           "min": 0.0,
@@ -186,7 +186,7 @@
         },
         "motion_mean": {
           "min": 0.0,
-          "max": 0.85
+          "max": 0.3
         },
         "flashing_events_per_min": {
           "min": 0.0,
@@ -224,7 +224,7 @@
         },
         "motion_mean": {
           "min": 0.0,
-          "max": 1.0
+          "max": 0.35
         },
         "flashing_events_per_min": {
           "min": 0.0,
@@ -262,7 +262,7 @@
         },
         "motion_mean": {
           "min": 0.0,
-          "max": 1.0
+          "max": 0.35
         },
         "flashing_events_per_min": {
           "min": 0.0,
@@ -300,7 +300,7 @@
         },
         "motion_mean": {
           "min": 0.0,
-          "max": 1.0
+          "max": 0.35
         },
         "flashing_events_per_min": {
           "min": 0.0,

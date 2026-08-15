@@ -15,6 +15,90 @@ Entry format:
 
 ---
 
+## 2026-08-14 — Frame-step defect assessed against the coded data: NOT affected
+
+Closing the question the 2026-08-11 timestamp entry left open — whether the
+frozen-clock frame-stepping defect biased the timestamps already collected.
+**It did not, and the reason is decisive rather than probabilistic.**
+
+**Method.** The defect can only reach a timestamp through the Stamp button,
+which records the player clock (`current_sec()`). So the question is whether
+the coded marks were stamped at all. `_fmt_hms()` in `gui_coding_editor.py`
+writes tenths unless the time is within 0.05 s of a whole second — a stamped
+mark is therefore fractional roughly 90% of the time.
+
+| Episode | Marks | Fractional | Whole seconds |
+|---|---|---|---|
+| A Charlie Brown Christmas 1965 | 45 | 1 (`05:13.6`) | 44 |
+| Little Bear 1x01 | 86 | 0 | 86 |
+
+If these had been stamped, P(44 consecutive whole seconds) ≈ 10⁻⁴⁴, and for
+Little Bear ≈ 10⁻⁸⁶. The marks were **hand-typed at whole-second resolution
+while watching**, not stamped. Frame-stepping never touched them. No
+recomputation is required on this account.
+
+**But a larger bias is present, from a different cause.** Signed offsets on the
+matched pairs (human − tool), `content-t27-diss`, 2026-08-08 runs:
+
+| Episode | Matched pairs | Mean | Median | Human earlier |
+|---|---|---|---|---|
+| A Charlie Brown Christmas 1965 | 32 | −0.523 s | −0.485 s | 29/32 |
+| Little Bear 1x01 | 71 | −0.610 s | −0.608 s | 64/71 |
+
+That is **second-truncation**, not frame-stepping: a coder writing `00:29` for
+an event at 29.6 s is early by 0.6 s, and the mean error of flooring a
+uniformly-distributed time is −0.5 s, which is what both episodes show. It is
+~12× a single frame (41.7 ms at 23.976 fps), so the defect that prompted this
+check was never the dominant error term.
+
+**Sensitivity — does it move the headline?** Re-scored with the project's own
+`compare_detections`, in a scratch directory, with a correction added to every
+human mark. The +0.00 row reproduces the published figures exactly, which is
+what makes the rest of the column trustworthy:
+
+| Correction | CB | LB | Pooled TP/FP/FN | Pooled F1 |
+|---|---|---|---|---|
+| +0.00 (as coded) | 0.753 | 0.910 | 103/14/21 | **0.855** |
+| +0.25 | 0.753 | 0.923 | 104/13/20 | 0.863 |
+| +0.50 | 0.753 | 0.923 | 104/13/20 | 0.863 |
+| +0.61 | 0.753 | 0.923 | 104/13/20 | 0.863 |
+| +1.00 | 0.729 | 0.923 | 103/14/21 | 0.855 |
+
+**Outcome.** Correcting the full observed bias moves pooled boundary F1 by
+**+0.008** (0.855 → 0.863) — one true positive. The ±2 s matching tolerance
+absorbs a ±0.5 s quantisation comfortably. **The published figures stand
+unchanged.**
+
+**Record it as a limitation, not a defect.** The human reference is quantised
+to whole seconds and biased ~0.55 s early. Two consequences: the ±2 s tolerance
+is doing real work and cannot be tightened without recoding at frame
+resolution, and any future tolerance sweep below ~1 s measures the coding
+resolution rather than the detector.
+
+**Open questions.**
+- Frame-resolution recoding is required before any sub-second tolerance claim.
+- The one fractional CB mark (`05:13.6`) is outside the scored window; nothing
+  turns on it.
+
+## 2026-08-14 — The published F1 covers the first ~5 minutes, not whole episodes
+
+Found while reproducing the above. Every comparison manifest records a window:
+
+| Episode | Window | Marks scored |
+|---|---|---|
+| A Charlie Brown Christmas 1965 | 0–300 s | 43 of 45 |
+| Little Bear 1x01 | 0–320 s | 81 of 86 |
+
+So "two episodes" means **~10 minutes 20 seconds of video in total**, not two
+whole episodes. This was recorded at the time (2026-07-04, "Charlie Brown,
+first 5 min") but never propagated into the places the figure is *published* —
+`ARCHITECTURE.md` §9, `CLAUDE.md` §2.2 and `analyzer/provenance.py` all said
+"two episodes" with no window.
+
+Per `CLAUDE.md` §2.2 — never quote an accuracy figure without its qualifiers —
+the window is now stated everywhere the figure appears, including the exported
+`boundary_f1_basis`. **No number changes;** the coverage claim does.
+
 ## 2026-08-11 — CODEBOOK: `other` subtypes given operational definitions
 
 The `other` row listed "wipes, iris transitions, whip-pan disguised cuts, page
