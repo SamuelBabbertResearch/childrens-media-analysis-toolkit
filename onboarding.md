@@ -662,7 +662,19 @@ which calls `build_pipelines` every time. Everything else is small and flat in
 sample size: Library + Index + Trials 353 ms, the analysis queue 92 ms, both
 hand-coding worklists 293 ms, both Language views 261 ms. So the toolbar's
 Showing: control costs two seconds, and 87% of that is one pre-existing call
-that cannot change as a result of choosing a scope. See `TODO.md`.
+that cannot change as a result of choosing a scope.
+
+**Fixed 2026-08-15.** `_sync_scope_choices` split into `_rebuild_scope_choices`
+(the expensive one — calls `build_pipelines`, still called from `set_root` and
+as the fallback below) and `_select_scope_in_chooser` (moves the combo box to
+`self._scope` by looking it up in the already-built `_scope_choices` list — no
+disk I/O). `set_scope` now calls the cheap one. When the requested scope isn't
+in the list yet — a sample drawn moments ago, or a pipeline's linked sample not
+yet discovered — `_select_scope_in_chooser` falls back to a full rebuild, so
+the chooser still can't disagree with the tree. Regression test:
+`tests/test_scope.py::test_picking_a_known_scope_does_not_rebuild_the_chooser`,
+which monkeypatches `build_pipelines` to assert it is *not* called when picking
+an already-known scope and *is* called exactly once for an unknown one.
 
 ### Part 3 — the feature audit
 

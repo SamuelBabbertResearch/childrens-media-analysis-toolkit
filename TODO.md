@@ -134,22 +134,16 @@ session** — each needs its own verification against real output.
 - ~~Show the scope outside the Library.~~ **Done 2026-08-15** — the chooser is
   on the main toolbar beside Root folder and Preset, so it is visible from
   every tab. The Library keeps the sentence explaining the current context.
-- **A scope change costs ~2.0 s, and 1.5 s of it is `build_pipelines()`.**
-  Measured 2026-08-16 on this working copy. `_sync_scope_choices` rebuilds the
-  chooser from `build_pipelines(root)` on **every** `set_scope`, and that call
-  alone is 1524 ms — up from the 420 ms in `onboarding.md`'s table. The rest is
-  small and flat in sample size (Library + Index + Trials 353 ms, the queue
-  92 ms, both worklists 293 ms, both Language views 261 ms), so this is one
-  pre-existing hotspot on a control that now matters more, not a cost the
-  measurement tabs added.
-
-  The list of discovered samples **cannot change as a result of choosing one**,
-  so the fix is to split discovery from selection: rebuild the chooser when the
-  root changes or a sample is drawn, and otherwise only move the current index.
-  Do it deliberately — `_sync_scope_choices` also handles the case of a scope
-  set before its draw is discoverable, and getting that wrong makes the chooser
-  disagree with the tree, which its own comments call the one thing this
-  control must never do. Worth a test that drives a fresh draw.
+- ~~A scope change costs ~2.0 s, and 1.5 s of it is `build_pipelines()`.~~
+  **Done 2026-08-15.** `_sync_scope_choices` split into `_rebuild_scope_choices`
+  (calls `build_pipelines`; only from `set_root` and as a fallback) and
+  `_select_scope_in_chooser` (moves the combo box using the already-built list,
+  no disk I/O). `set_scope` now calls the cheap one. The scope-set-before-its
+  -draw-is-discoverable case still works: when the requested scope isn't in
+  `_scope_choices` yet, `_select_scope_in_chooser` falls back to one full
+  rebuild, so the chooser still cannot disagree with the tree. See
+  `onboarding.md` and the regression test
+  `tests/test_scope.py::test_picking_a_known_scope_does_not_rebuild_the_chooser`.
 
 - **Then, and only then, consider making the wires carry the set.** Sampling
   emits N, selection narrows it, a hand-code branch takes its subset. This is
@@ -167,17 +161,18 @@ session** — each needs its own verification against real output.
    and `gui_handcoding.py` exist as of 2026-08-14 but have not yet been used
    for real work. Not reversible in a hurry; do it deliberately.
 
-10. **Fold the two positioning documents into `ROADMAP.md`, then delete them.**
-   `design/CMAT_GITHUB_PIPELINE_POSITIONING.md` and
-   `design/POSITIONING_BRIEF.md` overlap each other and overlap `ROADMAP.md`,
-   which `INDEX.md` already names as the home for "positioning, priorities, and
-   what is deliberately not being built". Three files answering one question is
-   how they drift apart. Bears on item 6 — what `README.md` should say.
+10. **Fold the positioning documents into `ROADMAP.md`, then delete them.**
+   **Done (2026-08-15).** `design/CMAT_GITHUB_PIPELINE_POSITIONING.md` and
+   `design/POSITIONING_BRIEF.md` overlapped each other and `ROADMAP.md`;
+   both are now the *Public positioning* section of `ROADMAP.md` and are
+   deleted. Bears on item 6 — what `README.md` should say when it's next
+   revised.
 
-   The rest of item 10 is **done** (2026-08-14): the seven root files were
-   sorted into `design/` and `ui/reference/`, and `preview_ui.py` was deleted
-   as dead scratch. `docs/` was deliberately **not** used — it is gitignored,
-   so moving anything there silently untracks it. See `design/README.md`.
+   The rest of item 10 was already done (2026-08-14): the seven root files
+   were sorted into `design/` and `ui/reference/`, and `preview_ui.py` was
+   deleted as dead scratch. `docs/` was deliberately **not** used — it is
+   gitignored, so moving anything there silently untracks it. See
+   `design/README.md`.
 
 11. **Re-check the UX audit against the Qt build.**
    `design/CMAT_FIRST_TIME_UX_AUDIT.md` traced the *Tk* build (`gui.py`,

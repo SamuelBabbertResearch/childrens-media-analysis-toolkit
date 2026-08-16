@@ -802,3 +802,46 @@ def test_rescore_index_merges_a_show_split_across_seasons(window, tmp_path):
     assert len(rows) == 1, "the two seasons must merge into one show row"
     assert rows[0]["episode_count"] == 2
     assert rows[0]["avg_cuts_per_min"] == pytest.approx(15.0)
+
+
+# --- picking a known scope does not re-run discovery --------------------------
+
+def test_picking_a_known_scope_does_not_rebuild_the_chooser(window, tmp_path, monkeypatch):
+    """`_on_scope_picked` must not call `build_pipelines` again.
+
+    The chooser already has every discoverable sample once it is built; picking
+    a different one from that list cannot change what is discoverable
+    (`TODO.md` — a whole scope change cost ~2.0 s, 1.5 s of it `build_pipelines`
+    re-run on every pick). This is the regression test for that split.
+    """
+    import ui.main_window as mw
+
+    root = _make_library(tmp_path)
+    drawn = [root / "Little Bear" / "S01 E01.mp4"]
+    folder = _make_draw(tmp_path, drawn)
+
+    window.set_root(root)
+    window.set_scope(scope_from_draw(f"sample:{folder}", "Pilot", folder))
+    assert len(window._scope_choices) >= 2  # library + the drawn sample
+
+    calls = {"n": 0}
+    real_build_pipelines = mw.build_pipelines
+
+    def counting_build_pipelines(root_arg):
+        calls["n"] += 1
+        return real_build_pipelines(root_arg)
+
+    monkeypatch.setattr(mw, "build_pipelines", counting_build_pipelines)
+
+    # Pick the library from the dropdown — already in _scope_choices at index 0.
+    window._on_scope_picked(0)
+    assert window._scope.is_library
+    assert calls["n"] == 0, "picking an already-known scope re-ran build_pipelines"
+
+    # Picking a scope NOT yet in the list must still fall back to a rebuild —
+    # the safety net for a sample drawn moments ago.
+    other_folder = _make_draw(tmp_path, drawn, name="draw2")
+    unknown = scope_from_draw(f"sample:{other_folder}", "Unknown", other_folder)
+    window.set_scope(unknown)
+    assert calls["n"] == 1, "a not-yet-discovered scope should still trigger one rebuild"
+    assert window._scope.key == unknown.key

@@ -1697,7 +1697,7 @@ class MainWindow(QMainWindow):
         # Samples are discovered under the root, so both the chooser and the
         # current scope belong to the library being opened, not the last one.
         self._scope = library_scope()
-        self._sync_scope_choices()
+        self._rebuild_scope_choices()
         self._automated.set_scope(self._scope)
         self._handcoding.set_scope(self._scope)
         self._language.set_scope(self._scope)
@@ -1764,7 +1764,7 @@ class MainWindow(QMainWindow):
     def set_scope(self, scope: Scope, announce: bool = True) -> None:
         """Make *scope* current and redraw the Library."""
         self._scope = scope
-        self._sync_scope_choices()
+        self._select_scope_in_chooser()
         self.populate()          # also refreshes the Index, which obeys it too
         # The measurement tabs stage the working set rather than filtering to
         # it: a scope is a view, and these screens are where work is started.
@@ -1775,13 +1775,21 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(
                 f"Showing {scope.describe()}.", 8000)
 
-    def _sync_scope_choices(self) -> None:
+    def _rebuild_scope_choices(self) -> None:
         """Rebuild the chooser: the whole library, then every drawn sample.
 
         Samples come from `build_pipelines`, so the list is whatever is
         actually on disk under the root. The synthetic "Unsampled work"
         pipeline is excluded by `scope_from_pipeline` — it has no draw folder
         and its episode paths are placeholders.
+
+        This is the expensive half of the chooser (`build_pipelines` alone
+        measured 1524 ms on this working copy, see `TODO.md`), so call it only
+        when the discoverable set of samples can actually have changed: the
+        root changes, or a sample is drawn. Picking a *different* sample from
+        an already-built list never changes what is discoverable — that path
+        goes through `_select_scope_in_chooser` instead, which is O(choices)
+        with no disk I/O.
         """
         if not hasattr(self, "_scope_pick"):
             return
@@ -1827,6 +1835,32 @@ class MainWindow(QMainWindow):
         self._scope_pick.setCurrentIndex(
             next((i for i, s in enumerate(self._scope_choices)
                   if s.key == self._scope.key), 0))
+        self._scope_pick.blockSignals(False)
+
+    def _select_scope_in_chooser(self) -> None:
+        """Move the chooser to `self._scope` without rediscovering samples.
+
+        The common case: `_on_scope_picked` already found this scope in
+        `self._scope_choices` (it came from the dropdown), so this is just
+        setting the combo box's index to match — no `build_pipelines` call.
+
+        Falls back to a full `_rebuild_scope_choices` when the scope is not
+        already known, which is the one case rebuilding can't be skipped: a
+        sample drawn moments ago (`open_sampler`) or a pipeline's linked
+        sample (`_follow_pipeline_scope`) may not be in the list yet. Without
+        this fallback the chooser would disagree with the tree, which its own
+        comments call the one thing this control must never do.
+        """
+        if not hasattr(self, "_scope_pick"):
+            return
+        choices = getattr(self, "_scope_choices", [])
+        index = next((i for i, s in enumerate(choices)
+                      if s.key == self._scope.key), None)
+        if index is None:
+            self._rebuild_scope_choices()
+            return
+        self._scope_pick.blockSignals(True)
+        self._scope_pick.setCurrentIndex(index)
         self._scope_pick.blockSignals(False)
 
     def _on_scope_picked(self, index: int) -> None:
