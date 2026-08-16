@@ -245,6 +245,29 @@ cannot have this bug by construction; a writer that caches an aggregate can,
 silently, and will keep looking plausible — a valid, if wrong, count and
 mean, not a crash.
 
+### Three patched copies of the season-overwrite fix became one function
+**What.** The entry above fixed the season-overwrite bug identically in all
+three call sites — `cli.py _db_backfill`, `ui/main_window.py MainWindow
+.rescore_index`, `gui.py _backfill_index` — each patched separately. Per
+`CLAUDE.md` §6 ("when a rule must hold at every call site, put it IN the
+call"), three copies of one loop is a standing invitation for a fourth (a
+future export script, a batch tool) to reintroduce the bug from scratch.
+**Fix.** Factored the walk-`list_shows`/accumulate-by-`db_show_key`/upsert-once
+logic into `analyzer.db.rebuild_show_aggregates(conn, root, fetch_result,
+*, set_season=False)`. Only the part that genuinely differs between callers —
+how to resolve one episode's scored `EpisodeResult` — stays with each caller,
+passed in as `fetch_result(show_dir, skey, episode_path)`: `cli.py` rescoring
+via `load_scored` + a loaded config, `gui.py` via `load_cached` +
+`EpisodeResult.from_dict` + `rescore_episode`, `ui/main_window.py` via
+`self._cached`. `set_season=True` reproduces the `auto_set_season` call that
+`gui.py` and `ui/main_window.py` made per episode and `cli.py` never did.
+Regression tests from the original fix (`test_derived_consistency.py`,
+`test_scope.py`) needed no changes — they exercise the call sites, and the
+call sites now share one implementation instead of three.
+**Avoid.** When the same shape gets patched at multiple call sites for the
+same bug, that's the signal to factor immediately, not to move on once the
+bug is gone — the drift risk survives the fix.
+
 ### The sampler's CSV paths did not match the cache's keys
 **What.** Loading a sampling template failed to find already-analysed episodes;
 it recurred after a restart.

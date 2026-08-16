@@ -568,44 +568,13 @@ class MainWindow(QMainWindow):
         conn = self._db()
         if conn is None or not self._root:
             return 0
-        from analyzer.db import auto_set_season, upsert_episode, upsert_show
-        from analyzer.show_index import db_show_key, display_show_name
+        from analyzer.db import rebuild_show_aggregates
 
-        written = 0
-        # Keyed by db_show_key, not by show_dir — see cli.py's _db_backfill,
-        # which has the identical loop and the identical bug it was fixed
-        # for: a show split across season subfolders gives list_shows() one
-        # entry per season, and every season's db_show_key collapses to the
-        # same parent show. Upserting per show_dir overwrote the show row
-        # once per season instead of merging them.
-        by_key: dict[str, tuple[str, list]] = {}
-        for show_dir in list_shows(self._root):
-            key = show_key(self._root, show_dir)
-            stable = db_show_key(self._root, show_dir)
-            name, season = display_show_name(self._root, show_dir)
-            for episode in list_episodes(show_dir):
-                result = self._cached(key, episode.stem)
-                if result is None or result.status != "ok":
-                    continue
-                try:
-                    upsert_episode(conn, result, name, str(episode),
-                                   show_key=stable)
-                    if season is not None:
-                        auto_set_season(conn, str(episode), season)
-                except Exception:
-                    continue
-                _, results = by_key.setdefault(stable, (name, []))
-                results.append(result)
-                written += 1
-        for stable, (name, results) in by_key.items():
-            if not results:
-                continue
-            try:
-                upsert_show(conn, compute_show_aggregate(name, results),
-                            name, show_key=stable)
-            except Exception:
-                pass
-        return written
+        return rebuild_show_aggregates(
+            conn, self._root,
+            fetch_result=lambda show_dir, skey, ep: self._cached(skey, ep.stem),
+            set_season=True,
+        )
 
     def open_measurement_settings(self) -> None:
         """Which tool measures what. Changing these makes cached results stale.

@@ -12,38 +12,10 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
 copy and a misfiled `SpongeBob` episode) are reversible by moving them back;
 nothing in the tool reads the folder. That part is yours.
 
-0. **One shared show-aggregate backfill, not three patched copies.**
-   `cli.py _db_backfill`, `ui/main_window.py MainWindow.rescore_index` and
-   `gui.py _backfill_index` all re-derive the `shows` table from cache with
-   the same loop, and all three carried the identical season-overwrite bug
-   until 2026-08-17 (`LEARNINGS.md`, `FOR_PAPER.txt`). Patching each site is
-   what `CLAUDE.md` §6 now calls out explicitly as the weaker fix: nothing
-   stops a fourth copy — a future export script, a batch tool — from
-   reintroducing the same bug. Factor the walk-and-merge-by-`db_show_key`
-   logic into one function in `analyzer/db.py` (or a new small module) that
-   all three call. Not urgent — the bug itself is fixed — but the drift risk
-   stays open until there is one implementation instead of three.
-
-1. **Spot-check for whip-pan cuts coded as `hard_cut`.** The codebook now
-   defines whip-pan disguised cuts; a coder not looking for them may have coded
-   the join as `hard_cut`. The only subtype whose new definition could
-   reclassify existing rows. See `validation/VALIDATION_LOG.md` 2026-08-11.
-
-2. **Cite the transition typology, or say it is ours.** `CODEBOOK.md` defines
-   five transition types and four `other` subtypes and cites **no source for
-   any of them** — including `hard_cut` and `dissolve`. The `other` subtype
-   definitions added 2026-08-11 were written from general editing vocabulary,
-   unverified. There is also a live tension: the shot-boundary-detection
-   literature generally bins transitions as CUT vs GRADUAL, so this scheme is
-   finer-grained than the field it will be compared against, which needs
-   justifying rather than assuming. Per `CLAUDE.md` §2.2, verify against
-   primary sources before formal citation — or state plainly that the typology
-   is the study's own and give the reasoning.
-
-3. **Freeze the codebook.** Still DRAFT after three mid-study additions. The
+2. **Freeze the codebook.** Still DRAFT after three mid-study additions. The
    2026-07-04 log entry already said to freeze it before the second episode.
 
-4. **Two data decisions the audit surfaced.** The output-audit passes on
+3. **Two data decisions the audit surfaced.** The output-audit passes on
    2026-08-14 found nineteen defects across four rounds, all fixed; see
    `LEARNINGS.md` and `FOR_PAPER.txt`. Every path listed for auditing has now
    been run and its artefact inspected. What is left is not defects but
@@ -77,7 +49,7 @@ nothing in the tool reads the folder. That part is yours.
    the control was present, the button worked, and the record described the
    design that was asked for rather than the one that ran.
 
-5. **One Qt decision, not a port.** **Watch Analysis (Live)** (`gui_live.py`).
+4. **One Qt decision, not a port.** **Watch Analysis (Live)** (`gui_live.py`).
    The Qt Automated coding tab already shows a progress bar, the current
    episode, and a per-episode results table as the run proceeds. Decide
    whether a separate live window still earns its place before porting it.
@@ -86,7 +58,7 @@ nothing in the tool reads the folder. That part is yours.
    as Default*. (The hand-coding worklist that used to be listed here is
    **done** — 2026-08-16, see *The research context, continued*.)
 
-6. **Decide about `master`.** The branch is pushed (done 2026-08-11), so the
+5. **Decide about `master`.** The branch is pushed (done 2026-08-11), so the
    work is backed up. But `feature/language-analysis` is far ahead of
    `master`, whose last commit is 2026-06-30 — and `master` is what GitHub
    shows visitors. Merging forward is a clean fast-forward.
@@ -96,13 +68,13 @@ nothing in the tool reads the folder. That part is yours.
    exists in Qt, so the sentence naming `gui.py` as the product is no longer
    true. Decide which build the README describes before merging.
 
-7. **Try the Qt build as the daily driver, then retire `gui.py`.**
+6. **Try the Qt build as the daily driver, then retire `gui.py`.**
    Every Tk screen now has a Qt equivalent, but "exists" is not "proven": the
    Qt Language, Validate tool, Agreement and Sampler screens have each been
    driven once, headless. Use them for real work before deleting anything —
    see item 10.
 
-8. **Decide the startup wizard's default action.**
+7. **Decide the startup wizard's default action.**
    The wizard opens on every launch with *Create Pipeline* as the default
    button, so dismissing it with Enter creates a pipeline — this project
    accumulated several that way. Options: make Skip the default when pipelines
