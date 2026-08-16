@@ -143,6 +143,93 @@ def test_validation_warns_when_evidence_is_thin():
 
 
 # ---------------------------------------------------------------------------
+# A node fed by more than one Sampling node
+# ---------------------------------------------------------------------------
+
+def test_merged_pipeline_unions_coverage_across_samples(tmp_path):
+    """The real point of per-node sample binding for Validation: hand-coding
+    coverage from BOTH branches must be reflected, not just one."""
+    vdir = tmp_path / "validation"
+    _write_sample(vdir / "draw_a", "Draw A", ["ep01", "ep02"])
+    _write_sample(vdir / "draw_b", "Draw B", ["ep03"])
+    (vdir / "ep01_manual.csv").write_text("dummy", encoding="utf-8")
+    (vdir / "ep03_manual.csv").write_text("dummy", encoding="utf-8")
+
+    pipelines = P.build_pipelines(root=None, validation_dir=vdir)
+    a = next(p for p in pipelines if p.name == "Draw A")
+    b = next(p for p in pipelines if p.name == "Draw B")
+
+    # Each sample alone only sees its own coded episode.
+    assert dict(a.stage("validation").details)["Hand-coded episodes available"] == "1"
+    assert dict(b.stage("validation").details)["Hand-coded episodes available"] == "1"
+
+    merged = P.merged_pipeline([a, b], validation_dir=vdir)
+    assert dict(merged.stage("validation").details)["Hand-coded episodes available"] == "2", \
+        "the union of both samples' episodes has 2 coded, not 1"
+
+
+def test_merged_pipeline_unions_episodes_across_samples(tmp_path):
+    """The reported symptom, reproduced directly: two Sampling nodes wired
+    into one Selection node must show BOTH shows' episodes, not just one."""
+    vdir = tmp_path / "validation"
+    _write_sample(vdir / "draw_a", "Draw A", ["little_bear_e01", "little_bear_e02"])
+    _write_sample(vdir / "draw_b", "Draw B", ["curious_george_e01"])
+
+    pipelines = P.build_pipelines(root=None, validation_dir=vdir)
+    a = next(p for p in pipelines if p.name == "Draw A")
+    b = next(p for p in pipelines if p.name == "Draw B")
+    assert a.episode_count == 2 and b.episode_count == 1
+
+    merged = P.merged_pipeline([a, b], validation_dir=vdir)
+    assert merged.episode_count == 3, \
+        "merging must show all 3 episodes, not silently only the first branch's"
+    selection = merged.stage("selection")
+    assert selection is not None and selection.status != P.BLOCKED
+
+
+def test_merged_pipeline_deduplicates_a_shared_trial_record():
+    """Two samples that happen to share a coded episode must not double-count
+    its comparison run just because both pipelines' trial lists carry it."""
+    shared = {"kind": "transition_validation",
+             "manifest_path": Path("shared_manifest.json"), "result": "F1 0.9"}
+    only_a = {"kind": "transition_validation",
+             "manifest_path": Path("a_manifest.json"), "result": "F1 0.8"}
+    a = P.Pipeline(key="sample:a", name="A", description="", stages=[],
+                   trials=[shared, only_a], folder=None)
+    b = P.Pipeline(key="sample:b", name="B", description="", stages=[],
+                   trials=[shared], folder=None)
+
+    merged = P.merged_pipeline([a, b])
+    assert dict(merged.stage("validation").details)["Comparison runs"] == "2"
+
+
+def test_merged_pipeline_deduplicates_a_shared_episode(tmp_path):
+    """Two samples that happen to draw the SAME episode must count it once."""
+    import csv as _csv
+
+    def _draw(dirpath: Path, episodes: list[str]) -> None:
+        dirpath.mkdir(parents=True, exist_ok=True)
+        (dirpath / "manifest.json").write_text(json.dumps({
+            "method": "systematic", "total_selected": len(episodes),
+        }), encoding="utf-8")
+        with (dirpath / "selected.csv").open("w", newline="", encoding="utf-8") as fh:
+            w = _csv.DictWriter(fh, fieldnames=["filepath"])
+            w.writeheader()
+            for e in episodes:
+                w.writerow({"filepath": f"C:/vids/{e}.mp4"})
+
+    _draw(tmp_path / "a", ["shared_ep", "only_a"])
+    _draw(tmp_path / "b", ["shared_ep", "only_b"])
+    a = P.Pipeline(key="sample:a", name="A", description="", stages=[],
+                   folder=tmp_path / "a")
+    b = P.Pipeline(key="sample:b", name="B", description="", stages=[],
+                   folder=tmp_path / "b")
+
+    merged = P.merged_pipeline([a, b])
+    assert merged.episode_count == 3, "shared_ep counted once, not twice"
+
+
+# ---------------------------------------------------------------------------
 # Validation subsets
 # ---------------------------------------------------------------------------
 

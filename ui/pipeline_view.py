@@ -57,10 +57,15 @@ ICON_GLYPH = {
 class NodeItem(QGraphicsItem):
     """One stage, drawn as the reference's node card."""
 
-    def __init__(self, node, status_line: str) -> None:
+    def __init__(self, node, status_line: str, media_line: str = "") -> None:
         super().__init__()
         self.node = node
         self.status_line = status_line
+        # The media this node actually works on, named on the box itself —
+        # "Sampling / How episodes were chosen" is the same on every canvas,
+        # so a diagram of two Sampling nodes was two identical boxes with no
+        # way to tell which show each one drew.
+        self.media_line = media_line
         self._type = node_type(node.type)
         self._hover = False
         self.setFlags(
@@ -80,8 +85,9 @@ class NodeItem(QGraphicsItem):
     def _height(self) -> float:
         fm_desc = theme.font("small")
         lines = self._wrapped(self._type.description, fm_desc)
+        media = self._wrapped(self.media_line, fm_desc) if self.media_line else []
         return (NODE_PAD * 2 + 16 + HEADER_RULE + 1
-                + len(lines) * 14 + 14)
+                + len(lines) * 14 + len(media) * 14 + 14)
 
     def _wrapped(self, text: str, font: QFont) -> list[str]:
         from PySide6.QtGui import QFontMetrics
@@ -154,6 +160,15 @@ class NodeItem(QGraphicsItem):
             p.drawText(QRectF(x, y, NODE_W - NODE_PAD * 2, 14),
                        Qt.AlignVCenter | Qt.AlignLeft, line)
             y += 14
+
+        # The media, in ordinary text rather than the dim description colour:
+        # it is this node's own content, not boilerplate about the stage type.
+        if self.media_line:
+            p.setPen(QColor("#111111"))
+            for line in self._wrapped(self.media_line, theme.font("small")):
+                p.drawText(QRectF(x, y, NODE_W - NODE_PAD * 2, 14),
+                           Qt.AlignVCenter | Qt.AlignLeft, line)
+                y += 14
 
         status_font = theme.font("tiny")
         status_font.setItalic(True)
@@ -254,13 +269,17 @@ class Canvas(QGraphicsView):
             y += GRID
 
     # -- content ----------------------------------------------------------
-    def load(self, doc: PipelineDoc, status_for) -> None:
+    def load(self, doc: PipelineDoc, status_for, media_for=None) -> None:
+        """*media_for(node)* names the media this node works on, or "" when
+        there is none to name. Optional so a caller with no derived data —
+        and the tests that build a Canvas directly — need not supply one."""
         self._doc = doc
         self._scene.clear()
         self._items.clear()
         self._wires.clear()
         for node in doc.nodes:
-            item = NodeItem(node, status_for(node))
+            item = NodeItem(node, status_for(node),
+                            media_for(node) if media_for else "")
             self._scene.addItem(item)
             self._items[node.id] = item
         for conn in doc.connections:

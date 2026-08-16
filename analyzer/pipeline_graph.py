@@ -340,6 +340,48 @@ class PipelineDoc:
         self.connections = [c for c in self.connections
                             if c.id != connection_id]
 
+    # -- what sample feeds a node --
+    #
+    # A Sampling node's OWN binding is `config["sample_key"]` — an
+    # `analyzer.pipeline.Pipeline.key` (e.g. "sample:<folder>"). A Sampling
+    # node with none of its own falls back to the whole document's
+    # `source_key`, so a pipeline saved before per-node binding existed —
+    # one Sampling node, never given its own key — keeps resolving exactly
+    # as it always did. This is the wire's other half: `connect()`/
+    # `connections_of` already say which boxes are joined; this says which
+    # sample a box downstream of a Sampling node is actually working on.
+
+    def upstream_sample_keys(self, node_id: str) -> list[str]:
+        """Every distinct sample key reachable walking backward from
+        *node_id* to a Sampling node, nearest first.
+
+        A node fed by two different Sampling nodes (Validation's two input
+        ports, wired to two differently-sampled branches) reports both,
+        instead of collapsing to whichever one sample the whole document
+        happens to be linked to — that collapsing is what made every wire
+        on the canvas purely decorative before this existed.
+        """
+        keys: list[str] = []
+        seen_keys: set[str] = set()
+        seen_nodes: set[str] = set()
+        frontier = [node_id]
+        while frontier:
+            current = frontier.pop(0)
+            if current in seen_nodes:
+                continue
+            seen_nodes.add(current)
+            node = self.node(current)
+            if node is None:
+                continue
+            if node.type == "sampling":
+                key = node.config.get("sample_key") or self.source_key
+                if key and key not in seen_keys:
+                    seen_keys.add(key)
+                    keys.append(key)
+                continue          # a Sampling node has no inputs of its own
+            frontier.extend(c.src for c in self.connections if c.dst == current)
+        return keys
+
     def bounds(self) -> tuple[float, float, float, float]:
         """(x0, y0, x1, y1) of all nodes; a unit box when empty."""
         if not self.nodes:

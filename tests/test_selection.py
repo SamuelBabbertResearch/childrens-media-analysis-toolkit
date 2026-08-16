@@ -17,7 +17,9 @@ import json
 from pathlib import Path
 
 from analyzer.pipeline import build_pipelines
-from analyzer.selection import write_narrowed_selection
+from analyzer.selection import (
+    write_narrowed_selection, write_narrowed_selection_from_sources,
+)
 from analyzer.trials import discover_trials
 
 
@@ -134,3 +136,57 @@ def test_a_narrowed_selection_becomes_its_own_pipeline(tmp_path):
     assert keys[f"sample:{source}"].episode_count == 4
     assert keys[f"sample:{outdir}"].episode_count == 3
     assert keys[f"sample:{source}"].key != keys[f"sample:{outdir}"].key
+
+
+# --- excluding from a Selection node fed by MORE THAN ONE Sampling node -------
+
+def test_narrowing_from_two_sources_unions_both_before_excluding(tmp_path):
+    """The bug this function exists to not have: a Selection node fed by two
+    Sampling nodes must narrow the UNION of both, not just the first one."""
+    a_episodes = _episodes(tmp_path, 2)              # Show/S01 E01, E02
+    b_show = tmp_path / "OtherShow"
+    b_show.mkdir()
+    b_episodes = []
+    for i in range(1, 3):
+        p = b_show / f"S01 E{i:02d}.mp4"
+        p.write_bytes(b"")
+        b_episodes.append(p)
+    source_a = _write_source_sample(tmp_path, a_episodes, name="draw_a")
+    source_b = _write_source_sample(tmp_path, b_episodes, name="draw_b")
+
+    outdir = write_narrowed_selection_from_sources(
+        [source_a, source_b], "Combined", {a_episodes[0]}, "node-1")
+
+    assert outdir is not None
+    with (outdir / "selected.csv").open(newline="", encoding="utf-8") as fh:
+        kept = {Path(r["filepath"]) for r in csv.DictReader(fh)}
+    assert kept == {a_episodes[1], b_episodes[0], b_episodes[1]}, \
+        "must keep the un-excluded episode from EACH source, not just one"
+
+
+def test_narrowing_from_two_sources_deduplicates_a_shared_episode(tmp_path):
+    """Two branches that happen to draw the same episode must not duplicate
+    it in the narrowed sample: exclude a THIRD episode (only in source_b),
+    and the shared one must still appear exactly once in what's kept."""
+    episodes = _episodes(tmp_path, 3)
+    source_a = _write_source_sample(tmp_path, episodes[:2], name="draw_a")
+    source_b = _write_source_sample(tmp_path, episodes[1:], name="draw_b")  # shares episodes[1]
+
+    outdir = write_narrowed_selection_from_sources(
+        [source_a, source_b], "Combined", {episodes[2]}, "node-1")
+
+    assert outdir is not None
+    with (outdir / "selected.csv").open(newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    assert len(rows) == 2, "the union has 3 unique episodes minus 1 excluded"
+    assert {Path(r["filepath"]) for r in rows} == {episodes[0], episodes[1]}
+
+
+def test_narrowing_from_no_valid_sources_is_refused(tmp_path):
+    empty_a = tmp_path / "empty_a"
+    empty_a.mkdir()
+    empty_b = tmp_path / "empty_b"
+    empty_b.mkdir()
+    outdir = write_narrowed_selection_from_sources(
+        [empty_a, empty_b], "Combined", {tmp_path / "x.mp4"}, "node-1")
+    assert outdir is None

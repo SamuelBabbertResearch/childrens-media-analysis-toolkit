@@ -436,17 +436,24 @@ def test_double_clicking_a_node_asks_for_its_screen():
 
 
 def test_a_pipeline_links_to_a_sample_not_a_show():
-    """`source_key` must be a key `build_pipelines()` actually produces.
+    """`source_key` (and a Sampling node's own `sample_key`) must be a key
+    `build_pipelines()` actually produces.
 
     A show key ("Show/Season 1") and a derived pipeline key
     ("sample:<folder>") are different namespaces. Link to Episode Sample
     offered SHOWS, so the look-up never matched and every node of every
     linked pipeline reported "no derived status" — which is why the derived
-    state looked like it was merely undisplayed.
+    state looked like it was merely undisplayed. `_link_to_sample` (the
+    document's default) and `_link_node_to_sample` (one Sampling node's own
+    key) both go through `_pick_sample`, which is the one place this must
+    hold — see `LEARNINGS.md` on the two used to be one method that inferred
+    which was meant.
     """
     import inspect
     from ui.main_window import MainWindow
-    src = inspect.getsource(MainWindow._link_to_sample)
+    src = (inspect.getsource(MainWindow._link_to_sample)
+          + inspect.getsource(MainWindow._link_node_to_sample)
+          + inspect.getsource(MainWindow._pick_sample))
     assert "build_pipelines" in src
     assert "show_key" not in src
 

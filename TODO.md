@@ -145,37 +145,170 @@ session** — each needs its own verification against real output.
   `onboarding.md` and the regression test
   `tests/test_scope.py::test_picking_a_known_scope_does_not_rebuild_the_chooser`.
 
-- **Wires carry the set — small slice done (2026-08-15), large slice still
-  open.** Sampling emits N, selection narrows it, a hand-code branch takes its
-  subset — the north-star spec's "output produced here becomes input there."
+- ~~Wires carry the set.~~ **Done (2026-08-15) — small slice, large slice, and
+  the Validation merge.** Sampling emits N, selection narrows it, a hand-code
+  branch takes its subset — the north-star spec's "output produced here
+  becomes input there."
 
-  **Done:** a Selection node can now genuinely narrow a sample. Selecting one
-  and pressing **Exclude Library Selection** in the Inspector
+  **Small slice (done):** a Selection node can now genuinely narrow a sample.
+  Selecting one and pressing **Exclude Library Selection** in the Inspector
   (`ui/inspector.py`, `MainWindow._exclude_from_selection_node`) writes the
   linked sample's episodes minus the Library's current row selection as a
   brand-new `selected.csv` + `manifest.json` pair — the same shape an Episode
-  Sampler draw writes (`analyzer/selection.py`). That was the deliberate
-  choice over a canvas-only exclude list living in `node.config`: `CLAUDE.md`
-  already says Selection belongs in a manifest, and every scope in this app
+  Sampler draw writes (`analyzer/selection.py`). Deliberate choice over a
+  canvas-only exclude list in `node.config`: `CLAUDE.md` already says
+  Selection belongs in a manifest, and every scope in this app
   (`discover_trials`, `build_pipelines`, the Showing: chooser) discovers
   samples by finding exactly that pair — so the narrowed sample needed **no
-  new discovery code** and cannot silently disagree with the chooser the way
-  a `node.config`-only version could have. See `DECISIONS.md`.
+  new discovery code**. See `DECISIONS.md`.
 
-  Verified against the artefact: `tests/test_selection.py` reads back the
-  written CSV/manifest and confirms `discover_trials`/`build_pipelines` find
-  the new folder unassisted; `tests/test_scope.py
-  ::test_excluding_from_a_selection_node_writes_a_real_narrowed_sample` drives
-  it through the real Inspector button and rereads the Library tree.
+  **Large slice (done for plumbing):** sample binding moved off the whole
+  document and onto individual Sampling nodes
+  (`node.config["sample_key"]`, `PipelineDoc.upstream_sample_keys`). A canvas
+  can now hold two Sampling nodes, each linked to a different sample, each
+  feeding its own branch — every node's derived status (Inspector rows,
+  canvas subtitle, `_exclude_from_selection_node`) and the scope a
+  double-click stages (`_follow_node_scope`) resolve by walking that node's
+  wires backward to the nearest bound Sampling node, not by reading the
+  whole document's one `source_key`. A Sampling node with no binding of its
+  own still falls back to `doc.source_key`, so every pipeline saved before
+  this existed keeps resolving exactly as it always did — see `DECISIONS.md`
+  for why the fallback was kept rather than requiring migration.
 
-  **Not done — this is still the large slice:** `doc.connections` (the actual
-  wires on the canvas) still play no part in this. Excluding from a Selection
-  node narrows the *whole document's* one linked sample regardless of which
-  nodes are wired to which; a hand-code branch does not yet take a different
-  subset from an automated branch on the same canvas. That needs per-node
-  sample binding (moving `source_key` off the document and onto individual
-  Sampling nodes) and real backward graph traversal — the "large" option
-  scoped out and deliberately deferred this session.
+  Verified against the artefact and end to end, not just unit-tested:
+  `tests/test_pipeline_graph.py` covers the traversal itself (fallback,
+  override, converging paths collapsing to one key, two Sampling nodes
+  reporting both); `tests/test_scope.py
+  ::test_two_sampling_nodes_each_drive_their_own_branchs_status_and_scope`
+  builds a real two-branch canvas through `MainWindow` and asserts each
+  branch's Inspector status names its own episode count and double-clicking
+  each branch stages that branch's own episodes, not the other one's.
+
+  **The merge (done, generalized beyond Validation the same day):** a node
+  fed by more than one Sampling node no longer silently reports only the
+  first branch — for ANY node type, not just Validation.
+  `analyzer.pipeline.merged_pipeline` unions every resolvable branch's
+  episodes (de-duplicated by path), unions their trial records
+  (de-duplicated by manifest file), and recomputes analysis/hand-coding
+  coverage over the union, then runs the ordinary single-sample stage logic
+  over that — so Selection, Automated coding, Language and Validation all
+  get a correct union, not five special cases.
+
+  Started scoped to Validation only, on the theory that Validation was the
+  one node type actually built to compare two things. Widened to every
+  stage type the same session after a real report: wiring two Sampling
+  nodes into one *Selection* node showed only one of the two shows —
+  Selection has no "compare" semantics at all, it just needed the union,
+  and so does every other stage type. What still stays refused for every
+  stage type — comparing sample A's automated results against sample B's
+  hand coding as if they measured the same episodes — is explained in
+  `DECISIONS.md`.
+
+  The exclude action on a Selection node fed by more than one branch has the
+  matching fix: `analyzer.selection.write_narrowed_selection_from_sources`
+  narrows the union of all branches' episodes (de-duplicating a shared
+  episode first), not just the first branch's sample.
+
+  Verified with real coverage/episode-count math (the union has more than
+  either branch alone) and end to end through `MainWindow`, in
+  `tests/test_pipeline.py`, `tests/test_selection.py`, and
+  `tests/test_scope.py
+  ::test_two_sampling_nodes_wired_into_one_selection_node_show_both_shows`
+  (the reported bug, reproduced directly) and
+  `::test_validation_fed_by_two_sampling_nodes_merges_instead_of_picking_one`.
+
+  **A second, real bug turned up when the merge still failed after the
+  above shipped:** the merge logic was correct, but `_link_to_sample` — one
+  method reachable from both `Manage → Link to Episode Sample…` and the
+  Inspector's per-node button — inferred which one it was doing from
+  whatever happened to be selected on the canvas at click-time, instead of
+  from which control was actually pressed. Linking two Sampling nodes and
+  then reaching for the familiar menu item while a node was still selected
+  from browsing silently overwrote the document's default instead of doing
+  nothing, and left both nodes falling back to the same single key — one
+  show, not two, exactly the report. Split into
+  `_link_to_sample`/`_link_node_to_sample`, two methods and two `Inspector`
+  signals, so which one runs is decided by construction, not inference.
+  Regression test drives the exact click sequence:
+  `tests/test_scope.py
+  ::test_the_menu_link_never_touches_a_selected_nodes_own_key`. See
+  `LEARNINGS.md` for why this shape of bug — inferring intent from
+  incidental state — cannot be caught by a test that sets state directly.
+
+  **A third bug, a different action entirely:** *linking* to an existing
+  sample worked once fixed above, but *drawing a brand-new one* from a
+  Sampling node never told that node about it at all. Double-clicking a
+  Sampling node opened the Episode Sampler through a dispatch table that
+  called `open_sampler()` with no arguments, so the method had no way to
+  know which node (if any) it was opened from — a successful draw only ever
+  updated the session's ephemeral scope, never `node.config["sample_key"]`,
+  and never called `save_doc`. Both reported symptoms were this one cause:
+  drawing from either node looked like it changed "the overall list" because
+  neither node's own binding ever moved, and nothing persisted because
+  nothing was ever written to persist. Fixed: `open_sampler(self,
+  node=None)` now writes and saves the node's own binding when opened from a
+  specific Sampling node, and keeps the old scope-only behavior for the File
+  menu / toolbar button (no node context). Verified with two tests —
+  `tests/test_scope.py
+  ::test_drawing_from_a_sampling_node_binds_and_persists_to_that_node`
+  (draws for two different nodes, checks neither clobbers the other, then
+  reloads the document from disk the way reopening the pipeline would) and
+  `::test_drawing_without_a_node_context_does_not_bind_any_node` (the old
+  path is unchanged). See `LEARNINGS.md`.
+
+  **A fourth and fifth, from testing the real build:** (a) *the Library
+  showed one branch at a time* — `_stage_for` merged across branches but
+  `_follow_node_scope`, which decides what the Library displays, still built
+  its scope from `keys[0]` alone, so the panel said two samples and the tree
+  showed one. Fixed with `analyzer.scope.scope_from_draws` (union across
+  draw folders, `folder=None` since a union is no single draw's folder).
+  (b) *nothing persisted across reopen* — `save_doc` pinned `doc.path` on
+  first write, so a document first saved before a library root was known
+  (the wizard on a first run) kept writing to the app-folder fallback while
+  `list_docs(root)` only ever reads the library's own folder: saved fine,
+  reloaded as nothing. `save_doc` now re-homes into the target folder and
+  moves the old file. Both in `LEARNINGS.md`; tests in `tests/test_scope.py`
+  (`::test_opening_a_merged_node_puts_both_shows_in_the_library`) and
+  `tests/test_pipeline_graph.py`
+  (`::test_a_doc_saved_before_a_root_is_known_rehomes_into_the_library`).
+
+  **The actual root cause of the "one sample at a time" report, found by the
+  user:** the Showing: chooser was built from `build_pipelines`, which
+  returns one entry per *drawn sample* — so a pipeline combining two samples
+  had no entry in it at all, and the ordinary control for changing the
+  Library's working set could not express the study that had been built.
+  Every earlier fix was real and none could reach the symptom. The chooser
+  now offers pipelines as well as samples (`MainWindow._doc_scope`); see
+  `DECISIONS.md`, and `LEARNINGS.md` on why three green fixes in a row left
+  the report standing. Test:
+  `tests/test_scope.py
+  ::test_the_chooser_offers_the_whole_pipeline_not_only_its_samples`.
+
+  **Selecting a pipeline defaults to the combination it was built from** —
+  a document with two Sampling blocks scopes to both together rather than to
+  one arbitrary half (`_follow_pipeline_scope`, sharing
+  `_doc_sample_pipelines` with the chooser so both answer "which samples
+  does this draw on" identically). Startup still opens on the whole library,
+  which is a separate settled decision. See `DECISIONS.md`; tests in
+  `tests/test_scope.py::test_selecting_a_two_sample_pipeline_defaults_to_both_together`
+  and the one- and zero-sample cases beside it.
+
+  **Each node now names its media** on the canvas box and in the Inspector
+  (`MainWindow._node_media`, `NodeItem.media_line`) — two Sampling boxes
+  were otherwise identical, which per-node binding made a real hazard. See
+  `DECISIONS.md`.
+
+  **Found in passing, not fixed — worth its own item:** `coverage_for_stems`
+  (and the `sample_coverage` it replaced) key hand-coding coverage by bare
+  episode *stem* ("S01 E01"), not by show + stem. Two different shows whose
+  video files happen to share a stem — plausible if a researcher names files
+  by season/episode number alone — would silently collapse to one entry in
+  any coverage count, single-sample or merged. Not introduced by the
+  Validation merge above (the same weakness already existed in
+  `sample_coverage`), but the merge's wider episode sets make a collision
+  more likely to actually occur. Fix would key coverage lookups by
+  `db_show_key` + stem, matching how the cache and index already avoid this
+  exact class of bug.
 
 ## Ready when the above are done
 

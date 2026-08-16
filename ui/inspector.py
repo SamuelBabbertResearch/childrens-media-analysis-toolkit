@@ -31,7 +31,8 @@ PANEL_H = 240        # .inspector-panel height
 
 
 class Inspector(QWidget):
-    link_requested = Signal()
+    link_requested = Signal()          # the DOCUMENT's default sample
+    link_node_requested = Signal()     # the SELECTED Sampling node's own sample
     open_requested = Signal()
     exclude_requested = Signal()
 
@@ -62,7 +63,14 @@ class Inspector(QWidget):
         hrow.addWidget(self._open)
         self._action = QPushButton("Link to Sample…")
         self._action.setProperty("primary", "true")
-        self._action.clicked.connect(self.link_requested)
+        # WHICH signal this fires is decided when the button is shown
+        # (show_doc vs. show_node), not re-derived from canvas selection
+        # state at click-time — the two used to share one handler that
+        # inferred "document link" vs. "node link" from whatever happened to
+        # be selected on the canvas, which was wrong whenever that state was
+        # stale (see LEARNINGS.md).
+        self._action_targets_node = False
+        self._action.clicked.connect(self._emit_link)
         hrow.addWidget(self._action)
         # Only a Selection node on a linked pipeline shows this — see
         # show_node's can_exclude argument.
@@ -101,6 +109,10 @@ class Inspector(QWidget):
         outer.addWidget(self._scroll, 1)
 
         self._doc = None
+
+    def _emit_link(self) -> None:
+        (self.link_node_requested if self._action_targets_node
+         else self.link_requested).emit()
 
     # -- rows -------------------------------------------------------------
     def _clear(self) -> None:
@@ -165,6 +177,7 @@ class Inspector(QWidget):
         self._subtitle.setText(
             f"(linked to {source_label or linked})" if linked
             else "(not linked to an episode sample)")
+        self._action_targets_node = False
         self._action.setVisible(not linked)
         self._exclude_action.setVisible(False)
         self._set_open_target(None)
@@ -182,13 +195,18 @@ class Inspector(QWidget):
         self._rows(rows)
 
     def show_node(self, node, stage=None, reason: str = "",
-                  target=None, can_exclude: bool = False) -> None:
+                  target=None, can_exclude: bool = False,
+                  extra_rows=None, media: str = "") -> None:
         """A selected node, with its derived stage state when there is one.
 
         *stage* is an `analyzer.pipeline.Stage`; *reason* says why there is
         none. *target* is the (label, reason) pair for the Open button.
         *can_exclude* is true only for a Selection node on a pipeline linked
-        to a sample — the one case there is a sample to narrow.
+        to a sample — the one case there is a sample to narrow. *extra_rows*
+        is appended after everything else. *media* names the media this node
+        works on; it leads the rows and joins the subtitle, because with two
+        same-typed nodes on one canvas ("Sampling / Sampling") it is the only
+        thing on this panel that says WHICH one is being inspected.
         """
         if node is None:
             if self._doc is not None:
@@ -196,12 +214,21 @@ class Inspector(QWidget):
             return
         kind = node_type(node.type)
         self._title.setText(node.title)
-        self._action.setVisible(False)
+        is_sampling = node.type == "sampling"
+        self._action_targets_node = is_sampling
+        self._action.setVisible(is_sampling)
+        if is_sampling:
+            self._action.setText(
+                "Change Linked Sample…" if node.config.get("sample_key")
+                else "Link to Sample…")
         self._exclude_action.setVisible(can_exclude)
         self._set_open_target(target)
+        extra_rows = list(extra_rows or [])
+        media_rows = [("Media", media)] if media else []
 
         if stage is None:
-            self._subtitle.setText(f"({kind.name})")
+            self._subtitle.setText(
+                f"({kind.name} — {media})" if media else f"({kind.name})")
             self._banner.setText(kind.description)
             rows = [
                 ("Stage type", kind.name),
@@ -211,10 +238,12 @@ class Inspector(QWidget):
                 ("Inputs", f"{kind.inputs}"),
                 ("Outputs", f"{kind.outputs}"),
             ]
-            self._rows(rows)
+            self._rows(media_rows + rows + extra_rows)
             return
 
-        self._subtitle.setText(f"({kind.name} — {stage.status_label})")
+        self._subtitle.setText(
+            f"({kind.name} — {media} — {stage.status_label})" if media
+            else f"({kind.name} — {stage.status_label})")
         # The banner carries the one thing the researcher can act on; the
         # explanation of what the step is falls to a row when it does.
         self._banner.setText(stage.next_action or stage.explanation
@@ -227,4 +256,4 @@ class Inspector(QWidget):
             rows.append(("Next step", stage.next_action))
         if stage.explanation:
             rows.append(("What it is", stage.explanation))
-        self._rows(rows)
+        self._rows(media_rows + rows + extra_rows)

@@ -426,7 +426,8 @@ def test_a_pipeline_node_lands_on_the_staged_queue(window, tmp_path):
     window.set_scope(scope_from_draw(f"sample:{folder}", "Pilot", folder))
 
     kind = next(k for k in NODE_TYPES.values() if k.stage_key == "automated")
-    node = type("Node", (), {"type": kind.key, "title": "Automated coding"})()
+    node = type("Node", (), {"id": "n-fake", "type": kind.key,
+                             "title": "Automated coding"})()
     window._open_stage_screen(node)
 
     assert window._tabs.tabText(window._tabs.currentIndex()) == \
@@ -913,3 +914,635 @@ def test_excluding_from_a_selection_node_writes_a_real_narrowed_sample(
     assert any(s.key == window._scope.key for s in window._scope_choices)
 
     assert sorted(_library_rows(window)) == ["S01 E02.mp4", "S01 E03.mp4"]
+
+
+# --- per-node sample binding: two branches, two samples, on one canvas --------
+
+def test_two_sampling_nodes_each_drive_their_own_branchs_status_and_scope(
+        window, tmp_path):
+    """The large slice of "wires carry the set", driven for real.
+
+    One canvas, two Sampling nodes, each bound to a DIFFERENT sample, each
+    feeding its own Automated coding node. Before per-node binding, every
+    node on a canvas read the document's one `source_key`, so both branches
+    would have shown the same sample's status and staged the same episodes
+    regardless of which node's wire actually fed it. This asserts they don't:
+    each node's derived status names its OWN sample's episode count, and
+    double-clicking a branch's node stages THAT branch's episodes, not the
+    other one's.
+    """
+    import json
+    from analyzer.pipeline_graph import blank_doc
+
+    root = _make_library(tmp_path)
+    little_bear = [root / "Little Bear" / "S01 E01.mp4",
+                   root / "Little Bear" / "S01 E02.mp4"]
+    curious_george = [root / "Curious George" / "S01 E03.mp4"]
+    folder_a = _make_draw(root, little_bear, name="draw_a")
+    folder_b = _make_draw(root, curious_george, name="draw_b")
+    for folder, n in ((folder_a, 2), (folder_b, 1)):
+        (folder / "manifest.json").write_text(json.dumps({
+            "method": "systematic", "total_selected": n,
+            "total_available": n + 5, "entry_id": "Show",
+            "trial_name": folder.name,
+        }), encoding="utf-8")
+
+    window.set_root(root)
+    doc = blank_doc("Two branches")
+    sampling_a = doc.add_node("sampling", 0, 0)
+    sampling_a.config["sample_key"] = f"sample:{folder_a}"
+    automated_a = doc.add_node("automated", 250, 0)
+    doc.connect(sampling_a.id, automated_a.id)
+
+    sampling_b = doc.add_node("sampling", 0, 200)
+    sampling_b.config["sample_key"] = f"sample:{folder_b}"
+    automated_b = doc.add_node("automated", 250, 200)
+    doc.connect(sampling_b.id, automated_b.id)
+
+    window._docs = [doc]
+    window._pipe_pick.blockSignals(True)
+    window._pipe_pick.clear()
+    window._pipe_pick.addItem(doc.name)
+    window._pipe_pick.blockSignals(False)
+    window._refresh_canvas()
+
+    stage_a, reason_a = window._stage_for(automated_a)
+    stage_b, reason_b = window._stage_for(automated_b)
+    assert reason_a == "" and reason_b == "", (reason_a, reason_b)
+    assert dict(stage_a.details)["Episodes analyzed"].startswith("0/2")
+    assert dict(stage_b.details)["Episodes analyzed"].startswith("0/1")
+
+    window._open_stage_screen(automated_a)
+    assert window._scope.folder == folder_a
+    assert _would_analyze(window) and len(_would_analyze(window)) == 2
+
+    window._open_stage_screen(automated_b)
+    assert window._scope.folder == folder_b
+    assert _would_analyze(window) and len(_would_analyze(window)) == 1
+
+
+def test_validation_fed_by_two_sampling_nodes_merges_instead_of_picking_one(
+        window, tmp_path, monkeypatch):
+    """A Validation node wired to TWO different Sampling nodes must reflect
+    the UNION of both samples' episodes, not silently report only the first
+    branch and hide the second.
+
+    `coverage_for_stems` is monkeypatched at the point `merged_pipeline`
+    calls it, to (n_episodes coded == n_episodes given) without needing real
+    hand-coding files on disk under this repo's actual validation/ folder --
+    the union itself, computed from real selected.csv files, is what this
+    test is checking.
+    """
+    import json
+    from analyzer.pipeline_graph import blank_doc
+
+    root = _make_library(tmp_path)
+    little_bear = [root / "Little Bear" / "S01 E01.mp4",
+                   root / "Little Bear" / "S01 E02.mp4"]
+    curious_george = [root / "Curious George" / "S01 E03.mp4"]
+    folder_a = _make_draw(root, little_bear, name="draw_a")
+    folder_b = _make_draw(root, curious_george, name="draw_b")
+    for folder, n in ((folder_a, 2), (folder_b, 1)):
+        (folder / "manifest.json").write_text(json.dumps({
+            "method": "systematic", "total_selected": n,
+            "total_available": n + 5, "entry_id": "Show",
+            "trial_name": folder.name,
+        }), encoding="utf-8")
+
+    def fake_coverage(stems, validation_dir=None):
+        return {"n_episodes": len(stems), "n_transition_coded": len(stems),
+                "n_event_coded": 0}
+    monkeypatch.setattr("analyzer.pipeline.coverage_for_stems", fake_coverage)
+
+    window.set_root(root)
+    doc = blank_doc("Compares two samples")
+    sampling_a = doc.add_node("sampling", 0, 0)
+    sampling_a.config["sample_key"] = f"sample:{folder_a}"
+    sampling_b = doc.add_node("sampling", 0, 200)
+    sampling_b.config["sample_key"] = f"sample:{folder_b}"
+    validation = doc.add_node("validation", 250, 100)
+    doc.connect(sampling_a.id, validation.id)
+    doc.connect(sampling_b.id, validation.id)
+
+    window._docs = [doc]
+    window._pipe_pick.blockSignals(True)
+    window._pipe_pick.clear()
+    window._pipe_pick.addItem(doc.name)
+    window._pipe_pick.blockSignals(False)
+    window._refresh_canvas()
+
+    stage, reason = window._stage_for(validation)
+    assert reason == ""
+    # 2 (Little Bear) + 1 (Curious George) = 3 -- the union, not either alone.
+    assert dict(stage.details)["Hand-coded episodes available"] == "3"
+
+    window._canvas._items[validation.id].setSelected(True)
+    window._on_node_selected(validation)
+    rows = {}
+    for r in range(window._inspector._grid.rowCount()):
+        k = window._inspector._grid.itemAtPosition(r, 0)
+        if k is not None:
+            rows[k.widget().text()] = True
+    assert "Other branches feeding this node" not in rows, \
+        "a real merge happened, so the 'not reflected' caveat must not show"
+
+
+def test_two_sampling_nodes_wired_into_one_selection_node_show_both_shows(
+        window, tmp_path):
+    """The reported symptom, reproduced exactly: two Sampling nodes wired
+    directly into ONE Selection node -- only one show was coming through.
+
+    Selection is not Validation; it has no special multi-input merge of its
+    own (`_stage_for` merges for ANY node type fed by more than one Sampling
+    node, not just Validation), so this checks the general case, not the one
+    that happened to be built and tested first.
+    """
+    import json
+    from analyzer.pipeline_graph import blank_doc
+
+    root = _make_library(tmp_path)
+    little_bear = [root / "Little Bear" / "S01 E01.mp4",
+                   root / "Little Bear" / "S01 E02.mp4"]
+    curious_george = [root / "Curious George" / "S01 E01.mp4",
+                      root / "Curious George" / "S01 E02.mp4"]
+    folder_a = _make_draw(root, little_bear, name="draw_a")
+    folder_b = _make_draw(root, curious_george, name="draw_b")
+    for folder, n in ((folder_a, 2), (folder_b, 2)):
+        (folder / "manifest.json").write_text(json.dumps({
+            "method": "systematic", "total_selected": n,
+            "total_available": n + 5, "entry_id": "Show",
+            "trial_name": folder.name,
+        }), encoding="utf-8")
+
+    window.set_root(root)
+    doc = blank_doc("Two shows, one Selection")
+    sampling_a = doc.add_node("sampling", 0, 0)
+    sampling_a.config["sample_key"] = f"sample:{folder_a}"
+    sampling_b = doc.add_node("sampling", 0, 200)
+    sampling_b.config["sample_key"] = f"sample:{folder_b}"
+    selection = doc.add_node("selection", 250, 100)
+    doc.connect(sampling_a.id, selection.id)
+    doc.connect(sampling_b.id, selection.id)
+
+    window._docs = [doc]
+    window._pipe_pick.blockSignals(True)
+    window._pipe_pick.clear()
+    window._pipe_pick.addItem(doc.name)
+    window._pipe_pick.blockSignals(False)
+    window._refresh_canvas()
+
+    stage, reason = window._stage_for(selection)
+    assert reason == ""
+    assert stage.headline == "4 episodes", (
+        "both shows must be counted -- 2 from Little Bear, 2 from Curious "
+        f"George -- not just the first branch's 2 (got {stage.headline!r})")
+
+    assert window._stage_status(selection) == f"— {stage.status_label}"
+
+
+def test_the_menu_link_never_touches_a_selected_nodes_own_key(
+        window, tmp_path, monkeypatch):
+    """The actual bug behind the report above: _link_to_sample (the Manage
+    menu / no-node Inspector button) and _link_node_to_sample (a selected
+    Sampling node's own button) used to be ONE method that inferred which was
+    meant from whatever happened to be selected on the canvas. Reproduces the
+    exact failure mode: link node A, link node B, then use the MENU item
+    while node A is STILL selected (leftover state from clicking around) --
+    the menu action must set the document default, never silently overwrite
+    node A's own binding.
+    """
+    import json
+    import ui.main_window as mw
+    from analyzer.pipeline_graph import blank_doc
+
+    root = _make_library(tmp_path)
+    folder_a = _make_draw(root, [root / "Little Bear" / "S01 E01.mp4"], name="draw_a")
+    folder_b = _make_draw(root, [root / "Curious George" / "S01 E01.mp4"], name="draw_b")
+    folder_c = _make_draw(root, [root / "Little Bear" / "S01 E02.mp4"], name="draw_c")
+    for folder in (folder_a, folder_b, folder_c):
+        (folder / "manifest.json").write_text(json.dumps({
+            "method": "systematic", "total_selected": 1, "total_available": 5,
+            "entry_id": "Show", "trial_name": folder.name,
+        }), encoding="utf-8")
+
+    window.set_root(root)
+    doc = blank_doc("Two nodes")
+    sampling_a = doc.add_node("sampling", 0, 0)
+    sampling_b = doc.add_node("sampling", 0, 200)
+    window._docs = [doc]
+    window._pipe_pick.blockSignals(True)
+    window._pipe_pick.clear()
+    window._pipe_pick.addItem(doc.name)
+    window._pipe_pick.blockSignals(False)
+    window._refresh_canvas()
+
+    def _pick(name_substr):
+        def getItem(parent, title, label, items, current, editable=False):
+            return next(i for i in items if name_substr in i), True
+        return getItem
+
+    # Link node A to draw_a, via the node-specific path.
+    window._canvas._items[sampling_a.id].setSelected(True)
+    monkeypatch.setattr(mw.QInputDialog, "getItem", _pick("draw_a"))
+    window._link_node_to_sample()
+    assert sampling_a.config["sample_key"] == f"sample:{folder_a}"
+    assert doc.source_key is None
+
+    # Link node B to draw_b, via the node-specific path.
+    window._canvas._items[sampling_a.id].setSelected(False)
+    window._canvas._items[sampling_b.id].setSelected(True)
+    monkeypatch.setattr(mw.QInputDialog, "getItem", _pick("draw_b"))
+    window._link_node_to_sample()
+    assert sampling_b.config["sample_key"] == f"sample:{folder_b}"
+    assert doc.source_key is None
+
+    # Node A is selected again (the user clicked back on it to look at it),
+    # then reaches for Manage -> Link to Episode Sample -- the OLD, familiar
+    # menu item -- expecting it to do what it always did: set the document's
+    # default. It must NOT silently repoint node A's own binding.
+    window._canvas._items[sampling_a.id].setSelected(True)
+    monkeypatch.setattr(mw.QInputDialog, "getItem", _pick("draw_c"))
+    window._link_to_sample()
+
+    assert doc.source_key == f"sample:{folder_c}"
+    assert sampling_a.config["sample_key"] == f"sample:{folder_a}", \
+        "the menu action must not have touched node A's own binding"
+    assert sampling_b.config["sample_key"] == f"sample:{folder_b}"
+
+
+# --- drawing a NEW sample from a specific Sampling node -----------------------
+
+def test_drawing_from_a_sampling_node_binds_and_persists_to_that_node(
+        window, tmp_path, monkeypatch):
+    """The next report: drawing (not just linking to an existing sample) from
+    one Sampling node was only ever changing the document's session scope --
+    never that node's own binding, and never saved to disk. Reproduces both
+    complaints: node isolation, and having to redraw on every reopen.
+    """
+    from PySide6.QtWidgets import QDialog
+    from analyzer.pipeline_graph import blank_doc, list_docs, save_doc
+
+    root = _make_library(tmp_path)
+    window.set_root(root)
+    doc = blank_doc("Two draws")
+    sampling_a = doc.add_node("sampling", 0, 0)
+    sampling_b = doc.add_node("sampling", 0, 200)
+    save_doc(doc, root)
+    window._docs = [doc]
+    window._pipe_pick.blockSignals(True)
+    window._pipe_pick.clear()
+    window._pipe_pick.addItem(doc.name)
+    window._pipe_pick.blockSignals(False)
+    window._refresh_canvas()
+
+    draw_a = root / "draw_a"
+    draw_a.mkdir()
+    (draw_a / "selected.csv").write_text(
+        "filepath\n" + str(root / "Little Bear" / "S01 E01.mp4"),
+        encoding="utf-8")
+    draw_b = root / "draw_b"
+    draw_b.mkdir()
+    (draw_b / "selected.csv").write_text(
+        "filepath\n" + str(root / "Curious George" / "S01 E01.mp4"),
+        encoding="utf-8")
+
+    import ui.sampler as sampler_module
+
+    def _fake_dialog_for(written):
+        class _Fake:
+            def __init__(self, *a, **k):
+                self.written_dir = written
+            def exec(self):
+                return QDialog.Accepted
+        return _Fake
+
+    # Draw for node A.
+    monkeypatch.setattr(sampler_module, "SamplerDialog", _fake_dialog_for(draw_a))
+    window.open_sampler(sampling_a)
+    assert sampling_a.config["sample_key"] == f"sample:{draw_a}"
+    assert sampling_b.config.get("sample_key") is None, \
+        "drawing for node A must not silently bind node B too"
+
+    # Draw for node B -- must not clobber node A's own binding.
+    monkeypatch.setattr(sampler_module, "SamplerDialog", _fake_dialog_for(draw_b))
+    window.open_sampler(sampling_b)
+    assert sampling_b.config["sample_key"] == f"sample:{draw_b}"
+    assert sampling_a.config["sample_key"] == f"sample:{draw_a}", \
+        "drawing for node B must not overwrite node A's own draw"
+
+    # And it must be ON DISK: reload the document the way reopening the
+    # pipeline would, not just check the in-memory objects this test built.
+    reloaded = next(d for d in list_docs(root) if d.id == doc.id)
+    reloaded_a = next(n for n in reloaded.nodes if n.id == sampling_a.id)
+    reloaded_b = next(n for n in reloaded.nodes if n.id == sampling_b.id)
+    assert reloaded_a.config["sample_key"] == f"sample:{draw_a}"
+    assert reloaded_b.config["sample_key"] == f"sample:{draw_b}"
+
+
+def test_drawing_without_a_node_context_does_not_bind_any_node(
+        window, tmp_path, monkeypatch):
+    """The File menu / toolbar Episode Sampler button -- not tied to any
+    specific pipeline node -- must keep its old behavior: only the session
+    scope follows the draw, nothing gets silently bound."""
+    from PySide6.QtWidgets import QDialog
+    from analyzer.pipeline_graph import blank_doc, save_doc
+
+    root = _make_library(tmp_path)
+    window.set_root(root)
+    doc = blank_doc("Untouched by a menu draw")
+    sampling_a = doc.add_node("sampling", 0, 0)
+    save_doc(doc, root)
+    window._docs = [doc]
+    window._pipe_pick.blockSignals(True)
+    window._pipe_pick.clear()
+    window._pipe_pick.addItem(doc.name)
+    window._pipe_pick.blockSignals(False)
+    window._refresh_canvas()
+
+    draw = root / "draw"
+    draw.mkdir()
+    (draw / "selected.csv").write_text(
+        "filepath\n" + str(root / "Little Bear" / "S01 E01.mp4"),
+        encoding="utf-8")
+
+    import ui.sampler as sampler_module
+
+    class _Fake:
+        def __init__(self, *a, **k):
+            self.written_dir = draw
+        def exec(self):
+            return QDialog.Accepted
+
+    monkeypatch.setattr(sampler_module, "SamplerDialog", _Fake)
+    window.open_sampler()          # no node -- the File menu / toolbar path
+
+    assert sampling_a.config.get("sample_key") is None
+    assert doc.source_key is None
+    assert window._scope.folder == draw, \
+        "the session scope should still follow the draw, same as before"
+
+
+# --- the Library shows BOTH branches' media, not one at a time ---------------
+
+def _two_branch_window(window, tmp_path, node_type="selection"):
+    """A canvas with two Sampling nodes, each on its own show, both wired
+    into one downstream node. Returns (doc, downstream_node, folder_a,
+    folder_b)."""
+    import json
+    from analyzer.pipeline_graph import blank_doc
+
+    root = _make_library(tmp_path)
+    folder_a = _make_draw(root, [root / "Little Bear" / "S01 E01.mp4",
+                                 root / "Little Bear" / "S01 E02.mp4"],
+                          name="draw_a")
+    folder_b = _make_draw(root, [root / "Curious George" / "S01 E01.mp4"],
+                          name="draw_b")
+    for folder, n in ((folder_a, 2), (folder_b, 1)):
+        (folder / "manifest.json").write_text(json.dumps({
+            "method": "systematic", "total_selected": n,
+            "total_available": n + 5, "entry_id": "Show",
+            "trial_name": folder.name,
+        }), encoding="utf-8")
+
+    window.set_root(root)
+    doc = blank_doc("Two branches")
+    a = doc.add_node("sampling", 0, 0)
+    a.config["sample_key"] = f"sample:{folder_a}"
+    b = doc.add_node("sampling", 0, 200)
+    b.config["sample_key"] = f"sample:{folder_b}"
+    downstream = doc.add_node(node_type, 250, 100)
+    doc.connect(a.id, downstream.id)
+    doc.connect(b.id, downstream.id)
+
+    window._docs = [doc]
+    window._pipe_pick.blockSignals(True)
+    window._pipe_pick.clear()
+    window._pipe_pick.addItem(doc.name)
+    window._pipe_pick.blockSignals(False)
+    window._refresh_canvas()
+    return doc, downstream, folder_a, folder_b
+
+
+def test_opening_a_merged_node_puts_both_shows_in_the_library(
+        window, tmp_path):
+    """The report: "both of the sampled media doesn't transfer to the Library
+    tab, only one of the samples does at a time."
+
+    The Library follows the scope, and the scope was built from the FIRST
+    upstream sample only -- so a node the Inspector correctly described as
+    merged handed the Library one branch, and the other looked lost.
+    """
+    doc, selection, folder_a, folder_b = _two_branch_window(window, tmp_path)
+
+    window._open_stage_screen(selection)
+
+    rows = sorted(_library_rows(window))
+    assert rows == ["S01 E01.mp4", "S01 E01.mp4", "S01 E02.mp4"], (
+        "the Library must list all three episodes -- both Little Bear and "
+        f"Curious George -- not one branch's (got {rows})")
+    assert len(window._scope.episodes) == 3
+    assert window._scope.folder is None, \
+        "a union is not any single draw's folder"
+    # Both shows are present, not one.
+    assert "Little Bear" in _tree_text(window)
+    assert "Curious George" in _tree_text(window)
+
+
+def test_a_single_branch_node_still_scopes_to_its_own_draw(window, tmp_path):
+    """The union must not disturb the ordinary one-sample case."""
+    import json
+    from analyzer.pipeline_graph import blank_doc
+
+    root = _make_library(tmp_path)
+    folder = _make_draw(root, [root / "Little Bear" / "S01 E01.mp4"],
+                        name="draw_only")
+    (folder / "manifest.json").write_text(json.dumps({
+        "method": "systematic", "total_selected": 1, "total_available": 6,
+        "entry_id": "Show", "trial_name": "draw_only",
+    }), encoding="utf-8")
+
+    window.set_root(root)
+    doc = blank_doc("One branch")
+    a = doc.add_node("sampling", 0, 0)
+    a.config["sample_key"] = f"sample:{folder}"
+    selection = doc.add_node("selection", 250, 0)
+    doc.connect(a.id, selection.id)
+    window._docs = [doc]
+    window._pipe_pick.blockSignals(True)
+    window._pipe_pick.clear()
+    window._pipe_pick.addItem(doc.name)
+    window._pipe_pick.blockSignals(False)
+    window._refresh_canvas()
+
+    window._open_stage_screen(selection)
+    assert window._scope.folder == folder, \
+        "one upstream sample should still scope to that draw's own folder"
+    assert _library_rows(window) == ["S01 E01.mp4"]
+
+
+# --- the media being sampled is named on the block and in the inspector ------
+
+def test_a_sampling_block_names_the_media_it_drew(window, tmp_path):
+    """Two Sampling boxes read "Sampling / How episodes were chosen" and were
+    otherwise identical on the canvas; the box must say WHICH media it drew."""
+    doc, selection, folder_a, folder_b = _two_branch_window(window, tmp_path)
+    sampling_a = next(n for n in doc.nodes
+                      if n.config.get("sample_key") == f"sample:{folder_a}")
+
+    assert window._node_media(sampling_a) == "draw_a"
+    # ...and it reaches the drawn box, not just the resolver.
+    assert window._canvas._items[sampling_a.id].media_line == "draw_a"
+
+    # The Inspector names it too, in a row and in the subtitle.
+    window._canvas._items[sampling_a.id].setSelected(True)
+    window._on_node_selected(sampling_a)
+    rows = {}
+    grid = window._inspector._grid
+    for r in range(grid.rowCount()):
+        k, v = grid.itemAtPosition(r, 0), grid.itemAtPosition(r, 1)
+        if k is not None and v is not None:
+            rows[k.widget().text()] = v.widget().text()
+    assert rows.get("Media") == "draw_a"
+    assert "draw_a" in window._inspector._subtitle.text()
+
+
+def test_a_merged_node_names_every_media_feeding_it(window, tmp_path):
+    doc, selection, folder_a, folder_b = _two_branch_window(window, tmp_path)
+    media = window._node_media(selection)
+    assert "draw_a" in media and "draw_b" in media, (
+        "a node fed by two samples should name both, not pick one "
+        f"(got {media!r})")
+
+
+# --- the Showing: chooser offers pipelines, not only single draws ------------
+
+def test_the_chooser_offers_the_whole_pipeline_not_only_its_samples(
+        window, tmp_path):
+    """The root of the "only one sample at a time" report.
+
+    The chooser listed drawn SAMPLES only, so a pipeline built from two
+    Sampling nodes could not be expressed in it at all -- every entry
+    narrowed to one branch, and there was no way to ask for the study the
+    researcher had actually assembled.
+    """
+    doc, selection, folder_a, folder_b = _two_branch_window(window, tmp_path)
+    window._rebuild_scope_choices()
+
+    pipeline_scopes = [s for s in window._scope_choices
+                       if s.key == f"pipeline:{doc.id}"]
+    assert len(pipeline_scopes) == 1, (
+        "a pipeline drawing on two samples needs its own entry; the chooser "
+        f"offered only {[s.label for s in window._scope_choices]}")
+
+    scope = pipeline_scopes[0]
+    assert doc.name in scope.label
+    assert len(scope.episodes) == 3, "both branches' episodes, not one's"
+
+    # Selecting it from the chooser is what the user actually does.
+    index = window._scope_choices.index(scope)
+    window._on_scope_picked(index)
+
+    assert sorted(_library_rows(window)) == [
+        "S01 E01.mp4", "S01 E01.mp4", "S01 E02.mp4"]
+    assert "Little Bear" in _tree_text(window)
+    assert "Curious George" in _tree_text(window)
+
+
+def test_a_one_sample_pipeline_adds_no_duplicate_chooser_entry(
+        window, tmp_path):
+    """A pipeline on a single sample is already covered by that sample's own
+    entry; a second entry under the document's name would be noise in a list
+    this library already fills with a dozen draws."""
+    import json
+    from analyzer.pipeline_graph import blank_doc
+
+    root = _make_library(tmp_path)
+    folder = _make_draw(root, [root / "Little Bear" / "S01 E01.mp4"],
+                        name="only_draw")
+    (folder / "manifest.json").write_text(json.dumps({
+        "method": "systematic", "total_selected": 1, "total_available": 6,
+        "entry_id": "Show", "trial_name": "only_draw",
+    }), encoding="utf-8")
+
+    window.set_root(root)
+    doc = blank_doc("Single sample study")
+    a = doc.add_node("sampling", 0, 0)
+    a.config["sample_key"] = f"sample:{folder}"
+    window._docs = [doc]
+    window._rebuild_scope_choices()
+
+    assert not [s for s in window._scope_choices
+                if s.key == f"pipeline:{doc.id}"]
+
+
+# --- selecting a pipeline defaults to the combination it was built from ------
+
+def test_selecting_a_two_sample_pipeline_defaults_to_both_together(
+        window, tmp_path):
+    """Choosing a pipeline with two Sampling blocks should land on both of
+    them, not on one arbitrary half of the study the researcher assembled."""
+    doc, selection, folder_a, folder_b = _two_branch_window(window, tmp_path)
+    window.set_scope(library_scope())
+    assert window._scope.is_library
+
+    window._follow_pipeline_scope()
+
+    assert window._scope.key == f"pipeline:{doc.id}"
+    assert len(window._scope.episodes) == 3
+    assert sorted(_library_rows(window)) == [
+        "S01 E01.mp4", "S01 E01.mp4", "S01 E02.mp4"]
+    # ...and the chooser shows that, rather than disagreeing with the tree.
+    assert window._scope_pick.currentText() == window._scope.describe()
+
+
+def test_selecting_a_one_sample_pipeline_still_scopes_to_that_sample(
+        window, tmp_path):
+    """The single-block case keeps its old behaviour."""
+    import json
+    from analyzer.pipeline_graph import blank_doc
+
+    root = _make_library(tmp_path)
+    folder = _make_draw(root, [root / "Little Bear" / "S01 E01.mp4"],
+                        name="one_draw")
+    (folder / "manifest.json").write_text(json.dumps({
+        "method": "systematic", "total_selected": 1, "total_available": 6,
+        "entry_id": "Show", "trial_name": "one_draw",
+    }), encoding="utf-8")
+
+    window.set_root(root)
+    doc = blank_doc("One block")
+    a = doc.add_node("sampling", 0, 0)
+    a.config["sample_key"] = f"sample:{folder}"
+    window._docs = [doc]
+    window._pipe_pick.blockSignals(True)
+    window._pipe_pick.clear()
+    window._pipe_pick.addItem(doc.name)
+    window._pipe_pick.blockSignals(False)
+    window._refresh_canvas()
+
+    window._follow_pipeline_scope()
+
+    assert window._scope.folder == folder
+    assert _library_rows(window) == ["S01 E01.mp4"]
+
+
+def test_selecting_an_unlinked_pipeline_leaves_the_scope_alone(
+        window, tmp_path):
+    """An unlinked pipeline has no opinion about which episodes -- it must
+    not silently empty the Library."""
+    from analyzer.pipeline_graph import blank_doc
+
+    root = _make_library(tmp_path)
+    window.set_root(root)
+    doc = blank_doc("Nothing linked")
+    doc.add_node("sampling", 0, 0)
+    window._docs = [doc]
+    window._pipe_pick.blockSignals(True)
+    window._pipe_pick.clear()
+    window._pipe_pick.addItem(doc.name)
+    window._pipe_pick.blockSignals(False)
+    window._refresh_canvas()
+
+    before = window._scope.key
+    window._follow_pipeline_scope()
+    assert window._scope.key == before

@@ -150,6 +150,34 @@ def scope_from_draw(key: str, label: str, folder: Path | None) -> Scope:
                  missing=tuple(absent), folder=Path(folder) if folder else None)
 
 
+def scope_from_draws(key: str, label: str, folders) -> Scope:
+    """A scope over the UNION of several sampler draws.
+
+    A pipeline node fed by more than one Sampling node works on every
+    branch's episodes at once, so the Library must show all of them — not
+    whichever single draw happened to be resolved first, which made two
+    wired-up samples appear one at a time and look like the other had been
+    lost.
+
+    `folder` is deliberately None: a union is not any one draw's folder, and
+    claiming one would point Reveal-in-Explorer and the exclude action at a
+    sample that holds only part of what is on screen. Callers that need the
+    underlying draws should keep their own list of them.
+    """
+    present: list[Path] = []
+    absent: list[Path] = []
+    seen: set[Path] = set()
+    for folder in folders or ():
+        for raw in read_selected(folder):
+            path = normalize(raw)
+            if path in seen:
+                continue          # two branches may legitimately draw one episode
+            seen.add(path)
+            (present if path.exists() else absent).append(path)
+    return Scope(key=key, label=label, episodes=tuple(present),
+                 missing=tuple(absent), folder=None)
+
+
 def scope_from_pipeline(pipeline) -> Scope | None:
     """A scope for an `analyzer.pipeline.Pipeline`, or None if it cannot have one.
 
