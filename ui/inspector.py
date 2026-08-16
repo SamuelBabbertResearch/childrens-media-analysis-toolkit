@@ -33,6 +33,7 @@ PANEL_H = 240        # .inspector-panel height
 class Inspector(QWidget):
     link_requested = Signal()
     open_requested = Signal()
+    exclude_requested = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -63,6 +64,17 @@ class Inspector(QWidget):
         self._action.setProperty("primary", "true")
         self._action.clicked.connect(self.link_requested)
         hrow.addWidget(self._action)
+        # Only a Selection node on a linked pipeline shows this — see
+        # show_node's can_exclude argument.
+        self._exclude_action = QPushButton("Exclude Library Selection")
+        self._exclude_action.setToolTip(
+            "Remove the rows currently selected in the Library from this "
+            "node's sample. Writes a new sample folder, the same as an "
+            "Episode Sampler draw — it appears in Showing: and the Trials "
+            "tab; the original sample is untouched.")
+        self._exclude_action.clicked.connect(self.exclude_requested)
+        self._exclude_action.setVisible(False)
+        hrow.addWidget(self._exclude_action)
         head.setStyleSheet(
             f"border-bottom:1px solid {color('rule_soft')};")
         outer.addWidget(head)
@@ -154,6 +166,7 @@ class Inspector(QWidget):
             f"(linked to {source_label or linked})" if linked
             else "(not linked to an episode sample)")
         self._action.setVisible(not linked)
+        self._exclude_action.setVisible(False)
         self._set_open_target(None)
         self._banner.setText(
             "Select a node to inspect it; double-click it to open the screen "
@@ -169,11 +182,13 @@ class Inspector(QWidget):
         self._rows(rows)
 
     def show_node(self, node, stage=None, reason: str = "",
-                  target=None) -> None:
+                  target=None, can_exclude: bool = False) -> None:
         """A selected node, with its derived stage state when there is one.
 
         *stage* is an `analyzer.pipeline.Stage`; *reason* says why there is
         none. *target* is the (label, reason) pair for the Open button.
+        *can_exclude* is true only for a Selection node on a pipeline linked
+        to a sample — the one case there is a sample to narrow.
         """
         if node is None:
             if self._doc is not None:
@@ -182,6 +197,7 @@ class Inspector(QWidget):
         kind = node_type(node.type)
         self._title.setText(node.title)
         self._action.setVisible(False)
+        self._exclude_action.setVisible(can_exclude)
         self._set_open_target(target)
 
         if stage is None:

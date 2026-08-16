@@ -816,6 +816,37 @@ through is the fix when it is needed.
 **Rejected.** Having CMAT choose N episodes for the subset; treating
 `coding_target` as a filter.
 
+### A Selection node's exclusions are written as a sample manifest, not `node.config`
+**Decision.** Excluding episodes on a pipeline Selection node
+(`ui/inspector.py`'s **Exclude Library Selection**,
+`MainWindow._exclude_from_selection_node`) writes a new `selected.csv` +
+`manifest.json` pair, sibling to the linked sample's folder
+(`analyzer/selection.py`) — the same shape an Episode Sampler draw writes —
+rather than storing an exclude list in the pipeline document's
+`node.config`.
+**Reason.** `CLAUDE.md`'s terminology table already says Selection "is a
+property of the study and is recorded in a manifest," and every scope this
+app offers — `discover_trials`, `build_pipelines`, the Showing: chooser —
+already discovers samples by finding that exact file pair
+(`analyzer/trials.py _discover_sample_trials`). Writing it that way meant the
+narrowed sample needed **no new discovery code** and became a real, stable
+entry in the Showing: chooser automatically. A `node.config`-only exclude list
+was rejected specifically because it would have been a second, disconnected
+way of saying "these episodes are out" that the dropdown could not see —
+picking the same base sample from the chooser later would have silently
+forgotten the exclusion, the shape of bug `LEARNINGS.md` already warns about
+(numbers that display correctly but are wrong).
+**Consequence.** This is the "small slice" of `TODO.md`'s "wires carry the
+set": a Selection node narrows the *whole pipeline document's* one linked
+sample, not a set derived by tracing which specific nodes are wired to it.
+Branch-specific narrowing (an automated-coding branch and a hand-coding
+branch on the same canvas getting different working sets) needs per-node
+sample binding — moving `source_key` off the document onto individual
+Sampling nodes — which is the larger, still-open piece.
+**Date.** 2026-08-15.
+**Rejected.** Storing exclusions in `node.config`, read only by the pipeline
+canvas.
+
 ---
 
 ## Interface

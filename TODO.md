@@ -145,12 +145,37 @@ session** — each needs its own verification against real output.
   `onboarding.md` and the regression test
   `tests/test_scope.py::test_picking_a_known_scope_does_not_rebuild_the_chooser`.
 
-- **Then, and only then, consider making the wires carry the set.** Sampling
-  emits N, selection narrows it, a hand-code branch takes its subset. This is
-  the north-star spec's "output produced here becomes input there", and it is
-  the point at which drawing the graph starts to matter. Currently
-  `doc.connections` is only ever counted, and `node.config` is written by the
-  templates and read by nothing.
+- **Wires carry the set — small slice done (2026-08-15), large slice still
+  open.** Sampling emits N, selection narrows it, a hand-code branch takes its
+  subset — the north-star spec's "output produced here becomes input there."
+
+  **Done:** a Selection node can now genuinely narrow a sample. Selecting one
+  and pressing **Exclude Library Selection** in the Inspector
+  (`ui/inspector.py`, `MainWindow._exclude_from_selection_node`) writes the
+  linked sample's episodes minus the Library's current row selection as a
+  brand-new `selected.csv` + `manifest.json` pair — the same shape an Episode
+  Sampler draw writes (`analyzer/selection.py`). That was the deliberate
+  choice over a canvas-only exclude list living in `node.config`: `CLAUDE.md`
+  already says Selection belongs in a manifest, and every scope in this app
+  (`discover_trials`, `build_pipelines`, the Showing: chooser) discovers
+  samples by finding exactly that pair — so the narrowed sample needed **no
+  new discovery code** and cannot silently disagree with the chooser the way
+  a `node.config`-only version could have. See `DECISIONS.md`.
+
+  Verified against the artefact: `tests/test_selection.py` reads back the
+  written CSV/manifest and confirms `discover_trials`/`build_pipelines` find
+  the new folder unassisted; `tests/test_scope.py
+  ::test_excluding_from_a_selection_node_writes_a_real_narrowed_sample` drives
+  it through the real Inspector button and rereads the Library tree.
+
+  **Not done — this is still the large slice:** `doc.connections` (the actual
+  wires on the canvas) still play no part in this. Excluding from a Selection
+  node narrows the *whole document's* one linked sample regardless of which
+  nodes are wired to which; a hand-code branch does not yet take a different
+  subset from an automated branch on the same canvas. That needs per-node
+  sample binding (moving `source_key` off the document and onto individual
+  Sampling nodes) and real backward graph traversal — the "large" option
+  scoped out and deliberately deferred this session.
 
 ## Ready when the above are done
 

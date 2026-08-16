@@ -845,3 +845,71 @@ def test_picking_a_known_scope_does_not_rebuild_the_chooser(window, tmp_path, mo
     window.set_scope(unknown)
     assert calls["n"] == 1, "a not-yet-discovered scope should still trigger one rebuild"
     assert window._scope.key == unknown.key
+
+
+# --- a Selection node's Exclude action, end to end -----------------------------
+
+def test_excluding_from_a_selection_node_writes_a_real_narrowed_sample(
+        window, tmp_path, monkeypatch):
+    """The Inspector's "Exclude Library Selection" button, driven for real.
+
+    Verifies the artefact and its consequences, not just that the call
+    returns: a new sample folder on disk, the Library actually narrower, and
+    the narrowed sample offered in the Showing: chooser like any other draw.
+    """
+    import json
+    from analyzer.pipeline_graph import default_doc
+
+    root = _make_library(tmp_path)
+    drawn = [root / "Little Bear" / "S01 E01.mp4",
+             root / "Little Bear" / "S01 E02.mp4",
+             root / "Little Bear" / "S01 E03.mp4"]
+    # Under root, not merely under tmp_path: build_pipelines(root) discovers
+    # samples by walking the root folder, so a draw outside it is invisible
+    # to _refresh_canvas the same way it would be to the real application.
+    folder = _make_draw(root, drawn)
+    (folder / "manifest.json").write_text(json.dumps({
+        "method": "systematic", "total_selected": 3, "total_available": 6,
+        "entry_id": "Little Bear", "trial_name": "Pilot",
+    }), encoding="utf-8")
+
+    window.set_root(root)
+    doc = default_doc("Test study")
+    doc.source_key = f"sample:{folder}"
+    window._docs = [doc]
+    window._pipe_pick.blockSignals(True)
+    window._pipe_pick.clear()
+    window._pipe_pick.addItem(doc.name)
+    window._pipe_pick.blockSignals(False)
+    window._refresh_canvas()
+
+    sel_node = next(n for n in doc.nodes if n.type == "selection")
+
+    # No node selected on the canvas yet: the action must be a safe no-op.
+    window._exclude_from_selection_node()
+    assert window._scope.folder != folder or window._scope.is_library
+
+    monkeypatch.setattr(window, "_selected_episode_paths", lambda: [drawn[0]])
+    window._canvas._items[sel_node.id].setSelected(True)
+
+    window._exclude_from_selection_node()
+
+    assert not window._scope.is_library
+    assert window._scope.folder not in (None, folder), \
+        "excluding must land on a NEW sample folder, not mutate the source"
+    assert len(window._scope.episodes) == 2
+    assert drawn[0] not in window._scope.episodes
+
+    # The new folder really exists and really has only the kept episodes —
+    # the artefact, not just the in-memory Scope object.
+    with (window._scope.folder / "selected.csv").open(
+            newline="", encoding="utf-8") as fh:
+        kept = {Path(r["filepath"]) for r in csv.DictReader(fh)}
+    assert kept == {drawn[1], drawn[2]}
+
+    # It is now offered in the Showing: chooser, not just the current scope —
+    # the whole point of writing it like a sampler draw instead of a
+    # canvas-only annotation.
+    assert any(s.key == window._scope.key for s in window._scope_choices)
+
+    assert sorted(_library_rows(window)) == ["S01 E02.mp4", "S01 E03.mp4"]

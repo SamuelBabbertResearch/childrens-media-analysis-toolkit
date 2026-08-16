@@ -806,6 +806,8 @@ class MainWindow(QMainWindow):
         self._inspector.link_requested.connect(self._link_to_sample)
         self._inspector.open_requested.connect(
             lambda: self._open_stage_screen(self._canvas.selected_node()))
+        self._inspector.exclude_requested.connect(
+            self._exclude_from_selection_node)
 
         self._undo_stack: list[dict] = []
         self._redo_stack: list[dict] = []
@@ -933,8 +935,12 @@ class MainWindow(QMainWindow):
             self._inspector.show_node(None)
             return
         stage, reason = self._stage_for(node)
+        doc = self._doc()
+        can_exclude = (node.type == "selection" and doc is not None
+                       and bool(doc.source_key))
         self._inspector.show_node(node, stage, reason,
-                                  self._target_for(node))
+                                  self._target_for(node),
+                                  can_exclude=can_exclude)
 
     # -- pipeline as a control surface --
 
@@ -1362,6 +1368,57 @@ class MainWindow(QMainWindow):
                 seen.add(path)
                 unique.append(path)
         return unique
+
+    def _selected_episode_paths(self) -> list[Path]:
+        """`_selected_paths()`, with any selected show folder expanded to its
+        episode files — what a Selection node's exclude list actually needs."""
+        out: list[Path] = []
+        for p in self._selected_paths():
+            out.extend(list_episodes(p) if p.is_dir() else [p])
+        return out
+
+    def _exclude_from_selection_node(self) -> None:
+        """Write the Library's current row selection out of the active
+        Selection node's linked sample, as a new, real, discoverable sample.
+
+        This is the "wires carry the set" slice from `TODO.md`: excluding
+        here writes selected.csv + manifest.json exactly like an Episode
+        Sampler draw (`analyzer.selection.write_narrowed_selection`), so the
+        narrowed set becomes its own entry in the Showing: chooser rather
+        than a pipeline-canvas-only annotation the chooser could silently
+        disagree with.
+        """
+        doc = self._doc()
+        node = self._canvas.selected_node()
+        if (doc is None or node is None or node.type != "selection"
+                or not doc.source_key):
+            return
+        pipeline = getattr(self, "_derived", {}).get(doc.source_key)
+        if pipeline is None or not pipeline.folder:
+            self.statusBar().showMessage(
+                "This pipeline's linked sample was not found on disk.", 6000)
+            return
+        exclude = self._selected_episode_paths()
+        if not exclude:
+            self.statusBar().showMessage(
+                "Select rows in the Library to exclude first.", 6000)
+            return
+        from analyzer.selection import write_narrowed_selection
+        outdir = write_narrowed_selection(
+            pipeline.folder, pipeline.name, set(exclude), node.id)
+        if outdir is None:
+            self.statusBar().showMessage(
+                "Nothing to exclude — none of the selected rows are in this "
+                "sample.", 6000)
+            return
+        self._trials.refresh()
+        self.set_scope(scope_from_draw(
+            f"sample:{outdir}", f"{pipeline.name} — Selection", outdir))
+        n = len(exclude)
+        self.statusBar().showMessage(
+            f"Wrote a narrowed sample excluding {n} episode{'s' if n != 1 else ''} "
+            f"to {outdir.name}. It now appears in Showing: and the Trials tab.",
+            10000)
 
     def _episode_count(self, paths: list[Path]) -> int:
         return sum(len(list_episodes(p)) if p.is_dir() else 1 for p in paths)
