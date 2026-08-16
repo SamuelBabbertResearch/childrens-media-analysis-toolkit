@@ -31,6 +31,18 @@ TWO GUARDRAILS
 
 If VLC is unavailable the Code screen explains exactly what is missing instead
 of opening a black rectangle: see ui/player.available().
+
+THE WORKLIST
+
+Hand coding is a pass over a SET of episodes, not one file. When the research
+context is a drawn sample (`analyzer/scope.py`) both Code and Validate tool show
+that sample as a worklist with each episode's coding state beside it, so the
+screen answers "what is left?" instead of waiting to be told which file to open.
+
+The state comes from the engine — `event_coding.event_sheet_status` for the
+event sheets, `validation.episode_status` for the transition ones — so the
+worklist and the command line cannot disagree about whether an episode is
+coded. The worklist selects; it never writes.
 """
 
 from __future__ import annotations
@@ -40,14 +52,17 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog,
-    QFrame, QHBoxLayout,
+    QAbstractItemView, QCheckBox, QComboBox, QDialog, QDoubleSpinBox,
+    QFileDialog, QFrame, QHBoxLayout,
     QHeaderView, QLabel, QLineEdit, QMessageBox, QPushButton, QSpinBox,
     QSplitter, QStackedWidget,
     QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from analyzer.event_coding import EVENT_TYPES, parse_event_csv
+from analyzer.event_coding import (
+    EVENT_TYPES, event_sheet_status, find_event_sheet, parse_event_csv,
+)
+from analyzer.scope import Scope, library_scope
 from analyzer.trials import get_validation_dir
 from ui import player as player_mod
 
@@ -71,6 +86,141 @@ def _table(headers: list[str]) -> QTreeWidget:
     table.setSelectionBehavior(QAbstractItemView.SelectRows)
     table.setFrameShape(QFrame.NoFrame)
     return table
+
+
+def event_coding_state(episode: Path, cmap=None) -> tuple[str, bool]:
+    """(cell text, has any coding) for this episode's EVENT sheet.
+
+    The flag is returned rather than inferred from the text: a worklist that
+    decides "is this done?" by reading its own label is `LEARNINGS.md` § *A
+    claim was restated instead of read*, and it breaks silently the first time
+    the wording changes.
+    """
+    status = event_sheet_status(episode, get_validation_dir(), cmap)
+    if not status["exists"]:
+        return "not coded", False
+    if status["step"] == "unreadable":
+        return "sheet unreadable", False
+    n = status["n_events"]
+    if not n:
+        return "sheet started, no events yet", False
+    return f"{n} event{'s' if n != 1 else ''}", True
+
+
+def transition_coding_state(episode: Path, cmap=None) -> tuple[str, bool]:
+    """(cell text, has any coding) for this episode's TRANSITION sheet."""
+    from analyzer.validation import episode_status
+    try:
+        st = episode_status(episode, get_validation_dir(), cmap)
+    except Exception:                       # noqa: BLE001 — a cell, not a crash
+        return "unreadable", False
+    rows = st.get("coded_rows", 0)
+    text = {
+        "start": "no sheet",
+        "template": "sheet started, no transitions yet",
+        "coded": f"{rows} coded",
+        "detected": f"{rows} coded, detector run",
+        "compared": f"{rows} coded, compared",
+        "annotated": f"{rows} coded, annotated",
+    }.get(st.get("step", ""), str(st.get("step", "")))
+    return text, bool(rows)
+
+
+class Worklist(QWidget):
+    """The current sample as a list of episodes, each with its coding state.
+
+    A view over the scope, never a filter on it: choosing a row loads that
+    episode and nothing else changes. Under the whole-library scope it shows
+    no rows and says why — a worklist of 137 episodes is a library, and the
+    thing that makes a worklist useful is that it ends.
+    """
+
+    episode_chosen = Signal(object)         # Path
+
+    def __init__(self, state_fn) -> None:
+        super().__init__()
+        self._state_fn = state_fn
+        self._scope: Scope = library_scope()
+
+        from ui.main_window import Panel
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        panel = Panel("Worklist")
+        self._count = QLabel("")
+        self._count.setProperty("role", "dim")
+        panel.add_header_widget(self._count)
+        self._note = QLabel("")
+        self._note.setProperty("role", "dim")
+        self._note.setWordWrap(True)
+        panel.body_layout.addWidget(self._note)
+        self._table = _table(["Episode", "Coding", "Show"])
+        self._table.itemDoubleClicked.connect(self._chosen)
+        panel.body_layout.addWidget(self._table)
+        lay.addWidget(panel)
+        # The splitter honours size hints over setSizes, and the panels below
+        # this one are tall tables — without a floor the worklist is squeezed
+        # to two rows on the Validate screen. A worklist you have to drag open
+        # before you can read it is not a worklist.
+        self.setMinimumHeight(150)
+
+    def set_scope(self, scope: Scope) -> None:
+        self._scope = scope
+        self.refresh()
+
+    def refresh(self) -> None:
+        """Re-read every episode's coding state from disk.
+
+        Called after a sheet is saved as well as on a scope change, because
+        the row that just changed is the one the coder is looking at.
+        """
+        self._table.clear()
+        if self._scope.is_library:
+            self._note.setText(
+                "Showing the whole library. Choose a drawn sample in the "
+                "Showing: control on the toolbar and its episodes appear here "
+                "as a worklist.")
+            self._note.setVisible(True)
+            self._count.setText("")
+            return
+        # ONE scan of the validation folder for the whole sample. Asking each
+        # episode separately globs it three times per row — 732 ms for sixteen
+        # — and `coded_episode_map`'s own docstring already says this is what
+        # it is for.
+        from analyzer.validation import coded_episode_map
+        try:
+            cmap = coded_episode_map(get_validation_dir())
+        except Exception:                   # noqa: BLE001 — states, not a crash
+            cmap = {}
+        done = 0
+        for episode in self._scope.episodes:
+            state, coded = self._state_fn(episode, cmap)
+            done += bool(coded)
+            item = QTreeWidgetItem([episode.name, state, episode.parent.name])
+            item.setData(0, Qt.UserRole, str(episode))
+            item.setToolTip(0, str(episode))
+            self._table.addTopLevelItem(item)
+        head = self._table.header()
+        head.setSectionResizeMode(0, QHeaderView.Stretch)
+        for col in (1, 2):
+            head.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+
+        total = self._scope.total_drawn
+        listed = len(self._scope.episodes)
+        self._count.setText(f"{done} of {listed} with coding")
+        parts = [f"{self._scope.label} — {total} episode"
+                 f"{'s' if total != 1 else ''} drawn"]
+        if self._scope.missing:
+            parts.append(f"{len(self._scope.missing)} no longer on disk, so "
+                         f"{listed} can be coded")
+        parts.append("double-click an episode to open it")
+        self._note.setText(" — ".join(parts))
+        self._note.setVisible(True)
+
+    def _chosen(self, item, _column) -> None:
+        payload = item.data(0, Qt.UserRole)
+        if payload:
+            self.episode_chosen.emit(Path(payload))
 
 
 class CodeView(QWidget):
@@ -136,6 +286,15 @@ class CodeView(QWidget):
         ll.addWidget(self._mark_row())
         split.addWidget(left)
 
+        # The worklist sits above the events rather than beside the video: the
+        # coder needs the picture large, and "which episode am I on / what is
+        # left" belongs with the sheet it is about.
+        right_side = QSplitter(Qt.Vertical)
+        right_side.setChildrenCollapsible(False)
+        self.worklist = Worklist(event_coding_state)
+        self.worklist.episode_chosen.connect(self._open_from_worklist)
+        right_side.addWidget(self.worklist)
+
         right = Panel("Coded events")
         self._table = QTreeWidget()
         self._table.setColumnCount(5)
@@ -154,7 +313,9 @@ class CodeView(QWidget):
         self._btn_delete = QPushButton("Delete Event")
         self._btn_delete.clicked.connect(self._delete_event)
         right.add_header_widget(self._btn_delete)
-        split.addWidget(right)
+        right_side.addWidget(right)
+        right_side.setSizes([200, 320])
+        split.addWidget(right_side)
 
         split.setStretchFactor(0, 60)
         split.setStretchFactor(1, 40)
@@ -204,6 +365,14 @@ class CodeView(QWidget):
         self._btn_mark = QPushButton("Mark at playhead")
         self._btn_mark.setProperty("primary", "true")
         self._btn_mark.setEnabled(False)
+        self._btn_mark.setToolTip(
+            "Records the current type/relevance/repeat at the playhead.\n"
+            "If the video is still playing, this PAUSES IT FIRST — that is "
+            "intentional, not a glitch. VLC's own live clock can be up to "
+            "half a second behind what you just saw, so pausing first is "
+            "what makes the recorded timestamp exact. The moving counter "
+            "while playing is a smoothed estimate for feel; it is never "
+            "what gets written to the sheet.")
         self._btn_mark.clicked.connect(self._mark)
         rl.addWidget(self._btn_mark)
         return row
@@ -216,6 +385,11 @@ class CodeView(QWidget):
             self._target.setText(f"Ready: {path.name}")
         self._sync()
 
+    def set_scope(self, scope: Scope) -> None:
+        """The research context changed: show it as the worklist."""
+        if hasattr(self, "worklist"):
+            self.worklist.set_scope(scope)
+
     def _open_episode(self) -> None:
         if self._episode is None:
             chosen, _ = QFileDialog.getOpenFileName(
@@ -224,11 +398,50 @@ class CodeView(QWidget):
             if not chosen:
                 return
             self._episode = Path(chosen)
-        self._player.open(self._episode)
-        self._sheet = get_validation_dir() / f"{self._episode.stem}_events.csv"
-        if self._sheet.exists():
-            self._read_sheet(self._sheet)
-        self._target.setText(f"{self._episode.name} — sheet: {self._sheet.name}")
+        self._load_episode(self._episode)
+
+    def _open_from_worklist(self, episode: Path) -> None:
+        """Switch episodes from the worklist, without losing unsaved marks."""
+        if self._dirty:
+            from ui.modal import ConfirmDialog
+            dialog = ConfirmDialog(
+                self, "Unsaved coding",
+                f"{len(self._events)} event"
+                f"{'s' if len(self._events) != 1 else ''} on "
+                f"{self._episode.name if self._episode else 'this episode'} "
+                f"{'have' if len(self._events) != 1 else 'has'} not been "
+                f"saved. Open {episode.name} and discard them?",
+                "Nothing already saved to disk is affected — only the marks "
+                "made since the last Save Sheet.",
+                confirm_text="Discard and open")
+            if dialog.exec() != QDialog.Accepted:
+                return
+        self._load_episode(episode)
+
+    def _load_episode(self, episode: Path) -> None:
+        """Open *episode* and its sheet, replacing whatever was loaded.
+
+        The events list is cleared when the new episode has no sheet. It was
+        not: opening a second, uncoded episode kept the first one's marks in
+        the table, and Save Sheet would have written them into the second
+        episode's file under the second episode's name.
+        """
+        self._episode = episode
+        self._player.open(episode)
+        existing = find_event_sheet(episode, get_validation_dir())
+        if existing is not None:
+            # Found wherever a coder filed it — the same lookup code_events.py
+            # scores from, so the screen and the command line open one sheet.
+            self._read_sheet(existing)
+        else:
+            self._events = []
+            self._dirty = False
+            self._sheet = (get_validation_dir()
+                           / f"{episode.stem}_events.csv")
+            self._refill()
+        self._target.setText(f"{episode.name} — sheet: {self._sheet.name}")
+        if hasattr(self, "worklist"):
+            self.worklist.refresh()
         self._sync()
 
     # -- events ------------------------------------------------------------
@@ -243,13 +456,24 @@ class CodeView(QWidget):
                 "other_impossible needs a note saying what happened — "
                 "otherwise the row cannot be checked by a second coder.")
             return
-        seconds = self._player.position()
+        relevance = self._relevance.currentText()
+        repeat = self._repeat.currentText()
+        # player.stamp() pauses first if playing, so the timestamp is read
+        # from libvlc's exact paused clock rather than its coarse live one
+        # (up to ~0.5s stale) — see ui/player.py's VideoPlayer.stamp(). Every
+        # value here is captured now, at the click, so nothing the coder
+        # changes in the meantime can leak into a mark still settling.
+        self._player.stamp(lambda seconds: self._append_event(
+            seconds, etype, relevance, repeat, note))
+
+    def _append_event(self, seconds: float, etype: str, relevance: str,
+                       repeat: str, note: str) -> None:
         self._events.append({
             "timestamp_sec": round(seconds, 3),
             "timestamp_hms": player_mod.sec_to_hms(seconds),
             "event_type": etype,
-            "narrative_relevance": self._relevance.currentText(),
-            "repeat": self._repeat.currentText(),
+            "narrative_relevance": relevance,
+            "repeat": repeat,
             "duration_sec": None,
             "notes": note,
         })
@@ -315,6 +539,8 @@ class CodeView(QWidget):
                     k: ("" if event.get(k) is None else event.get(k, ""))
                     for k in COLUMNS})
         self._dirty = False
+        if hasattr(self, "worklist"):
+            self.worklist.refresh()      # the row that just changed
         self._sync()
         self._window.statusBar().showMessage(
             f"Saved {len(self._events)} event"
@@ -466,6 +692,10 @@ class ValidateView(QWidget):
         split = QSplitter(Qt.Vertical)
         lay.addWidget(split, 1)
 
+        self.worklist = Worklist(transition_coding_state)
+        self.worklist.episode_chosen.connect(self._open_from_worklist)
+        split.addWidget(self.worklist)
+
         scores = Panel("Scores for this episode")
         self._window_note = QLabel("")
         self._window_note.setProperty("role", "dim")
@@ -497,7 +727,7 @@ class ValidateView(QWidget):
                                "Precision", "Recall", "F1"])
         totals.body_layout.addWidget(self._totals)
         split.addWidget(totals)
-        split.setSizes([200, 260, 200])
+        split.setSizes([170, 190, 240, 190])
 
         note = QLabel(self.SCORING_NOTE)
         note.setProperty("role", "dim")
@@ -515,6 +745,24 @@ class ValidateView(QWidget):
         if path is not None and path.is_file():
             self._episode = path
             self._show_status()
+
+    def set_scope(self, scope: Scope) -> None:
+        """The research context changed: show it as the worklist."""
+        self.worklist.set_scope(scope)
+
+    def _open_from_worklist(self, episode: Path) -> None:
+        """Grade a different episode. Nothing here is unsaved, so no warning.
+
+        The score tables are cleared rather than left showing the previous
+        episode's figures under a new episode's name — the last comparison is
+        a result ABOUT one episode, not a property of the screen.
+        """
+        self._episode = episode
+        self._last = None
+        self._scores.clear()
+        self._detail.clear()
+        self._window_note.setText("")
+        self._show_status()
 
     def _choose(self) -> None:
         chosen, _f = QFileDialog.getOpenFileName(
@@ -555,6 +803,7 @@ class ValidateView(QWidget):
             return
         path = write_template(self._episode, get_validation_dir())
         self._show_status()
+        self.worklist.refresh()
         QMessageBox.information(
             self, "Coding sheet created",
             f"Wrote {path.name}.\n\nCode the episode against "
@@ -596,6 +845,7 @@ class ValidateView(QWidget):
 
     def _detected(self, result: dict) -> None:
         self._reset_detect_button()
+        self.worklist.refresh()
         self._status.setText(
             f"Detector wrote {result['n_hard_cuts']} hard cut"
             f"{'s' if result['n_hard_cuts'] != 1 else ''} and "
@@ -663,6 +913,7 @@ class ValidateView(QWidget):
         self._fill_scores(result)
         self._fill_detail(result)
         self.refresh_totals()
+        self.worklist.refresh()
         if warnings:
             QMessageBox.information(
                 self, "Check the coding sheet",
@@ -969,6 +1220,15 @@ class HandCodingTab(QWidget):
         """The Library selection reaches both screens that use an episode."""
         self.code.set_target(path)
         self.validate.set_target(path)
+
+    def set_scope(self, scope) -> None:
+        """The research context reaches both worklists.
+
+        Agreement is deliberately left out: it compares two coders' SHEETS,
+        which are not episodes and are not drawn by a sample.
+        """
+        self.code.set_scope(scope)
+        self.validate.set_scope(scope)
 
     def show_view(self, name: str) -> None:
         self._views.show(name)

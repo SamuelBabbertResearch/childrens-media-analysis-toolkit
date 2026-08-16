@@ -26,7 +26,9 @@ its clipping.
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
+from typing import Callable
 
 from PySide6.QtCore import QEventLoop, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter
@@ -163,6 +165,8 @@ class VideoPlayer(QWidget):
         self._duration = 0.0
         self._scrubbing = False
         self._fps = 0.0
+        self._anchor_pos = 0.0
+        self._anchor_time = time.monotonic()
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -281,6 +285,8 @@ class VideoPlayer(QWidget):
     def seek(self, seconds: float) -> None:
         seconds = max(0.0, min(seconds, self._duration or seconds))
         self._player.set_time(int(round(seconds * 1000)))
+        self._anchor_pos = seconds
+        self._anchor_time = time.monotonic()
         self.position_changed.emit(seconds)
 
     def frame_duration(self) -> float:
@@ -293,15 +299,51 @@ class VideoPlayer(QWidget):
         return 1.0 / self._fps if self._fps > 0 else 0.0
 
     def position(self) -> float:
-        """The position a mark records.
+        """The ground truth a mark is built from — never read this directly
+        to record one; call `stamp()` instead.
 
-        Exact when paused or after a seek. During PLAYBACK libvlc's clock is
-        coarse — measured, it advances in jumps of 0.25–0.5s on 23.976fps
-        material — so a mark made while playing can be up to half a second
-        stale. Pause before marking; the coding UI enforces that.
+        Exact when paused or after a seek. During PLAYBACK libvlc's own
+        clock is coarse — measured, it only refreshes every 0.2–0.5s on
+        23.976fps material (a ~0.042s frame), independent of how often this
+        is polled — so a value read here while playing can be up to half a
+        second stale relative to what is on screen at that instant.
         """
         ms = self._player.get_time()
         return max(0.0, ms / 1000.0) if ms and ms > 0 else 0.0
+
+    def is_playing(self) -> bool:
+        return bool(self._player.is_playing())
+
+    def stamp(self, callback: Callable[[float], None]) -> None:
+        """Call `callback(seconds)` with an exact position for a mark.
+
+        `position()` is only exact once paused. Marking must never record
+        the coarse, up-to-0.5s-stale value playback can return, so: already
+        paused -> call back immediately with today's `position()`. Playing
+        -> pause first, wait for libvlc to actually confirm it, THEN call
+        back — closing the gap between "the coder saw the cut" and "the
+        clock we read really stopped there".
+
+        The settle loop mirrors `_hold_first_frame`'s bounded-retry idiom.
+        Measured in steady-state playback (not cold-open): `set_pause(1)`
+        flips `is_playing()` False and freezes `get_time()` within ~20ms, so
+        the 15x20ms=300ms cap here is a safety margin, not the normal path.
+        `set_pause(1)` is used rather than `toggle()` for the same reason
+        `_hold_first_frame` avoids it — toggling assumes you already know
+        the state you are toggling away from.
+        """
+        if not self.is_playing():
+            callback(self.position())
+            return
+        self._player.set_pause(1)
+        self._settle_stamp(callback, 0)
+
+    def _settle_stamp(self, callback: Callable[[float], None],
+                       tries: int) -> None:
+        if not self.is_playing() or tries >= 15:
+            callback(self.position())
+            return
+        QTimer.singleShot(20, lambda: self._settle_stamp(callback, tries + 1))
 
     # -- state ------------------------------------------------------------
     def _begin_scrub(self) -> None:
@@ -312,13 +354,40 @@ class VideoPlayer(QWidget):
         if self._duration:
             self.seek(self._slider.value() / 1000.0 * self._duration)
 
+    def _display_position(self) -> float:
+        """What the on-screen counter shows — a smoothed ESTIMATE while
+        playing, never the value a mark is stamped with (see `stamp()`).
+
+        libvlc's real position only refreshes every 0.2-0.5s during
+        playback (see `position()`), which reads as visibly frozen against
+        a 0.042s frame. Between real ticks, this extrapolates forward from
+        the last real tick using wall-clock time, and snaps back in sync
+        the instant a new real tick arrives — so the display cannot drift
+        further than the size of libvlc's own tick before self-correcting.
+        """
+        raw = self.position()
+        now = time.monotonic()
+        if raw != self._anchor_pos:
+            self._anchor_pos = raw
+            self._anchor_time = now
+        if self.is_playing():
+            return self._anchor_pos + (now - self._anchor_time)
+        return raw
+
     def _sync(self) -> None:
         length = self._player.get_length()
         if length and length > 0:
             self._duration = length / 1000.0
-        pos = self.position()
-        if not self._scrubbing and self._duration:
-            self._slider.setValue(int(pos / self._duration * 1000))
+        if self._scrubbing:
+            # The player hasn't moved yet — show where the dragged thumb
+            # points, not the stale pre-drag position, or the counter
+            # visibly disagrees with the seek bar until release.
+            pos = self._slider.value() / 1000.0 * self._duration \
+                if self._duration else 0.0
+        else:
+            pos = self._display_position()
+            if self._duration:
+                self._slider.setValue(int(pos / self._duration * 1000))
         self._time.setText(
             f"{sec_to_hms(pos)} / {sec_to_hms(self._duration)}")
         self._btn_play.setText(

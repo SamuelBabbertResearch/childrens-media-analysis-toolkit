@@ -286,6 +286,278 @@ def _tree_text(window) -> str:
     return "\n".join(out)
 
 
+# --- the measurement tabs stage the working set ------------------------------
+#
+# These assert on the QUEUE — the list `_start` actually hands the worker — not
+# on whether a label changed. A staging control that stages nothing is exactly
+# `LEARNINGS.md` § *A control that exists is not a feature that works*, and it
+# would read as correct on screen: a scope named in the header, a note claiming
+# a sample, and an empty run.
+
+def _queued(window) -> list[str]:
+    """Queue entries as the interface shows them, one per row."""
+    view = window._automated._queue_view
+    return [view.item(i).toolTip() for i in range(view.count())]
+
+
+def _would_analyze(window) -> list[Path]:
+    """Exactly what `AutomatedTab._start` would hand the worker."""
+    tab = window._automated
+    return list(tab._queue) or ([tab._target] if tab._target is not None else [])
+
+
+def test_a_sample_scope_stages_the_analysis_queue(window, tmp_path):
+    """The point of the change: arrive with the working set, not empty-handed."""
+    root = _make_library(tmp_path)
+    window.set_root(root)
+    assert _queued(window) == []
+
+    drawn = [root / "Little Bear" / "S01 E01.mp4",
+             root / "Little Bear" / "S01 E03.mp4"]
+    folder = _make_draw(tmp_path, drawn)
+    window.set_scope(scope_from_draw(f"sample:{folder}", "Pilot", folder))
+
+    assert sorted(_would_analyze(window)) == sorted(normalize(p) for p in drawn)
+    assert len(_queued(window)) == 2
+
+
+def test_the_whole_library_is_not_staged_as_a_work_list(window, tmp_path):
+    """137 episodes queued by opening the application is not a working set."""
+    root = _make_library(tmp_path)
+    window.set_root(root)
+    folder = _make_draw(tmp_path, [root / "Little Bear" / "S01 E01.mp4"])
+
+    window.set_scope(scope_from_draw(f"sample:{folder}", "Pilot", folder))
+    assert len(_queued(window)) == 1
+
+    window.set_scope(library_scope())
+    assert _queued(window) == []
+    assert not window._automated._btn_queue_scope.isEnabled()
+
+
+def test_switching_scope_withdraws_only_its_own_staging(window, tmp_path):
+    """A hand-queued episode is the user's. Nothing here asked to undo it."""
+    root = _make_library(tmp_path)
+    window.set_root(root)
+    a = _make_draw(tmp_path, [root / "Little Bear" / "S01 E01.mp4"], name="a")
+    b = _make_draw(tmp_path, [root / "Little Bear" / "S01 E02.mp4"], name="b")
+
+    window.set_scope(scope_from_draw(f"sample:{a}", "A", a))
+    by_hand = root / "Curious George" / "S01 E01.mp4"
+    window._automated.enqueue([by_hand])
+
+    window.set_scope(scope_from_draw(f"sample:{b}", "B", b))
+
+    queued = _would_analyze(window)
+    assert normalize(by_hand) in [normalize(p) for p in queued], \
+        "the hand-queued episode was thrown away by a scope change"
+    assert normalize(root / "Little Bear" / "S01 E01.mp4") not in \
+        [normalize(p) for p in queued], "sample A stayed queued under scope B"
+    assert normalize(root / "Little Bear" / "S01 E02.mp4") in \
+        [normalize(p) for p in queued]
+
+
+def test_one_episode_cannot_be_queued_twice_under_two_spellings(window,
+                                                                tmp_path):
+    """The Library walks the root; selected.csv stores absolute paths.
+
+    Same defect family as the index's two rows per episode — here it would
+    mean measuring one file twice inside a single run.
+    """
+    root = _make_library(tmp_path)
+    window.set_root(root)
+    episode = root / "Little Bear" / "S01 E01.mp4"
+    awkward = root / "Little Bear" / "." / ".." / "Little Bear" / "S01 E01.mp4"
+    window._automated.enqueue([awkward])
+
+    folder = _make_draw(tmp_path, [episode])
+    window.set_scope(scope_from_draw(f"sample:{folder}", "Pilot", folder))
+
+    assert len(_would_analyze(window)) == 1
+
+
+def test_the_staging_note_reconciles_with_the_rows(window, tmp_path):
+    """drawn = staged + gone. A note claiming more than the queue holds is the
+    wrong number that displays correctly."""
+    root = _make_library(tmp_path)
+    present = root / "Little Bear" / "S01 E01.mp4"
+    gone = root / "Little Bear" / "S01 E99.mp4"        # never created
+    folder = _make_draw(tmp_path, [present, gone])
+    window.set_root(root)
+
+    window.set_scope(scope_from_draw(f"sample:{folder}", "Pilot", folder))
+
+    note = window._automated._scope_note.text()
+    assert "1 of its 2 episodes" in note
+    assert "1 of the draw is no longer on disk" in note
+    assert len(_queued(window)) == 1
+
+
+def test_clearing_the_queue_leaves_the_note_telling_the_truth(window, tmp_path):
+    """It described what set_scope intended, so it survived Clear Queue."""
+    root = _make_library(tmp_path)
+    window.set_root(root)
+    folder = _make_draw(tmp_path, [root / "Little Bear" / "S01 E01.mp4"])
+    window.set_scope(scope_from_draw(f"sample:{folder}", "Pilot", folder))
+
+    window._automated.clear_queue()
+
+    note = window._automated._scope_note.text()
+    assert "none queued" in note
+    assert "Staged from" not in note
+    # And the way back is offered, not left to be guessed at.
+    assert window._automated._btn_queue_scope.isEnabled()
+    window._automated._enqueue_scope()
+    assert len(_queued(window)) == 1
+
+
+def test_a_pipeline_node_lands_on_the_staged_queue(window, tmp_path):
+    """The reported symptom: double-click a node, land on an empty screen.
+
+    Driven through `_open_stage_screen` — the method the canvas connects to —
+    rather than by asserting the tab exists.
+    """
+    from analyzer.pipeline_graph import NODE_TYPES
+
+    root = _make_library(tmp_path)
+    window.set_root(root)
+    folder = _make_draw(tmp_path, [root / "Little Bear" / "S01 E01.mp4",
+                                   root / "Little Bear" / "S01 E03.mp4"])
+    window.set_scope(scope_from_draw(f"sample:{folder}", "Pilot", folder))
+
+    kind = next(k for k in NODE_TYPES.values() if k.stage_key == "automated")
+    node = type("Node", (), {"type": kind.key, "title": "Automated coding"})()
+    window._open_stage_screen(node)
+
+    assert window._tabs.tabText(window._tabs.currentIndex()) == \
+        "Automated coding"
+    assert len(_would_analyze(window)) == 2
+    assert "No episode or show selected" not in \
+        window._automated._target_label.text()
+
+
+# --- Language: one view narrows, the other stages ----------------------------
+
+def _speech_files(window) -> list[str]:
+    table = window._language.speech._table
+    return [table.topLevelItem(i).text(1)
+            for i in range(table.topLevelItemCount())]
+
+
+def _vocab_files(window) -> list[str]:
+    listing = window._language.vocabulary._files
+    return [Path(listing.item(i).text()).name
+            for i in range(listing.count())]
+
+
+def _cache_speech(root: Path, episode: Path, words: int) -> None:
+    """A cached result carrying speech figures, written the engine's way."""
+    from analyzer.cache import save_cache
+    from analyzer.show_index import show_key
+    save_cache(root, show_key(root, episode.parent), episode.stem, {
+        "file": episode.name,
+        "status": "ok",
+        "duration_sec": 600.0,
+        "metrics": {"speech": {"available": True, "source": "captions",
+                               "words_per_minute": 120.0,
+                               "speech_density": 0.4,
+                               "total_words": words}},
+    })
+
+
+def test_the_speech_table_narrows_to_the_context(window, tmp_path):
+    """It reports on episodes already measured, so the scope FILTERS it.
+
+    A whole-corpus table under a header naming one sample is the wrong number
+    displayed correctly — the same defect the Index's show means had.
+    """
+    root = _make_library(tmp_path)
+    a = root / "Little Bear" / "S01 E01.mp4"
+    b = root / "Curious George" / "S01 E01.mp4"
+    window.set_root(root)
+    _cache_speech(root, a, 1200)
+    _cache_speech(root, b, 900)
+
+    speech = window._language.speech
+    speech.refresh()
+    assert len(_speech_files(window)) == 2
+
+    folder = _make_draw(tmp_path, [a])
+    window.set_scope(scope_from_draw(f"sample:{folder}", "Pilot", folder))
+
+    assert _speech_files(window) == ["S01 E01.mp4"]
+    assert "in Pilot" in speech._count.text()
+    # Six episodes exist; one is in scope, so five are not counted here.
+    assert "5 episodes elsewhere in the library are not counted" in \
+        speech._note.text()
+
+    window.set_scope(library_scope())
+    assert len(_speech_files(window)) == 2
+
+
+def test_the_speech_table_is_not_filled_on_startup(window, tmp_path):
+    """It walks every show and opens every cached result.
+
+    Refreshing it from `set_root` would put that walk on the cold path — the
+    startup cost this project has already paid once for module-scope imports.
+    """
+    root = _make_library(tmp_path)
+    _cache_speech(root, root / "Little Bear" / "S01 E01.mp4", 1200)
+
+    window.set_root(root)
+
+    assert window._language.speech._loaded is False
+    assert _speech_files(window) == []
+
+
+def test_vocabulary_stages_the_captions_beside_the_sample(window, tmp_path):
+    """It is where a run is started, so the scope STAGES rather than filters."""
+    root = _make_library(tmp_path)
+    a = root / "Little Bear" / "S01 E01.mp4"
+    b = root / "Little Bear" / "S01 E02.mp4"
+    (root / "Little Bear" / "S01 E01.srt").write_text(
+        "1\n00:00:01,000 --> 00:00:02,000\nhello\n", encoding="utf-8")
+    window.set_root(root)
+    folder = _make_draw(tmp_path, [a, b])
+
+    window.set_scope(scope_from_draw(f"sample:{folder}", "Pilot", folder))
+
+    assert _vocab_files(window) == ["S01 E01.srt"]
+    # The one WITHOUT captions is named, or a short list reads as a small
+    # sample rather than as missing captions.
+    status = window._language.vocabulary._progress.text()
+    assert "1 caption file from Pilot" in status
+    assert "1 of its episodes has no .srt or .vtt" in status
+
+
+def test_a_hand_added_caption_file_survives_a_scope_change(window, tmp_path):
+    root = _make_library(tmp_path)
+    a = root / "Little Bear" / "S01 E01.mp4"
+    b = root / "Curious George" / "S01 E01.mp4"
+    for episode in (a, b):
+        episode.with_suffix(".srt").write_text("x", encoding="utf-8")
+    window.set_root(root)
+    mine = tmp_path / "notes_of_my_own.srt"
+    mine.write_text("x", encoding="utf-8")
+
+    first = _make_draw(tmp_path, [a], name="first")
+    window.set_scope(scope_from_draw(f"sample:{first}", "A", first))
+    window._language.vocabulary._add([str(mine)])
+    assert sorted(_vocab_files(window)) == ["S01 E01.srt",
+                                            "notes_of_my_own.srt"]
+
+    second = _make_draw(tmp_path, [b], name="second")
+    window.set_scope(scope_from_draw(f"sample:{second}", "B", second))
+
+    staged = _vocab_files(window)
+    assert "notes_of_my_own.srt" in staged, \
+        "the hand-added file was thrown away by a scope change"
+    assert len(staged) == 2, "the previous sample's caption file stayed staged"
+
+    window.set_scope(library_scope())
+    assert _vocab_files(window) == ["notes_of_my_own.srt"]
+
+
 # --- the sampler hands its draw to the scope ---------------------------------
 
 def test_drawing_a_sample_makes_it_the_current_scope(window, tmp_path,

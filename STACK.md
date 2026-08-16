@@ -41,6 +41,7 @@ makes pacing incomparable across shows — migrate all or none.
 | GUI (in progress) | **PySide6** (Qt 6) | `ui/` — the replacement being built |
 | Charts | **matplotlib** | `FigureCanvasQTAgg`; imported lazily — it costs ~1s to load |
 | Video playback | **python-vlc** + **VLC** | hand coding only; 64-bit VLC required to match the interpreter |
+| YouTube metadata | **yt-dlp** (subprocess) | sampler only; optional, listing only — never downloads a video |
 
 **No web frameworks.**
 
@@ -54,6 +55,17 @@ with no way to tell. libvlc decodes and steps frames itself.
 VLC is a real external dependency. `ui/player.available()` reports its absence
 and the Human coding tab disables itself with the reason, rather than opening
 a black rectangle.
+
+### yt-dlp is shelled out to, not imported
+
+`analyzer/youtube_fetch.py` calls the `yt-dlp` executable as a subprocess
+(`--flat-playlist --print`) rather than depending on the `yt-dlp` Python
+package — the same reasoning as calling `ffprobe`/`ffmpeg` as executables
+elsewhere in this project rather than binding to their libraries. It only
+lists a channel or playlist's videos (title, upload date, duration, channel,
+playlist); it never downloads one. `available()` reports the executable's
+absence the same way `ui/player.available()` does for VLC, so a missing
+install disables the Fetch button with a reason rather than failing mid-run.
 
 ## Qt facts that are not guessable
 

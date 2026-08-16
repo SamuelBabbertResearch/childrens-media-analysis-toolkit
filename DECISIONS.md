@@ -412,6 +412,100 @@ in the sampling frame and the shortfall is visible rather than silent.
 it would be transcription and would drift); dropping undated episodes from the
 frame (it shrinks the sample without saying so).
 
+### The sampler's content-type selector is presentation only; the engine never changed
+**Decision.** `ui/sampler.py` gained a Content type selector — TV show /
+Movies / YouTube videos (already downloaded) — that changes the browse
+button's text and tooltip, the folder-dialog title, the preview table's
+"Season"/"Episode" column headers ("Group"/"#" for non-TV), and the "By
+season" stratify label ("By group"). `analyzer/sampler.py` was not touched
+beyond two new `TOOLTIPS` entries: `scan_entry_root()`, `load_registry_csv()`,
+`sample()` and `write_outputs()` already worked for any flat or grouped
+folder, any nullable `season`/`episode`, and even a registry row with no
+`filepath` (a fetched-but-undownloaded item) — verified by reading the
+engine, not assumed.
+**Reason.** The sampler only *read* as TV-only; a folder of movies or
+already-downloaded YouTube videos already sampled correctly, just under
+"show"/"season"/"episode" framing that doesn't fit. Relabeling the five or six
+places that actually mislead (the folder-picker copy, the two fixed preview
+columns) closes that gap without touching a working, already-generic engine.
+**Date.** 2026-08-17.
+**Rejected.** A live YouTube channel/playlist fetch via `yt-dlp` (absorbing
+the disconnected `sample_youtube.py` script) — real, separate engineering
+(network calls, an undownloaded-episode UX, a download-after-sampling
+workflow), deferred to `TODO.md` item 9 rather than folded into a relabeling
+pass; renaming the dialog itself ("Episode Sampler"), the toolbar button, or
+the Sampling pipeline node — wider blast radius for no functional gain, since
+the structural TV-only parts were the folder-picker framing and two columns,
+not the dialog's name.
+
+### YouTube gets a real scan function after all: `scan_youtube_folder()`
+**Decision.** Corrects the entry above, same day. Pointed out directly: the
+YouTube content type called the identical `scan_entry_root()` as Movies, so
+it extracted nothing a generic flat-folder scan couldn't — "YouTube" in name
+only. `analyzer/sampler.py` gained `scan_youtube_folder()`, which reads a
+yt-dlp `<file>.info.json` sidecar beside each video when present (upload
+date, title, channel, video id, URL) and is otherwise identical to
+`scan_entry_root()`. The preview table's date column is also now
+content-type-specific: "Air date" (tv) / "Release date" (movies) / "Upload
+date" (youtube) — the direct ask, on the same `Episode.air_date` field.
+**Reason.** Checked this project's own real YouTube content
+(`Shows/Game Theory/`, `Shows/iShowSpeed/`) before designing anything: plain
+filenames, no sidecars. So the honest scan result for the library this
+project actually has is unchanged either way — verified,
+`scan_youtube_folder()` on `Shows/Game Theory/` produces a result identical
+to `scan_entry_root()`'s, field for field. The sidecar path exists for
+`--write-info-json` downloads (a standard yt-dlp option) and for `TODO.md`
+item 9's eventual fetch-then-download workflow, which would produce exactly
+this shape. `extra["channel"]` also falls out of the sidecar for free and
+becomes a real stratify option through the mechanism already built for
+registry CSVs — no new UI concept.
+**Date.** 2026-08-17.
+**Rejected.** Inferring an "upload date" from the video file's mtime/ctime —
+that is the *download* date, not the upload date, and a wrong-but-plausible
+date under a real-sounding label is worse than a blank field admitting it
+doesn't know (`CLAUDE.md`'s core anti-pattern: a wrong number that displays
+correctly). Also rejected: offering `video_id`/`url` as stratify axes — every
+value is unique, so grouping by either is one episode per stratum, not a
+real design.
+
+### Live YouTube fetch reuses the eras system unchanged, under a namespaced key
+**Decision.** `analyzer/youtube_fetch.py` (new) shells out to `yt-dlp
+--flat-playlist` for a channel or playlist's video list — title, upload
+date, duration, channel, playlist — with no download, retargeted from the
+now-retired `sample_youtube.py` at real `Episode` objects. `ui/youtube_fetch.
+py`'s `YouTubeFetchDialog` runs it on a worker thread (a real channel can
+take 30-60s; the interface must not freeze) and accepts several playlist
+URLs at once, tagging each result `extra["playlist"]` — the fetched episodes
+plug into the *already-generic* `stratification_columns()` mechanism with no
+new UI concept, the same way `channel` already did for the sidecar reader.
+Content type = YouTube now shows three source buttons at once — Fetch,
+Choose Downloaded Folder, Load Registry CSV — because a new user shouldn't
+need to already know live fetching exists to find it.
+
+For time-era stratification: `SamplerDialog._show_key()` returns
+`f"youtube:{fetch_id}"` for a live-fetch source instead of falling back to
+`""`. Nothing else about the eras system changes — `analyzer.eras.
+assign_eras()` was already a pure function over `Episode.air_date` needing
+no database or folder, and `get_show_eras`/`save_show_eras` already treat
+`show_key` as an arbitrary string. A researcher who fetches the same channel
+again next session gets their era definitions back, the same guarantee a TV
+show already has — for free, by reusing the existing `ErasDialog` unchanged.
+**Reason.** Thought through end-to-end how a new user would actually sample
+a channel like Game Theory: today's folder/registry-only sampler cannot help
+someone who hasn't downloaded anything yet — the entire point of sampling
+before downloading. "10 years of Game Theory" needs eras for the same reason
+"40 years of Sesame Street" already does (2026-07-01) — the folder-less
+source was the only real gap in an otherwise-complete existing system.
+**Date.** 2026-08-17.
+**Rejected**, per discussion: download automation (calling yt-dlp to fetch
+the sampled videos from inside CMAT) — the drawn manifest/`selected.csv`
+with each row's URL is the complete deliverable this pass; downloading is
+left entirely to the researcher. An ad hoc, non-persisted eras path for
+fetched channels — unnecessary once a namespaced key lets the real,
+persisted system apply unchanged. Keeping `sample_youtube.py` alongside the
+new module — two places doing the same fetch is the exact drift `LEARNINGS.
+md` warns about; deleted once its logic was absorbed.
+
 ### One import dialog for Wikipedia and TVMaze
 **Decision.** `ui/metadata_import.py` handles both sources; the source is a
 combo box, not a separate dialog.
@@ -623,6 +717,88 @@ right order but means `TODO.md` item 0 must be done before the next draw.
 undrawable); leaving the two definitions apart and describing the gap in the
 interface, which was the interim state and only ever a caption on a defect.
 
+### The scope STAGES a measurement screen; it does not filter one
+**Decision.** `AutomatedTab.set_scope()` puts the current sample's episodes into
+the analysis queue and names where they came from. It does **not** stop the
+screen acting on anything else: the Library can still send it an out-of-scope
+episode, and Analyze still runs whatever the queue holds. Changing scope
+withdraws only what the *previous* scope staged, so a hand-queued episode
+survives. A **Queue Scope (N)** button re-stages after a run or a Clear Queue,
+and is disabled — with the reason — under the whole library.
+**Reason.** The Library and the Index are views, so a scope narrows them. A
+measurement screen is not a view; it is where work is started, and the useful
+thing to do with "these twenty episodes" is to have them ready to run. Filtering
+here would be the wrong verb twice over: it would forbid work the researcher is
+entitled to do, and it would leave the queue — the thing `_start` actually hands
+the worker — still empty.
+**Consequence.** The whole library is deliberately **not** staged. Queueing 137
+episodes because the application opened is not a working set, and it would make
+Analyze a much larger action than it looks.
+**Consequence, watch this one.** An unlinked pipeline still inherits whatever
+scope was current, by the existing rule that it has "no opinion about which
+episodes". That was cheap when the scope only hid Library rows; it now
+pre-fills a run queue from another study's sample. It stays visible — the
+Showing: control and the queue's own note both name the sample — but see
+`TODO.md`.
+**Date.** 2026-08-16.
+**Rejected.** Filtering the queue to the scope (forbids legitimate work and
+still leaves nothing staged); staging on tab activation rather than on scope
+change (the queue would then depend on which tab you visited, and a run started
+from a pipeline node would differ from the same run started from the tab bar);
+replacing the whole queue on every scope change (throws away what the user
+queued by hand).
+
+### Hand coding gets a worklist, and it is the sample
+**Decision.** `Worklist` in `ui/handcoding.py` shows the current sample's
+episodes with each one's coding state, on **both** Code and Validate tool.
+Double-clicking a row opens that episode. Under the whole-library scope it
+shows no rows and says why. Agreement is deliberately left out — it compares
+two coders' *sheets*, which are not episodes and are not drawn by a sample.
+**Reason.** Hand coding is a pass over a set, and the screen took one file from
+the Library tree, so the researcher tracked "what is left?" against
+`selected.csv` by hand. `TODO.md` item 6 already named the gap from the other
+end: the sampler could send a draw to the analysis queue but not to a
+hand-coding worklist, because there was no worklist.
+**Consequence.** Each row's state comes from the engine —
+`event_coding.event_sheet_status` for event sheets,
+`validation.episode_status` for transition sheets — so the worklist and
+`code_events.py` cannot disagree about whether an episode is coded. The state
+function returns `(text, coded)`; the widget never infers "done" by reading its
+own label.
+**Consequence.** The whole library gets no worklist. A worklist of 137 episodes
+is a library, and what makes a worklist useful is that it ends.
+**Date.** 2026-08-16.
+**Rejected.** A worklist on Code only (it leaves Validate as the half-done half
+of one tab); reusing the Library tree inside the tab (it answers "which
+episodes exist", not "which are coded", and it is already one tab away);
+advancing automatically to the next uncoded episode on save (coding order is
+the coder's, and a screen that moves under you loses work).
+
+### A view narrows to the scope; a workbench stages from it
+**Decision.** The rule the three measurement tabs settled into, stated once so
+the next screen does not have to re-derive it. A screen that **reports on work
+already done** filters to the scope — the Library, the Index, and Language →
+Speech. A screen where **work is started** stages the scope's episodes and then
+gets out of the way — Automated coding's queue, Human coding's worklist,
+Language → Vocabulary's file list. The Language tab is the proof that both are
+right: its two views take the same scope in opposite directions.
+**Reason.** "Obey the scope" is not one behaviour. Filtering a workbench
+forbids work the researcher is entitled to do and still leaves the run empty;
+staging a results table would be meaningless. The distinction that decides it
+is whether the screen's content is a *report* or a *plan*.
+**Consequence.** Every staging screen follows the same three rules: the whole
+library stages nothing, a scope change withdraws only its own staging, and the
+screen says what it staged **and what it could not** — 8 of 9 drawn, 1 off
+disk; 1 caption file, 7 episodes without. A short list with no explanation
+reads as a small sample.
+**Consequence.** Every filtering screen names the set it is showing in its own
+count, rather than printing a bare total under a narrowed table.
+**Date.** 2026-08-16.
+**Rejected.** One `set_scope` contract for all six screens (it forces the wrong
+verb on half of them); filtering the workbenches and adding a separate "load
+the sample" button (two controls for one intent, and the empty state is still
+the thing the user meets first).
+
 ### A validation subset is drawn, not chosen by CMAT
 **Decision.** A sample's `selected.csv` is already a valid registry for the
 sampler — it carries the `episode` column `load_registry_csv` requires plus
@@ -715,6 +891,40 @@ would record the wrong timestamp with no way to tell.
 **Date.** 2026-08-10.
 **Rejected.** `QMediaPlayer`/`QVideoWidget` — no extra dependency, but not
 frame-accurate, and accuracy is the entire point of that screen.
+
+### Marking auto-pauses the video; the on-screen clock during playback is a cosmetic estimate, never the recorded value
+**Decision.** `ui/handcoding.py`'s Mark button now goes through
+`VideoPlayer.stamp()`: if the player is paused, the mark records immediately;
+if it is playing, `stamp()` pauses it first, waits for libvlc to confirm the
+pause, and only then reads the timestamp. Separately, `_sync()`'s on-screen
+counter is smoothed during playback by extrapolating from the last real
+libvlc tick using wall-clock time — display only, never fed to a mark.
+**Reason.** `ui/player.py`'s own docstring had claimed "pause before marking;
+the coding UI enforces that" since 2026-08-10, but nothing enforced it —
+`_mark()` read `player.position()` directly regardless of play state.
+Measured: libvlc's live `get_time()` only refreshes every 0.2–0.5s during
+playback, independent of the file's actual frame rate (confirmed 23.976fps
+via `ffprobe` on a real episode, not throttled polling on our side) — so a
+mark taken while playing could be stamped up to ~0.5s stale relative to what
+the coder just saw, on top of the codebook's ±1s target and the
+already-documented ~0.55s whole-second-entry bias. Auto-pause was chosen over
+blocking the click with a dialog: a coder marking on impulse while watching
+should not need Pause-then-Mark as two separate actions to get an accurate
+timestamp — the tool should make the accurate path the easy one. The counter
+is smoothed separately, purely so a coder gets usable live feedback while
+watching for the moment to mark; it snaps back into sync with the real value
+on every genuine libvlc tick, so it cannot drift beyond libvlc's own
+tick size before self-correcting.
+**Date.** 2026-08-17.
+**Rejected.** Blocking Mark with a warning until the coder pauses manually
+(extra friction for no accuracy gain once auto-pause exists); polling
+libvlc's clock faster to smooth playback (measured — does not help, the
+number itself only changes every 0.2–0.5s no matter how often it is asked);
+switching away from VLC (evaluated and declined — see *Frame-accurate
+playback via VLC* above; VLC's *seek* path is exactly as accurate as this
+depends on, and any general-purpose player backend throttles its *live*
+position reporting the same way for the same reason, so switching would not
+remove the problem, only relocate it).
 
 ### The starting-layout wizard offers every template, and shows a list
 **Decision.** All seven registry templates as rows in one inset list box, with

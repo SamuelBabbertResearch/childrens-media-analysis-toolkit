@@ -4,9 +4,10 @@ Previously-on, for a session starting with zero memory. Read this, then
 `TODO.md`, then `DECISIONS.md` and `LEARNINGS.md`. `INDEX.md` points at
 everything else.
 
-**Last updated:** 2026-08-15 (the application now has a research context —
-`analyzer/scope.py`; the Library and Index filter to a drawn sample, and the
-toolbar always names which one. 66 duplicate episodes moved out of the library)
+**Last updated:** 2026-08-17 (the sampler can fetch a live YouTube channel or
+playlist and sample it before downloading anything — playlists tag as a
+stratify axis, eras work for a channel with no folder. Suite green at 398
+passed, 13 skipped)
 
 ---
 
@@ -31,9 +32,9 @@ clean fast-forward and is still an open decision (`TODO.md`).
 | Pipeline | ✅ | node canvas, undo/redo, wiring by dragging ports; nodes show derived status and double-click through to their screen |
 | Library | ✅ | episode report, show aggregate, **Full Series Aggregate**, **Sample Aggregate**, **Pin/Compare**, metadata + notes, chart; **right-click sends a selection to any tab**, multi-select for batch queueing |
 | Index | ✅ | sortable, filterable, over the SQLite index |
-| Automated coding | ✅ | Analyze, **analysis queue**, **Transcribe Missing Subtitles** |
-| Language | ✅ | **new tab** — Speech and Vocabulary sub-views |
-| Human coding | ✅ | Code, **Validate tool**, **Agreement** sub-views |
+| Automated coding | ✅ | Analyze, **analysis queue** (staged from the scope), **Transcribe Missing Subtitles** |
+| Language | ✅ | Speech (filters to the scope) and Vocabulary (stages from it) |
+| Human coding | ✅ | Code, **Validate tool**, **Agreement**; both coding screens carry a **worklist** |
 | Trials | ✅ | 22 recorded runs in this working copy |
 | Settings dialog | ✅ | scoring; **Measurement settings** and **Optional tools** are separate dialogs |
 | Exports | ✅ | **JSON / CSV / PDF** from File, each carrying its provenance |
@@ -47,8 +48,8 @@ two items were left deliberately because they need a product decision rather
 than a port (`TODO.md` item 7). Coverage is still not mileage: everything new
 has been driven headless against the real library, not used for real work.
 
-Run the tests with `python -m pytest -q` from the repo root: **359 passed,
-13 skipped** (372 collected). `tests/test_eras.py` asserts on drawn strata and
+Run the tests with `python -m pytest -q` from the repo root: **383 passed,
+13 skipped**. `tests/test_eras.py` asserts on drawn strata and
 manifest notes rather than on which widgets exist — the level the sampler
 defects were only visible at. `tests/conftest.py` now offers a session-scoped
 `qapp` fixture — an offscreen `QApplication` — so Qt widgets can be tested for
@@ -118,6 +119,240 @@ pipeline is a control surface rather than a picture. What is left is not
 porting but proving: use the Qt build for real work, then retire the Tk
 modules and decide what `master` and `README.md` should say.
 
+## What changed on 2026-08-17, latest: the sampler fetches a live channel
+
+Following the day's other sampler work, the user asked to think through how
+a new user would actually sample a channel like Game Theory — and pushed on
+two more things directly: playlists, and time eras for a channel with no
+downloaded folder. Walking through the real scenario found the actual gap:
+today's sampler could only draw from a folder already on disk or a
+hand-built registry CSV — neither helps someone who wants to sample *before*
+downloading, which is the whole point of sampling.
+
+**What shipped**: `analyzer/youtube_fetch.py` (new) — retargets the
+now-deleted `sample_youtube.py` script's `yt-dlp --flat-playlist` fetch at
+real `Episode` objects instead of its own duplicated spread algorithm and ad
+hoc CSV. `ui/youtube_fetch.py` (new) — a small dialog accepting several
+channel/playlist URLs at once, run on a worker thread (a real channel takes
+30-60s; the interface must not freeze). Content type = YouTube now shows
+three source buttons together — Fetch, Choose Downloaded Folder, Load
+Registry CSV — so a new user finds live fetching without needing to already
+know it exists.
+
+**Playlists**: each fetched video is tagged `extra["playlist"]` when the
+source URL is a real playlist (not a bare channel listing) — sampling across
+several playlists at once turns this into a real, usable "By playlist"
+stratify option, through the same generic mechanism `channel` already used.
+
+**Eras, for free**: investigated `analyzer/eras.py` before writing anything
+new — `assign_eras()` was already a pure function needing no database or
+folder, and the DB's `show_eras` table already treats its key as an
+arbitrary string. So a live-fetched channel just needed `_show_key()` to
+return `f"youtube:{fetch_id}"` instead of falling back to `""` — the entire
+existing `ErasDialog`/persistence system works unchanged, and a channel
+fetched again next session gets its eras back automatically. Verified the
+namespace can't collide with a real show: folder-derived keys are always
+POSIX relative paths and never contain `:`.
+
+**Explicitly declined, per discussion**: download automation. The drawn
+`selected.csv` (each row carrying its URL) is the complete deliverable this
+pass — actually fetching the sampled videos is left to the researcher.
+`sample_youtube.py` is deleted, its logic fully absorbed. `DECISIONS.md` §
+*Live YouTube fetch reuses the eras system unchanged…* has the full
+reasoning. 12 new tests in `tests/test_sampler_youtube.py` (fetch parsing
+against canned yt-dlp output, no network call; dialog wiring against a
+stubbed fetch dialog). Suite: 398 passed (12 new), 13 skipped.
+
+## What changed on 2026-08-17, later still: the sampler stops reading as TV-only
+
+The user asked for the sampler to support movies and YouTube, not just TV
+shows. Investigating `analyzer/sampler.py` in full found the engine already
+did: `Episode.season`/`.episode` are nullable, `scan_entry_root()` already
+degrades to a flat folder with sequential numbering when there's no season
+structure, every sampling method is already generic over `list[Episode]`, and
+`load_registry_csv()` already tolerates a blank `filepath` (metadata with no
+downloaded file yet). **Nothing in the engine needed to change** — the
+confusion was entirely `ui/sampler.py`'s copy ("Choose Show Folder…", "Pick
+the show's top folder… each season subfolder… each video as one episode")
+and two fixed preview columns.
+
+There's also a standalone `sample_youtube.py` at the repo root — a working
+`yt-dlp` channel/playlist fetcher, entirely disconnected from the real
+sampler (its own duplicated algorithm, its own CSV format, no manifest, no
+queue integration). Discussed with the user: this session ships the
+folder-of-already-downloaded-videos path for YouTube (cheap, reuses the
+engine unmodified); absorbing `sample_youtube.py`'s live fetch into the real
+engine is real, separate work, now `TODO.md` item 9.
+
+**What shipped**: a Content type selector (TV show / Movies / YouTube videos)
+in `ui/sampler.py` that changes the browse button's text and tooltip, the
+folder-dialog title, the preview table's "Season"/"Episode" headers ("Group"/
+"#" for non-TV — the underlying `ep.season`/`ep.episode` data is unchanged,
+just relabelled), the "By season" stratify option's label ("By group"), and
+the post-scan status line (no more "12 episodes across 0 seasons" for a flat
+folder). The preview table's File column now falls back to a registry row's
+`url` extra column when there's no local file. The written manifest records
+which content type a draw was, appended to `SampleManifest.notes` — no schema
+change. Verified headless against the real `Shows/Arthur` folder (TV,
+unchanged: 6 episodes, season {1}) and synthetic movies/YouTube fixtures (flat
+scan, no seasons, correct headers, URL fallback, manifest note, and switching
+content type mid-session clears stale episodes rather than leaving them under
+new headers). `DECISIONS.md` § *The sampler's content-type selector is
+presentation only…* has the reasoning and what was deliberately not touched
+(the dialog's own title, the toolbar button, the Sampling pipeline node —
+wider blast radius for no functional gain).
+
+**Corrected within the hour**, pointed out directly: "YouTube (downloaded)"
+called the identical `scan_entry_root()` as Movies, so it extracted nothing a
+generic flat-folder scan couldn't — YouTube in name only. Checked this
+project's own real YouTube content first (`Shows/Game Theory/`,
+`Shows/iShowSpeed/`): plain filenames, no metadata sidecars, nothing on disk
+beyond a filename to extract. So a relabeled "Upload date" column would have
+just always been blank for the library this project actually holds — a
+smaller version of the same hollow-label problem.
+
+**What's real**: yt-dlp's `--write-info-json` (a standard option) writes a
+`<file>.info.json` sidecar carrying upload date, title, channel, video id and
+URL. `analyzer.sampler.scan_youtube_folder()` is new: identical to
+`scan_entry_root()` when no sidecar exists (verified against the real `Shows/
+Game Theory/` folder — field-for-field identical result), and fills real
+metadata from the sidecar when one does. `extra["channel"]` falls out of this
+for free and becomes a real "By channel" stratify option through the
+mechanism already built for registry CSVs; `video_id`/`url` are deliberately
+excluded from that list (unique per row, not a group). The preview table's
+date column is now content-type-specific — "Air date" / "Release date" /
+"Upload date" — on the same `Episode.air_date` field, the direct part of what
+was asked. **Explicitly not done**: inferring an upload date from the file's
+mtime — that is the download date, not the upload date, and CLAUDE.md's core
+anti-pattern is exactly a wrong-but-plausible number that displays correctly.
+`DECISIONS.md` § *YouTube gets a real scan function after all* has the
+reasoning; `TODO.md` item 9 (the deferred live channel fetch) now notes the
+two loaders should agree on the same sidecar shape when it's built.
+
+## What changed on 2026-08-17, later the same day: marking now guarantees an exact timestamp
+
+Following straight on from the counter fix below, the user asked why the
+playing-state display still "isn't live and accurate." Measuring it against
+wall-clock time (not just watching the window) found something more
+consequential than a display lag: `ui/player.py`'s own docstring claimed
+*"Pause before marking; the coding UI enforces that"* — and nothing did.
+`handcoding.py`'s `_mark()` read `player.position()` unconditionally, and
+libvlc's live clock only refreshes every 0.2–0.5s during playback (measured,
+independent of the file's real frame rate — confirmed 23.976fps via
+`ffprobe`, not a polling artifact). A mark taken while playing could
+therefore be stamped up to ~0.5s stale relative to what the coder just saw.
+
+**Fixed with a new `VideoPlayer.stamp(callback)`** (`ui/player.py`): already
+paused, calls back immediately with today's exact value; playing, pauses
+first and waits for libvlc to confirm it (bounded settle, ~20ms in the
+measured steady-state case) before calling back. `_mark()` now routes
+through it instead of reading `position()` directly, capturing every
+dropdown value at the click so nothing changes during the settle. Verified
+with a real (non-offscreen — the offscreen QApplication turned out to give
+unreliable playback state, a separate finding) VLC window: a mark taken
+while playing now pauses the video and stamps the exact post-settle value,
+not the stale pre-pause one.
+
+**Also smoothed, cosmetic only:** `_sync()`'s digital counter now
+extrapolates between libvlc's real ticks using wall-clock time, snapping back
+in sync on every real tick — so a coder watching playback sees the number
+move continuously instead of sitting frozen for 3–5 ticks at a stretch. This
+never feeds a stamp; `position()`/`stamp()` are untouched by it.
+
+**Documented for the coder, not just the code**: the "Mark at playhead"
+button now carries a tooltip explaining that it pauses the video first on
+purpose, and that the moving counter during playback is an estimate, not
+what gets written. `DECISIONS.md` § *Marking auto-pauses the video…* records
+why auto-pause was chosen over blocking the click, and why switching away
+from VLC was considered and declined (`LEARNINGS.md` has the measurement
+detail; both explain the coarse live clock is a general property of how
+media libraries throttle position reporting, not a VLC weakness).
+
+**Not fixed:** the identical gap in `gui_coding_editor.py` (Tk) — noted in
+`LEARNINGS.md` so it isn't rediscovered as new when that build is eventually
+audited. Suite: 386 passed (three new), 13 skipped.
+
+## What changed on 2026-08-17: the video time counter, characterised and fixed
+
+`TODO.md` item 1 (the oldest open real defect, reported 2026-08-14 as "the time
+readout in the Qt player is wrong", uncharacterised) is closed. Measured
+`ui/player.py`'s `VideoPlayer` headless against a real episode rather than
+watching the window, per `LEARNINGS.md`'s method:
+
+- **Seeking, frame-stepping and the playing-state clock jumps all measured
+  correct** — `position()` and the displayed label agreed with `get_time()`
+  and `get_position()` to the millisecond in every case tried.
+- **The real defect was narrower: the counter froze during a seek-bar drag.**
+  `_sync()` wrote the slider from the player's position only when *not*
+  scrubbing, but always wrote the digital *label* from the player's position
+  regardless of scrubbing — so while the player itself is not moving, the bar
+  tracks the mouse and the label stays stale until release. Measured: dragging
+  to 764.4s left the counter reading `00:00:10.00`, the pre-drag position,
+  for the whole drag.
+- **The written mark was never affected.** `handcoding.py`'s `_mark()` reads
+  `player.position()` directly, never the label text, so no hand-coded
+  timestamp was ever corrupted by this — it was a display-only defect, and the
+  ~0.55 s early bias and the ±2 s floor documented in the earlier timestamp
+  assessment stand as they were.
+- **Fix:** `_sync()` now derives the displayed time from the slider's own
+  value while scrubbing, so the counter previews where the thumb points; the
+  real seek still happens on release, unchanged.
+
+See `LEARNINGS.md` § *The Qt counter froze during a scrub drag* for the
+measurement method and numbers. Suite: 383 passed, 13 skipped, unchanged.
+
+## What changed on 2026-08-16: the measurement tabs obey the context
+
+Three commits, one per tab, each verified against the real library before the
+next was started. The rule they settled into is in `DECISIONS.md` § *A view
+narrows to the scope; a workbench stages from it*, and it is the thing to read
+before giving a seventh screen a scope:
+
+> A screen that **reports on work already done** filters to the scope. A screen
+> where **work is started** stages the scope's episodes and gets out of the way.
+
+- **Automated coding** stages the sample into the analysis queue — the list
+  `_start` actually hands the worker — and the queue says which sample, how
+  many already have a cached result, and how many of the draw are off disk.
+  **Queue Scope (N)** re-stages after a run; disabled, with the reason, under
+  the whole library.
+- **Human coding** grew the **worklist** `TODO.md` item 6 had been asking for,
+  on Code *and* Validate tool, each row carrying that episode's coding state
+  read from the engine.
+- **Language** takes it both ways in one tab: Speech filters, Vocabulary
+  stages the caption files beside the sample's episodes.
+
+Three rules every staging screen follows, because a half-staged screen is worse
+than an empty one: the whole library stages nothing; a scope change withdraws
+only its *own* staging, so a hand-queued episode survives; and the screen says
+what it staged **and what it could not**.
+
+### Three real defects found on the way, all invisible from the interface
+
+1. **The analysis queue de-duplicated on the literal path**, so the same
+   episode reaching it through the library walk and through `selected.csv`
+   would have been measured twice in one run. It now normalises.
+2. **Five readers looked for a coding sheet; one looked in one place.**
+   `code_events.py`, `trials.py` and both Tk screens search the validation
+   folder recursively with a prefix fallback; the Qt Code screen built
+   `<validation>/<stem>_events.csv` and asked whether it existed. A sheet filed
+   one folder down read as "not coded" on screen while the command line scored
+   it. `event_coding.find_event_sheet` / `event_sheet_status` are now the one
+   answer.
+3. **Opening a second episode kept the first one's marks.** `_open_episode`
+   never cleared the events list, so Save Sheet would have written one
+   episode's hand-placed timestamps into another episode's file.
+
+### One thing surfaced and deliberately not changed
+
+**An unlinked pipeline inherits whatever scope was current.** Six of the eleven
+pipeline documents here have no `source_key`, and `_follow_pipeline_scope`
+leaves the scope alone for those on the stated grounds that an unlinked
+pipeline has "no opinion about which episodes". That was cheap when the scope
+only hid Library rows; it now pre-fills a run queue from another study's
+sample. Nothing is mis-attributed — the Showing: control and the queue's own
+note both name the sample — but it is a live question in `TODO.md`.
+
 ## What changed on 2026-08-15: the research context
 
 The pipeline could *navigate* to a screen but handed it nothing, and every
@@ -130,10 +365,9 @@ chooser on the toolbar always names which. Drawing a sample makes it current;
 so does choosing a pipeline. It is **not persisted** — the application always
 opens on the whole library, deliberately.
 
-**The Library and the Index obey it; the three measurement tabs do not yet.**
-They still take a single episode from the tree selection. The remaining pieces
-are in `TODO.md` § *The research context, continued* — independent, and each
-needs verifying against real output rather than done in one sitting.
+**All six screens now obey it** — the measurement tabs were done on
+2026-08-16, one at a time, each verified against the real library. See *What
+changed on 2026-08-16* below.
 
 The chooser sits on the **main toolbar**, beside Root folder and Preset, so it
 is visible from every tab. It moved there the moment a second screen obeyed it:
@@ -366,6 +600,14 @@ shape of the cost rather than current absolutes:
 interaction — it walks the validation folder and globs the cache, and it runs
 on every pipeline refresh. Not yet a problem at this corpus size; it is the
 first thing to look at if the library grows.
+
+**Re-measured 2026-08-16 and it has grown: `build_pipelines()` is now 1524 ms.**
+A whole scope change is ~2.0 s and **1761 ms of it is `_sync_scope_choices`**,
+which calls `build_pipelines` every time. Everything else is small and flat in
+sample size: Library + Index + Trials 353 ms, the analysis queue 92 ms, both
+hand-coding worklists 293 ms, both Language views 261 ms. So the toolbar's
+Showing: control costs two seconds, and 87% of that is one pre-existing call
+that cannot change as a result of choosing a scope. See `TODO.md`.
 
 ### Part 3 — the feature audit
 
@@ -755,18 +997,23 @@ as its default button (`TODO.md` item 10).
   previous session's manual test created a stray pipeline document that had to
   be removed by hand.
 
-## Picking this up cold on 2026-08-16 or later
+## Picking this up cold on 2026-08-17 or later
 
-Two commits on 2026-08-15 (`6dbca37`, `1818b98`) added the research context and
-scoped the Library and Index. **Everything is committed and the suite is green
-(359 passed, 13 skipped).** Nothing is half-finished.
+The research context is **finished as a feature**: five commits across
+2026-08-15 and 2026-08-16 built it and gave it to all six screens.
+**Everything is committed and the suite is green (383 passed, 13 skipped).**
+Nothing is half-finished.
 
 The three things most worth knowing before choosing what to do next:
 
-1. **The obvious next task is the measurement tabs.** Automated coding, Human
-   coding and Language still take one episode from the Library selection, so
-   double-clicking a pipeline node still lands you on an empty screen.
-   `TODO.md` § *The research context, continued* has the shape of it.
+1. **The scope work is done; the wires are not.** The last bullet of `TODO.md`
+   § *The research context, continued* — making a pipeline's connections carry
+   the working set from stage to stage — is the north-star spec's "output
+   produced here becomes input there", and it is the first thing that would
+   make *drawing* the graph matter. `doc.connections` is still only counted and
+   `node.config` is still written by the templates and read by nothing. It is
+   a bigger piece of work than any of the five so far; do not start it in a
+   session that has other goals.
 2. **A root cause is still open and is generating defects.** The sampler's
    analysis path does not go through `analyzer/show_index.py`, so anything it
    touches is named and listed by different rules. It has produced two
@@ -779,6 +1026,8 @@ The three things most worth knowing before choosing what to do next:
    Index now derives around it; `cli.py db --shows` and `gui.py` do not.
    `FOR_PAPER.txt` carries the correction and the "do not quote" note.
 
-Read `TODO.md` items 0–1 first: item 0 is a data question (re-analyse Spongebob
-after the de-duplication), item 1 is the video time counter, which is the
-oldest real defect still open.
+Read `TODO.md` item 0 first: a data question (re-aggregate Spongebob after the
+de-duplication — no re-analysis needed, the per-episode results are correct
+and cached). The video time counter (formerly item 1) was fixed 2026-08-17 —
+see *What changed on 2026-08-17* above. Item 0 is smaller than the pipeline
+wires and does not depend on them.
