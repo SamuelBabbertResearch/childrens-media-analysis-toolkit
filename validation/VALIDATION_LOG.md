@@ -1351,6 +1351,64 @@ Suggested wording: "On held-out coded windows, CMAT's boundary-detection F1 was
 X; its cut-rate ratio was Y (signed relative rate error Z%). These assess
 distinct properties: boundary localisation and aggregate rate calibration."
 
+## 2026-08-15 — Whip-pan spot-check: no `hard_cut` rows reclassified
+
+**What was done.** `CODEBOOK.md`'s `whip-pan disguised cut` subtype was added
+2026-08-11, after all three currently-coded episodes were coded, so any
+`hard_cut` row in them was a candidate for having hidden a whip-pan join. All
+113 `hard_cut` rows across the three real `_manual.csv` files were
+spot-checked — Curious George S01E01 (2), A Charlie Brown Christmas 1965 (35),
+Little Bear 1x01 (76). SpongeBob Help Wanted and Little Bear 1x02 have no
+coded rows yet, so nothing there needed checking.
+
+**Method.** Built a local review tool (not published — copyrighted footage):
+a 5-second clip per `hard_cut` timestamp (2.5s before/after the coded frame),
+playable at 1x/0.5x/0.25x, with a jump-to-coded-frame control. 8 of the 113
+were pre-flagged because the coder's own original note already used a word
+like "motion," "pan," "blur," or "instant" (e.g. Little Bear `00:11`, `00:20`,
+`4:50`, `4:52`). Coder (Samuel Babbert) reviewed all 113 clips against the
+codebook's test — a single-frame discontinuity in subject/background/blur
+direction inside apparently-continuous motion.
+
+**Outcome.** **Zero reclassifications.** None of the 113 `hard_cut` rows,
+including the 8 flagged by their own notes, were whip-pan disguised cuts on
+review. No `_manual.csv` edits were made. This closes `TODO.md` item 1.
+
+**Why the null result is still worth recording.** It rules out the specific
+concern raised in the 2026-08-11 codebook entry — that a coder without the
+subtype definition might have miscoded a whip-pan join as `hard_cut` — for
+this corpus. The "high motion" notes on some Little Bear cuts describe fast
+in-shot action (a bird flying at camera, a jump) rather than a whipped camera
+move with a hidden join; motion in the frame is not the same thing as a
+disguised cut, and this pass distinguishes them for the record.
+
+## 2026-08-15 — Codebook provenance note added; typology is not separately cited
+
+**What was done.** `TODO.md` had flagged that `CODEBOOK.md`'s five transition
+types and four `other` subtypes cite no source. Checked git history:
+`hard_cut`/`dissolve`/`fade_in`/`fade_out`/`other` were introduced in the
+codebook's first commit (2026-07-12); the four `other` subtypes were added
+2026-08-11. Neither addition cited a source at the time, and none exists in
+`DECISIONS.md` or `FOR_PAPER.txt` either.
+
+**Decision.** Rather than search for a citation to retrofit onto this exact
+taxonomy, added a provenance note to `CODEBOOK.md`: the terms themselves
+(`hard_cut`, `dissolve`, `fade_in`/`fade_out`, `wipe`, `iris`) are standard
+editing / shot-boundary-detection vocabulary, not something this study
+invented — so "cite it" and "say we invented it" were both the wrong framing.
+What *is* study-specific, and was never checked against a published
+instrument, is this codebook's exact operational definitions, timestamp
+conventions, decision rules, and — notably — the choice to bucket wipe, iris,
+whip-pan-disguised-cut, and page-turn together under `other` because the tool
+cannot yet tell them apart. That grouping is an engineering decision, not a
+term from the literature.
+
+**Rejected.** Searching for a paper to cite for this specific five-type +
+subtype scheme — the shot-boundary-detection literature bins transitions
+CUT/GRADUAL, coarser than this codebook, so citing a specific source would
+overstate how directly this scheme was adapted from one. Closes `TODO.md`
+item 1.
+
 ## Planned validation sample (fill in)
 
 | Episode | Show | Era/style | Pacing regime | Set (tuning/test) | Coded | Re-coded |
