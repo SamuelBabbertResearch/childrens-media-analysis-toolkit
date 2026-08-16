@@ -450,13 +450,33 @@ def list_docs(root: Path | None = None) -> list[PipelineDoc]:
 
 
 def save_doc(doc: PipelineDoc, root: Path | None = None) -> Path:
+    """Write *doc* into *root*'s pipelines folder, re-homing it if needed.
+
+    A document keeps its existing path only while that path is already inside
+    the target folder. A document first saved before a library root was known
+    lands in the application-folder fallback (`pipelines_dir(None)`); without
+    re-homing it would keep being written there forever, while
+    `list_docs(root)` only ever reads `<root>/.analysis/pipelines` — so the
+    work saved fine, reloaded as nothing, and looked like it had never been
+    saved at all. This is the "I have to do the sampling again every time I
+    open the pipeline" report; see `LEARNINGS.md`.
+    """
     d = pipelines_dir(root)
     d.mkdir(parents=True, exist_ok=True)
-    if doc.path is None:
+    previous = doc.path
+    if doc.path is None or doc.path.parent != d:
         doc.path = d / f"{_safe_stem(doc.name)}_{doc.id}.json"
     tmp = doc.path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(doc.to_dict(), indent=2), encoding="utf-8")
     tmp.replace(doc.path)                    # atomic; never a half-written file
+    # Moved, not copied: two files with one doc id would both be discovered
+    # whenever that other folder is read, and editing either would silently
+    # diverge. Only after the new file is safely written.
+    if previous is not None and previous != doc.path and previous.exists():
+        try:
+            previous.unlink()
+        except OSError:
+            pass                             # a stale copy beats losing the doc
     return doc.path
 
 

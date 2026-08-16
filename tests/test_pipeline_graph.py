@@ -343,3 +343,48 @@ def test_bounds_covers_all_nodes(doc):
     x0, y0, x1, y1 = doc.bounds()
     assert x0 == -500.0 and y0 == -300.0
     assert x1 >= max(n.x + n.w for n in doc.nodes)
+
+
+# ---------------------------------------------------------------------------
+# Where a document is saved
+# ---------------------------------------------------------------------------
+
+def test_a_doc_saved_before_a_root_is_known_rehomes_into_the_library(tmp_path):
+    """The "I have to do the sampling again every time I open the pipeline"
+    report.
+
+    A document first saved with no library root lands in the application
+    folder fallback. Saving it again WITH a root must move it into that
+    library, because `list_docs(root)` only ever reads the library's own
+    pipelines folder -- a doc pinned to the fallback saves fine, reloads as
+    nothing, and looks like it never saved at all.
+    """
+    root = tmp_path / "Library"
+    root.mkdir()
+
+    doc = G.blank_doc("Made before a root was chosen")
+    fallback = G.save_doc(doc, None)
+    assert fallback.parent == G.pipelines_dir(None)
+
+    node = doc.add_node("sampling", 0, 0)
+    node.config["sample_key"] = "sample:drawn-later"
+    saved = G.save_doc(doc, root)
+
+    assert saved.parent == G.pipelines_dir(root)
+    assert not fallback.exists(), "moved, not copied -- one doc id, one file"
+
+    reloaded = [d for d in G.list_docs(root) if d.id == doc.id]
+    assert len(reloaded) == 1, "reopening the library must find it"
+    assert reloaded[0].nodes[0].config["sample_key"] == "sample:drawn-later"
+
+
+def test_resaving_an_already_homed_doc_keeps_its_path(tmp_path):
+    """Re-homing must not churn the filename on every ordinary save."""
+    root = tmp_path / "Library"
+    root.mkdir()
+    doc = G.blank_doc("Normal")
+    first = G.save_doc(doc, root)
+    doc.add_node("sampling", 0, 0)
+    second = G.save_doc(doc, root)
+    assert first == second
+    assert len(G.list_docs(root)) == 1
