@@ -184,10 +184,12 @@ Those frameworks motivate *which* properties are worth measuring. They do not sp
 
 ## Screenshots
 
-<img width="805" height="435" alt="CMAT children's television video analysis interface" src="https://github.com/user-attachments/assets/305685d9-639c-428a-9246-b00e1a5709b6" />
-<img width="357" height="440" alt="CMAT formal-feature measurement results" src="https://github.com/user-attachments/assets/51a6030d-e4c0-4102-92ea-a81a472b54ba" />
-<img width="416" height="313" alt="CMAT episode sampling and media research tools" src="https://github.com/user-attachments/assets/9cc86a50-f268-47dc-89d7-3e8b92d2968f" />
-<img width="635" height="401" alt="CMAT audiovisual analysis charts for children's media research" src="https://github.com/user-attachments/assets/9c0f35d7-867e-48de-85ac-079ed28ad2ff" />
+<img width="447" height="363" alt="image" src="https://github.com/user-attachments/assets/6b02a13c-4bdf-4a6a-9e02-eb390abeb72c" />
+
+<img width="960" height="443" alt="image" src="https://github.com/user-attachments/assets/bd56a61c-0817-489b-8a80-618d48652d6b" />
+<img width="739" height="503" alt="image" src="https://github.com/user-attachments/assets/91e23e9a-1a11-4df4-a5b6-c0560ef1940e" />
+<img width="1920" height="1250" alt="Sensory_load_(as_shipped)_v1" src="https://github.com/user-attachments/assets/668b51ea-bc85-4821-8c1f-92eb92b98472" />
+
 
 
 ---
