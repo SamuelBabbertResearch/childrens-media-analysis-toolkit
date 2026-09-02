@@ -15,6 +15,8 @@ Output:
 
 Requirements in dist/CMAT/:
     - ffmpeg.exe must be in the project root before building (already present)
+    - 64-bit VLC must be installed for the build; its runtime and license are
+      bundled so end users do not need to install VLC
     - Whisper model files are downloaded at first run to the user HuggingFace cache
       (~/.cache/huggingface/hub/); they are NOT bundled (would add ~1 GB)
 """
@@ -49,6 +51,28 @@ wordfreq_datas = [
 # Bundle it so readability analysis works on an offline research workstation.
 nltk_corpus_datas = [('.analysis/nltk_data', 'nltk_data')]
 
+# Bundle the native VLC runtime used by the frame-accurate Human Coding player.
+# CMAT_VLC_DIR supports non-default build machines while keeping the usual
+# Windows install location automatic.
+_vlc_candidates = [
+    os.environ.get('CMAT_VLC_DIR'),
+    os.path.join(os.environ.get('ProgramFiles', ''), 'VideoLAN', 'VLC'),
+    os.path.join(os.environ.get('ProgramFiles(x86)', ''), 'VideoLAN', 'VLC'),
+]
+_vlc_dir = next((p for p in _vlc_candidates if p and os.path.isfile(os.path.join(p, 'libvlc.dll'))), None)
+if _vlc_dir is None:
+    raise FileNotFoundError('64-bit VLC is required to build CMAT (or set CMAT_VLC_DIR)')
+vlc_bins = [
+    (os.path.join(_vlc_dir, 'libvlc.dll'), 'vlc'),
+    (os.path.join(_vlc_dir, 'libvlccore.dll'), 'vlc'),
+]
+vlc_datas = [
+    (os.path.join(_vlc_dir, 'plugins'), 'vlc/plugins'),
+    (os.path.join(_vlc_dir, 'hrtfs'), 'vlc/hrtfs'),
+    (os.path.join(_vlc_dir, 'COPYING.txt'), 'vlc'),
+    (os.path.join(_vlc_dir, 'README.txt'), 'vlc'),
+]
+
 block_cipher = None
 
 a = Analysis(
@@ -62,6 +86,7 @@ a = Analysis(
         *fw_bins,
         *thinc_bins,
         *blis_bins,
+        *vlc_bins,
     ],
     datas=[
         ('config.json', '.'),   # lands next to CMAT.exe so users can edit weights
@@ -74,6 +99,7 @@ a = Analysis(
         *blis_datas,
         *wordfreq_datas,
         *nltk_corpus_datas,
+        *vlc_datas,
     ],
     hiddenimports=[
         # matplotlib
@@ -102,7 +128,7 @@ a = Analysis(
         'reportlab.platypus',
         'reportlab.pdfgen',
         'reportlab.pdfgen.canvas',
-        # python-vlc (built-in coding-editor player; needs VLC installed at runtime)
+        # python-vlc wrapper for the bundled native VLC coding-player runtime
         'vlc',
         # wordfreq
         'wordfreq',

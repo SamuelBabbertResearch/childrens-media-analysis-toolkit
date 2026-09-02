@@ -12,8 +12,9 @@ frame duration lands within a millisecond of the frame boundary.
 Note that libvlc's own `next_frame()` is NOT used — see `step_frame()`. It
 advances the picture without moving the clock, and corrupts the next seek.
 
-The cost is a real dependency: VLC must be installed, 64-bit to match the
-interpreter. `available()` reports that rather than letting the screen fail
+The cost is a native dependency: source runs need 64-bit VLC to match the
+interpreter. Frozen Windows releases carry a private VLC runtime and plugins;
+`available()` reports a loading problem rather than letting the screen fail
 halfway through opening a video.
 
 Embedding works because VLC draws into a native window handle. Qt hands one
@@ -25,6 +26,7 @@ its clipping.
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 from pathlib import Path
@@ -54,6 +56,24 @@ from ui.tokens import color
 # build their own, which doubled both the startup cost and the noise.
 _instance = None
 _log_sink = None
+_dll_directory = None
+
+
+def _prepare_bundled_vlc() -> None:
+    """Point python-vlc at the private runtime shipped by PyInstaller."""
+    global _dll_directory
+    bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    vlc_dir = bundle_root / "vlc"
+    library = vlc_dir / "libvlc.dll"
+    plugins = vlc_dir / "plugins"
+    if not library.is_file() or not plugins.is_dir():
+        return
+    os.environ.setdefault("PYTHON_VLC_LIB_PATH", str(library))
+    os.environ.setdefault("PYTHON_VLC_MODULE_PATH", str(vlc_dir))
+    os.environ.setdefault("VLC_PLUGIN_PATH", str(plugins))
+    if sys.platform.startswith("win") and hasattr(os, "add_dll_directory"):
+        # The handle must stay alive while libvlc loads libvlccore and plugins.
+        _dll_directory = os.add_dll_directory(str(vlc_dir))
 
 
 def _libvlc():
@@ -61,6 +81,7 @@ def _libvlc():
     global _instance, _log_sink
     if _instance is not None:
         return _instance
+    _prepare_bundled_vlc()
     try:
         import vlc
     except ImportError:
@@ -90,8 +111,8 @@ def available() -> tuple[bool, str]:
         return False, ("python-vlc is not installed. Install it with "
                        "`pip install python-vlc`.")
     if _libvlc() is None:
-        return False, ("VLC is installed but libvlc would not start. A "
-                       "64-bit VLC is needed to match this interpreter.")
+        return False, ("libVLC would not start. Source runs need a 64-bit VLC "
+                       "installation; packaged releases include one.")
     return True, ""
 
 
