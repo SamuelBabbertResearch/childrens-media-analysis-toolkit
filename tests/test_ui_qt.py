@@ -10,6 +10,7 @@ later back the PDF export and the static site.
 from __future__ import annotations
 
 import inspect
+import os
 import re
 
 import pytest
@@ -1135,3 +1136,23 @@ def test_the_video_surface_paints_its_own_pixels(qapp):
         corner = canvas.toImage().pixelColor(5, 5)
         assert corner.name() == "#000000", \
             f"surface left its background unpainted when idle={idle}"
+
+
+def test_the_frozen_player_prefers_its_bundled_vlc(monkeypatch, tmp_path):
+    """A release must not silently depend on a machine-wide VLC install."""
+    import ui.player as player_mod
+
+    vlc_dir = tmp_path / "vlc"
+    (vlc_dir / "plugins").mkdir(parents=True)
+    (vlc_dir / "libvlc.dll").write_bytes(b"test")
+    monkeypatch.setattr(player_mod.sys, "_MEIPASS", str(tmp_path), raising=False)
+    monkeypatch.delenv("PYTHON_VLC_LIB_PATH", raising=False)
+    monkeypatch.delenv("PYTHON_VLC_MODULE_PATH", raising=False)
+    monkeypatch.delenv("VLC_PLUGIN_PATH", raising=False)
+    monkeypatch.setattr(player_mod.sys, "platform", "test")
+
+    player_mod._prepare_bundled_vlc()
+
+    assert os.environ["PYTHON_VLC_LIB_PATH"] == str(vlc_dir / "libvlc.dll")
+    assert os.environ["PYTHON_VLC_MODULE_PATH"] == str(vlc_dir)
+    assert os.environ["VLC_PLUGIN_PATH"] == str(vlc_dir / "plugins")
