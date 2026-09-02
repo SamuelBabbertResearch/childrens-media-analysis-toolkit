@@ -263,6 +263,28 @@ def write_manual_metrics(
     return out
 
 
+# Which fields of manual_pacing_metrics() may be set beside an automated
+# figure, and which may not. THE definition of that split — it used to live
+# only in the docstring below, which meant every consumer had to re-derive it
+# by reading prose. `CLAUDE.md` §2.5 requires the distinction to be READ, so
+# it has to be readable.
+#
+# Membership rule: a field is engine-comparable when it is computed from HARD
+# CUTS ONLY and mirrors compute_cut_metrics()'s definition. Everything else
+# counts transition types, or labels, the automated detector does not produce.
+ENGINE_COMPARABLE_FIELDS: frozenset[str] = frozenset({
+    "hard_cuts_per_min", "mean_shot_sec", "median_shot_sec",
+    "shot_length_cv", "timeline_per_30s",
+})
+
+HAND_CODING_ONLY_FIELDS: frozenset[str] = frozenset({
+    "n_transitions", "transitions_per_min", "by_type",
+    "inter_transition_mean_sec", "inter_transition_median_sec",
+    "inter_transition_cv", "timeline_all_types_per_30s",
+    "n_scene_labeled", "scene_changes_per_min", "within_scene_fraction",
+})
+
+
 def manual_pacing_metrics(
     rows: "list[dict] | Path",
     duration_sec: float = 0.0,
@@ -273,7 +295,9 @@ def manual_pacing_metrics(
     """Descriptive pacing metrics computed FROM hand coding, not detection.
 
     The hand-coding path's analysis step. Two families of number are returned
-    and they are NOT interchangeable:
+    and they are NOT interchangeable — see ENGINE_COMPARABLE_FIELDS and
+    HAND_CODING_ONLY_FIELDS above, which are the machine-readable form of the
+    two lists below and the thing a consumer should read.
 
     COMPARABLE TO THE AUTOMATED ENGINE (hard cuts only, ceil-binned timeline):
         hard_cuts_per_min, mean_shot_sec, median_shot_sec, shot_length_cv,
@@ -286,6 +310,12 @@ def manual_pacing_metrics(
         transitions_per_min, inter_transition_* , by_type, scene_* fields
       These count ALL coded transition types, which the automated detector
       does not produce. Do not compare them to automated figures.
+
+    NOTE `scene_changes_per_min` appears in BOTH this dict and the engine's
+    ScenePacingMetrics under the same name, and they are NOT the same
+    quantity: the engine's comes from unvalidated frame-similarity
+    classification, this one from a human's scene_relation label. Same name,
+    different measure — which is why this one is in the hand-coding-only set.
 
     ``rows`` may be a parsed coding list or a path to a coding CSV. When a
     window is given, rates use the window length as the denominator (these

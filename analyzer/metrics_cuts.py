@@ -282,6 +282,8 @@ def _detect_shots(
     tool: str,
     params: dict[str, Any],
     status_cb: Callable[[str], None] | None = None,
+    start_sec: float = 0.0,
+    end_sec: float | None = None,
 ) -> tuple[np.ndarray, list[float]]:
     """Run the selected shot-boundary detector.
 
@@ -301,7 +303,9 @@ def _detect_shots(
             threshold=float(params.get("threshold", 0.5)),
             status_cb=status_cb,
         )
-        bounds = [0.0] + list(cut_times) + [duration_sec]
+        range_end = min(end_sec, duration_sec) if end_sec is not None else duration_sec
+        cut_times = [t for t in cut_times if start_sec < t < range_end]
+        bounds = [start_sec] + list(cut_times) + [range_end]
         durations = np.array([b - a for a, b in zip(bounds, bounds[1:]) if b > a])
         return durations, list(cut_times)
 
@@ -317,12 +321,57 @@ def _detect_shots(
             threshold=float(params.get("threshold", CONTENT_SCALE_DEFAULT))
         )
 
-    scene_list = detect(str(video_path), detector)
+    # PySceneDetect interprets an int time as a frame number and a float as
+    # seconds. Coerce explicitly so an API caller passing `420` does not ask
+    # for frame 420 while passing `420.0` asks for second 420.
+    range_end = float(min(end_sec, duration_sec)) if end_sec is not None else None
+    # Give a trimmed run a small amount of visual history. Starting a
+    # frame-difference detector exactly on the first retained frame can turn
+    # decoder warm-up/the missing predecessor into a boundary. Two seconds is
+    # negligible beside an episode but keeps the first retained window aligned
+    # with a whole-file pass.
+    detector_start = max(0.0, start_sec - 2.0) if start_sec > 0 else 0.0
+    scene_list = detect(
+        str(video_path),
+        detector,
+        start_time=detector_start if detector_start > 0 else None,
+        end_time=range_end,
+        start_in_scene=detector_start > 0 or range_end is not None,
+    )
     if not scene_list:
         return np.array([]), []
-    durations = np.array([end.seconds - start.seconds for start, end in scene_list])
-    cut_times = [start.seconds for start, _end in scene_list[1:]]
+    if start_sec <= 0 and end_sec is None:
+        # Preserve the existing whole-file result bit-for-bit.
+        durations = np.array([
+            end.seconds - start.seconds for start, end in scene_list
+        ])
+        cut_times = [start.seconds for start, _end in scene_list[1:]]
+    else:
+        cut_times = [
+            start.seconds for start, _end in scene_list[1:]
+            if start_sec < start.seconds < (range_end or duration_sec)
+        ]
+        bounds = [start_sec] + cut_times + [range_end or duration_sec]
+        durations = np.array([b - a for a, b in zip(bounds, bounds[1:]) if b > a])
     return durations, cut_times
+
+
+def detect_cut_times(
+    video_path: Path,
+    duration_sec: float,
+    tool: str = "pyscenedetect_content",
+    tool_params: dict[str, Any] | None = None,
+    status_cb: Callable[[str], None] | None = None,
+    start_sec: float = 0.0,
+    end_sec: float | None = None,
+) -> list[float]:
+    """Return cut timestamps using the selected CMAT transition method."""
+    params = dict(tool_params or {"threshold": CONTENT_SCALE_DEFAULT})
+    _durations, cut_times = _detect_shots(
+        video_path, duration_sec, tool, params, status_cb,
+        start_sec=start_sec, end_sec=end_sec,
+    )
+    return cut_times
 
 
 def compute_cut_metrics(

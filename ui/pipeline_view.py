@@ -313,8 +313,15 @@ class Canvas(QGraphicsView):
         return None
 
     def _emit_selection(self) -> None:
-        items = [i for i in self._scene.selectedItems()
-                 if isinstance(i, NodeItem)]
+        # Qt can queue selectionChanged while a containing page is being torn
+        # down. By the time Python receives it, the Scene wrapper may still
+        # exist even though its C++ object has already been deleted. A stale
+        # teardown notification has no selection to report.
+        try:
+            selected = self._scene.selectedItems()
+        except RuntimeError:
+            return
+        items = [i for i in selected if isinstance(i, NodeItem)]
         self.selection_changed.emit(items[0].node if items else None)
 
     # -- view -------------------------------------------------------------

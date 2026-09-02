@@ -35,6 +35,13 @@ htmlcov/
 .coverage
 test_report.pdf
 
+# Local generated output and run data. These may contain large intermediates,
+# exported stimuli, test dependencies, or participant responses and must never
+# be part of a source release.
+/output/
+/participant_data/
+/tmp/
+
 # Scratch / dev files
 Test.pyt
 *.parts

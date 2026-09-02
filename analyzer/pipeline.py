@@ -44,7 +44,8 @@ from typing import Any
 
 from .cache import load_cached
 from .scope import read_selected
-from .trials import KIND_LABELS, coverage_for_stems, discover_trials, sample_coverage
+from .trials import (KIND_LABELS, coverage_for_episodes, discover_trials,
+                     sample_coverage)
 from .validation import get_validation_dir
 
 # Stage status. Ordered by how much attention it deserves.
@@ -535,9 +536,8 @@ def merged_pipeline(pipelines: list[Pipeline], root: Path | None = None,
     Episodes are unioned by normalised PATH, not by stem: two different
     shows can share an episode's stem ("S01 E01"), and de-duplicating by
     stem would silently drop one of them from the working set — see
-    `LEARNINGS.md`. Hand-coding coverage still keys by stem inside
-    `coverage_for_stems`, which is a narrower, already-logged limitation of
-    that lookup, not something this function can fix on its own.
+    `LEARNINGS.md`. Hand-coding coverage uses that same show-plus-stem
+    identity, so one show's coding cannot satisfy the other show's episode.
 
     Deliberately NOT built: comparing sample A's automated results against
     sample B's hand coding as if they measured the same thing. A validation
@@ -562,8 +562,7 @@ def merged_pipeline(pipelines: list[Pipeline], root: Path | None = None,
     trials = list(trials_by_manifest.values())
 
     analyzed = _count_analyzed(root, episodes, cached_stems(root))
-    coverage = coverage_for_stems(sorted(ep.stem for ep in episodes),
-                                  validation_dir)
+    coverage = coverage_for_episodes(episodes, validation_dir, root)
 
     return Pipeline(
         key="merged:" + "|".join(sorted(p.key for p in pipelines)),
@@ -680,7 +679,7 @@ def build_pipelines(
         mine = [t for t in others if t.get("episode") in stems]
         analyzed = _count_analyzed(root, episodes, analyzed_stems)
         try:
-            coverage = sample_coverage(trial, vdir)
+            coverage = sample_coverage(trial, vdir, root)
         except Exception:
             coverage = None
 

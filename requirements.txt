@@ -1,7 +1,9 @@
-# GUI. Migrating from Tkinter (stdlib) to Qt; see CLAUDE.md "GUI migration".
+# GUI. Qt 6.11.2 imports from source but its QtCore DLL fails to load from the
+# frozen Windows bundle. 6.8.3 is qualified by the packaged-launch checks for
+# both CMAT and the separate Study Runner.
 # LGPLv3 — an obligation the stdlib Tk front-end did not carry, and it adds
 # roughly 150-200 MB to a PyInstaller bundle.
-PySide6>=6.6,<7
+PySide6==6.8.3
 
 opencv-python>=4.8.0,<5
 Pillow>=10.0.0
@@ -11,6 +13,7 @@ pandas>=2.0.0
 matplotlib>=3.7.0
 pytest>=7.4.0
 reportlab>=4.0.0
+python-vlc>=3.0.0
 faster-whisper>=1.0.0
 wordfreq>=2.5.1
 textstat>=0.7.3

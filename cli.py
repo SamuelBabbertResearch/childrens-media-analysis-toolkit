@@ -8,6 +8,7 @@ Usage:
     python cli.py db episodes <root_folder/>    # print episode index table
     python cli.py db shows <root_folder/>       # print show index table
     python cli.py sample <entry_root/>          # build reproducible episode sample
+    python cli.py study-clips <season_folder/>  # screen contiguous 30-second clips
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import json
 import sys
 from pathlib import Path
 
+from analyzer import recipes as analysis_recipes
 from analyzer.aggregate import compute_show_aggregate, save_show_results
 from analyzer.batch import analyze_show_batch
 from analyzer.cache import load_cached, load_scored, save_cache
@@ -25,6 +27,47 @@ from analyzer.engine import analyze_episode
 from analyzer.sampler import scan_entry_root, load_registry_csv, sample, write_outputs
 from analyzer.show_index import db_show_key, display_show_name, list_episodes, list_shows, show_key
 from analyzer.speech import _find_cc_file
+from analyzer.study_clips import export_selected_clips, run_candidate_pool
+from generate_study_clip_tables import generate_tables as generate_study_tables
+
+
+def _resolve_analysis_recipe(selector: str, source: Path):
+    """Resolve a recipe path, id, exact name, or citation near the library."""
+    candidate = Path(selector).expanduser()
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    if candidate.is_file():
+        return analysis_recipes.load_recipe(candidate.resolve())
+
+    roots: list[Path] = []
+    for root in (Path.cwd().resolve(), *source.resolve().parents):
+        if root not in roots:
+            roots.append(root)
+    recipes = []
+    seen = set()
+    for root in roots:
+        for recipe in analysis_recipes.list_recipes(root):
+            if recipe.id not in seen:
+                recipes.append(recipe)
+                seen.add(recipe.id)
+    wanted = selector.casefold()
+    matches = [
+        recipe for recipe in recipes
+        if wanted in {
+            recipe.id.casefold(), recipe.name.casefold(),
+            recipe.citation().casefold(),
+        }
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise ValueError(
+            f"Recipe selector {selector!r} is ambiguous; use a recipe id or path"
+        )
+    available = ", ".join(recipe.name for recipe in recipes) or "none"
+    raise ValueError(
+        f"No analysis recipe matches {selector!r}. Available recipes: {available}"
+    )
 
 
 def cmd_analyze(args: argparse.Namespace) -> None:
@@ -39,6 +82,100 @@ def cmd_analyze(args: argparse.Namespace) -> None:
     else:
         print(f"Error: {target} is not an MP4 file or a directory.", file=sys.stderr)
         sys.exit(1)
+
+
+def cmd_study_clips(args: argparse.Namespace) -> None:
+    source = Path(args.source).resolve()
+    if not source.is_dir():
+        print(f"Error: source folder does not exist: {source}", file=sys.stderr)
+        sys.exit(1)
+    output = (
+        Path(args.output).resolve()
+        if args.output
+        else (Path.cwd() / ".analysis" / "study_clips" / source.name).resolve()
+    )
+    try:
+        recipe = (
+            _resolve_analysis_recipe(args.recipe, source)
+            if args.recipe else None
+        )
+    except (OSError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    def _status(message: str) -> None:
+        print(f"  {message}", flush=True)
+
+    print(f"Candidate pool: {source}")
+    print(f"Output:         {output}")
+    print(f"Window:         {args.window_sec:g} seconds\n")
+    if recipe is not None:
+        print(f"Recipe:         {recipe.citation()}\n")
+    if args.exclude_first or args.exclude_last:
+        print(
+            f"Episode range:  skip first {args.exclude_first:g}s and "
+            f"last {args.exclude_last:g}s\n"
+        )
+    try:
+        run = run_candidate_pool(
+            source,
+            output,
+            window_sec=args.window_sec,
+            include_partial=args.include_partial,
+            exclude_first_sec=args.exclude_first,
+            exclude_last_sec=args.exclude_last,
+            recursive=not args.flat,
+            resume=not args.fresh,
+            max_files=args.max_files,
+            analysis_recipe=recipe,
+            status_cb=_status,
+        )
+    except (OSError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    manifest = run["manifest"]
+    print("\nCandidate measurement complete:")
+    print(f"  Source files:     {manifest['source_file_count']}")
+    print(f"  30-second clips:  {manifest['candidate_clip_count']}")
+    print(f"  Matched pairs:    {manifest['matched_pair_count']} / 6")
+    print(f"  Selected clips:   {manifest['selected_clip_count']} / 12")
+    print(f"  Failures:         {manifest['failed_source_count']}")
+    print(f"\n  Browse: {output / 'candidates.csv'}")
+    print(f"  Pairs:  {output / 'matched_pairs.csv'}")
+    print(f"  Run:    {output / 'manifest.json'}")
+
+    if manifest["selected_clip_count"] == 12:
+        try:
+            tables_path = generate_study_tables(output)
+            print(f"  Tables: {tables_path}")
+        except (OSError, ValueError) as exc:
+            print(f"\nCould not generate study tables: {exc}", file=sys.stderr)
+
+    if manifest["matched_pair_count"] < 6:
+        print(
+            "\nNo complete Option 3.5 set could be formed under the current "
+            "high/low and uniqueness constraints. Inspect pair_candidates.csv "
+            "and the pool distributions before relaxing the design.",
+            file=sys.stderr,
+        )
+
+    if args.export_selected:
+        if not run["selected_clips"]:
+            print("\nNo selected clips to export.", file=sys.stderr)
+            return
+        print("\nExporting and re-measuring the twelve finalist files...")
+        exported = export_selected_clips(
+            run["selected_clips"],
+            output,
+            config=run["config"],
+            overwrite=args.overwrite_exports,
+            status_cb=_status,
+        )
+        ok = sum(1 for row in exported if row.get("status") == "ok")
+        print(f"\n  Finalists verified: {ok} / {len(exported)}")
+        print(f"  Files: {output / 'finalists'}")
+        print(f"  Final measurements: {output / 'finalist_measurements.csv'}")
 
 
 # ---------------------------------------------------------------------------
@@ -511,6 +648,61 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output directory for CSV and manifest (default: _vocab_<timestamp>/)",
     )
     p_vocab.set_defaults(func=cmd_vocab)
+
+    p_study = sub.add_parser(
+        "study-clips",
+        help="Measure a season as contiguous clips and propose Option 3.5 matched pairs",
+    )
+    p_study.add_argument("source", help="Folder containing the source season videos")
+    p_study.add_argument(
+        "--output", default="",
+        help="Run folder (default: .analysis/study_clips/<source folder name>)",
+    )
+    p_study.add_argument(
+        "--recipe", default="",
+        help=("Saved analysis recipe path, id, exact name, or citation. Its "
+              "pinned cuts, motion, frame-sampling, and audio settings drive "
+              "measurement and are copied into the run manifest."),
+    )
+    p_study.add_argument(
+        "--window-sec", type=float, default=30.0, dest="window_sec",
+        help="Contiguous clip duration in seconds (default: 30)",
+    )
+    p_study.add_argument(
+        "--include-partial", action="store_true",
+        help="Include each episode's final shorter-than-window remainder",
+    )
+    p_study.add_argument(
+        "--exclude-first", type=float, default=0.0, dest="exclude_first",
+        metavar="SECONDS",
+        help="Skip this many seconds at the beginning of every episode",
+    )
+    p_study.add_argument(
+        "--exclude-last", type=float, default=0.0, dest="exclude_last",
+        metavar="SECONDS",
+        help="Skip this many seconds at the end of every episode",
+    )
+    p_study.add_argument(
+        "--flat", action="store_true",
+        help="Read only the named folder, not nested folders",
+    )
+    p_study.add_argument(
+        "--fresh", action="store_true",
+        help="Ignore resumable per-episode measurements and run every source again",
+    )
+    p_study.add_argument(
+        "--max-files", type=int, default=None, dest="max_files",
+        help="Process only the first N source files (for a pilot/smoke test)",
+    )
+    p_study.add_argument(
+        "--export-selected", action="store_true",
+        help="Export the twelve proposed clips and re-measure the exact participant files",
+    )
+    p_study.add_argument(
+        "--overwrite-exports", action="store_true",
+        help="Replace existing finalist MP4 files when exporting",
+    )
+    p_study.set_defaults(func=cmd_study_clips)
 
     return parser
 

@@ -987,7 +987,7 @@ def test_validation_fed_by_two_sampling_nodes_merges_instead_of_picking_one(
     the UNION of both samples' episodes, not silently report only the first
     branch and hide the second.
 
-    `coverage_for_stems` is monkeypatched at the point `merged_pipeline`
+    `coverage_for_episodes` is monkeypatched at the point `merged_pipeline`
     calls it, to (n_episodes coded == n_episodes given) without needing real
     hand-coding files on disk under this repo's actual validation/ folder --
     the union itself, computed from real selected.csv files, is what this
@@ -1009,10 +1009,10 @@ def test_validation_fed_by_two_sampling_nodes_merges_instead_of_picking_one(
             "trial_name": folder.name,
         }), encoding="utf-8")
 
-    def fake_coverage(stems, validation_dir=None):
-        return {"n_episodes": len(stems), "n_transition_coded": len(stems),
+    def fake_coverage(episodes, validation_dir=None, root=None):
+        return {"n_episodes": len(episodes), "n_transition_coded": len(episodes),
                 "n_event_coded": 0}
-    monkeypatch.setattr("analyzer.pipeline.coverage_for_stems", fake_coverage)
+    monkeypatch.setattr("analyzer.pipeline.coverage_for_episodes", fake_coverage)
 
     window.set_root(root)
     doc = blank_doc("Compares two samples")
@@ -1546,3 +1546,158 @@ def test_selecting_an_unlinked_pipeline_leaves_the_scope_alone(
     before = window._scope.key
     window._follow_pipeline_scope()
     assert window._scope.key == before
+
+
+# --- the document panel names what the pipeline actually draws on -------------
+
+def _inspector_rows(window) -> dict[str, str]:
+    """The Inspector's key/value rows as rendered, read off the widgets."""
+    grid = window._inspector._grid
+    rows: dict[str, str] = {}
+    for r in range(grid.rowCount()):
+        k = grid.itemAtPosition(r, 0)
+        v = grid.itemAtPosition(r, 1)
+        if k is not None and v is not None:
+            rows[k.widget().text()] = v.widget().text()
+    return rows
+
+
+def _load_one_doc(window, doc):
+    window._docs = [doc]
+    window._pipe_pick.blockSignals(True)
+    window._pipe_pick.clear()
+    window._pipe_pick.addItem(doc.name)
+    window._pipe_pick.blockSignals(False)
+    window._refresh_canvas()
+
+
+def test_the_doc_panel_names_the_nodes_sample_not_a_stale_document_key(
+        window, tmp_path):
+    """The reported bug, reproduced from the real document that showed it.
+
+    "Arthur Language" had a Sampling node bound to an Arthur sample and a
+    leftover document-level `source_key` naming a different show entirely.
+    Every node on the canvas read Arthur; the document panel read the stale
+    key and announced "Data source: Peep and the Big Wide World/Season 1" — a
+    show contributing no episodes to the pipeline. `LEARNINGS.md` shape 1.
+    """
+    import json
+    from analyzer.pipeline_graph import blank_doc
+
+    root = _make_library(tmp_path)
+    drawn = [root / "Little Bear" / "S01 E01.mp4",
+             root / "Little Bear" / "S01 E02.mp4"]
+    folder = _make_draw(root, drawn, name="arthur_like_draw")
+    (folder / "manifest.json").write_text(json.dumps({
+        "method": "census", "total_selected": 2, "total_available": 2,
+        "entry_id": "Show", "trial_name": "The node's own sample",
+    }), encoding="utf-8")
+    window.set_root(root)
+
+    doc = blank_doc("Bound node, stale document key")
+    # The document points at one show...
+    doc.source_key = "Some Other Show/Season 1"
+    # ...while its Sampling node is bound to the sample actually being used.
+    sampling = doc.add_node("sampling", 0, 0)
+    sampling.config["sample_key"] = f"sample:{folder}"
+    language = doc.add_node("language", 250, 0)
+    doc.connect(sampling.id, language.id)
+    _load_one_doc(window, doc)
+
+    rows = _inspector_rows(window)
+    assert "Some Other Show" not in rows["Data source"]
+    assert rows["Data source"] == "The node's own sample"
+    assert "The node's own sample" in window._inspector._subtitle.text()
+
+
+def test_a_document_key_that_resolves_to_nothing_says_so_rather_than_naming_it(
+        window, tmp_path):
+    """Three states, not two.
+
+    A stale key is not "not linked" — collapsing them would hide it — and it
+    is not a data source either, because it resolves to nothing. It gets said
+    out loud, and the Link button is offered as the way out.
+    """
+    from analyzer.pipeline_graph import blank_doc
+
+    root = _make_library(tmp_path)
+    window.set_root(root)
+    doc = blank_doc("Stale key, no node binding")
+    doc.source_key = "A Show That Went Away/Season 1"
+    doc.add_node("sampling", 0, 0)
+    _load_one_doc(window, doc)
+
+    rows = _inspector_rows(window)
+    assert "A Show That Went Away" in rows["Data source"]
+    assert "no drawn sample or show" in rows["Data source"]
+    assert "no longer resolves" in window._inspector._subtitle.text()
+    assert not window._inspector._action.isHidden()
+
+
+def test_a_document_with_no_binding_anywhere_still_reads_as_unlinked(
+        window, tmp_path):
+    from analyzer.pipeline_graph import blank_doc
+
+    root = _make_library(tmp_path)
+    window.set_root(root)
+    doc = blank_doc("Nothing at all")
+    doc.add_node("sampling", 0, 0)
+    _load_one_doc(window, doc)
+
+    assert _inspector_rows(window)["Data source"].startswith("none")
+    assert "not linked" in window._inspector._subtitle.text()
+
+
+def test_the_document_key_is_still_the_fallback_when_no_node_is_bound(
+        window, tmp_path):
+    """The fix must not break the pre-per-node-binding pipelines it exists for.
+
+    `DECISIONS.md`: a Sampling node's own binding FALLS BACK to the document's
+    `source_key`, never replaces it.
+    """
+    import json
+    from analyzer.pipeline_graph import blank_doc
+
+    root = _make_library(tmp_path)
+    folder = _make_draw(root, [root / "Little Bear" / "S01 E01.mp4"],
+                        name="doc_level_draw")
+    (folder / "manifest.json").write_text(json.dumps({
+        "method": "census", "total_selected": 1, "total_available": 1,
+        "entry_id": "Show", "trial_name": "The document's own sample",
+    }), encoding="utf-8")
+    window.set_root(root)
+
+    doc = blank_doc("Old-style, document-level link")
+    doc.source_key = f"sample:{folder}"
+    doc.add_node("sampling", 0, 0)          # no binding of its own
+    _load_one_doc(window, doc)
+
+    assert _inspector_rows(window)["Data source"] == "The document's own sample"
+
+
+def test_deselecting_a_node_restores_the_resolved_source_not_the_raw_key(
+        window, tmp_path):
+    """Clicking a node and clicking away used to replace the sample's name
+    with the document's raw folder key, because the deselect path called
+    show_doc with no label."""
+    import json
+    from analyzer.pipeline_graph import blank_doc
+
+    root = _make_library(tmp_path)
+    folder = _make_draw(root, [root / "Little Bear" / "S01 E01.mp4"],
+                        name="reselect_draw")
+    (folder / "manifest.json").write_text(json.dumps({
+        "method": "census", "total_selected": 1, "total_available": 1,
+        "entry_id": "Show", "trial_name": "Named sample",
+    }), encoding="utf-8")
+    window.set_root(root)
+
+    doc = blank_doc("Reselect")
+    sampling = doc.add_node("sampling", 0, 0)
+    sampling.config["sample_key"] = f"sample:{folder}"
+    _load_one_doc(window, doc)
+    assert _inspector_rows(window)["Data source"] == "Named sample"
+
+    window._inspector.show_node(sampling)
+    window._inspector.show_node(None)
+    assert _inspector_rows(window)["Data source"] == "Named sample"

@@ -782,19 +782,49 @@ def test_no_screen_drops_its_worker_reference_in_a_slot():
     The C++ object is deleted while still inside emit, so it dies with no
     traceback and no Python exception. Guards must use isRunning() and keep
     the reference — the pattern AutomatedTab has always used.
-    """
-    import pathlib
-    import ui
-    offenders = []
-    for path in pathlib.Path(ui.__file__).parent.glob("*.py"):
-        for number, line in enumerate(
-                path.read_text(encoding="utf-8").splitlines(), 1):
-            if line.strip() == "self._worker = None":
-                offenders.append(f"{path.name}:{number}")
-    assert offenders == [], (
-        "these free a QThread from a slot connected to it: "
-        + ", ".join(offenders))
 
+    Checked by PARSING rather than by matching the line's text. The text check
+    this replaced looked for exactly `self._worker = None`, which meant every
+    screen that wrote `self._worker: SomeWorker | None = None` slipped past it
+    — including inside a slot, where it is fatal — while a perfectly safe
+    initialiser in `__init__` failed it. It was wrong in both directions at
+    once. This walks the AST instead: any assignment of None to a
+    worker-shaped attribute, annotated or not, outside `__init__`.
+    """
+    import ast
+    import pathlib
+
+    import ui
+
+    def _worker_attr(target) -> str | None:
+        if isinstance(target, ast.Attribute) and                 isinstance(target.value, ast.Name) and target.value.id == "self":
+            name = target.attr
+            if "worker" in name.lower() or "transcriber" in name.lower():
+                return name
+        return None
+
+    offenders = []
+    for path in sorted(pathlib.Path(ui.__file__).parent.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for func in ast.walk(tree):
+            if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if func.name == "__init__":
+                continue          # setting up the attribute is not freeing it
+            for node in ast.walk(func):
+                targets = []
+                if isinstance(node, ast.Assign):
+                    targets = node.targets
+                elif isinstance(node, ast.AnnAssign) and node.value is not None:
+                    targets = [node.target]
+                for target in targets:
+                    attr = _worker_attr(target)
+                    if attr and isinstance(node.value, ast.Constant)                             and node.value.value is None:
+                        offenders.append(f"{path.name}:{node.lineno} ({func.name})")
+
+    assert offenders == [], (
+        "these free a QThread outside __init__, which is fatal if the method "
+        "is connected to that worker's own signal: " + ", ".join(offenders))
 
 def test_startup_path_imports_no_heavy_library_at_module_scope():
     """A module-level import is a cost paid on every launch.

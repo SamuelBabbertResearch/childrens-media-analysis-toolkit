@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
     QTextBrowser, QToolBar, QTreeView, QVBoxLayout, QWidget,
 )
 
+from analyzer import constructs as C
 from analyzer.cache import load_cached
 from analyzer.config_loader import load_config
 from analyzer.prefs import get_pref, set_pref
@@ -304,7 +305,7 @@ class MainWindow(QMainWindow):
         self._docs.append(dialog.doc)
         self._pipe_pick.addItem(dialog.doc.name)
         self._pipe_pick.setCurrentIndex(len(self._docs) - 1)
-        self._tabs.setCurrentIndex(0)
+        self._tabs.setCurrentWidget(self._pipeline_page)
         self.statusBar().showMessage(
             f"Created the pipeline {dialog.doc.name!r}. Use Manage to link it "
             f"to an episode sample.", 8000)
@@ -372,6 +373,13 @@ class MainWindow(QMainWindow):
             "change the raw numbers, so they make cached results stale.")
         act_measure.triggered.connect(self.open_measurement_settings)
         file_menu.addAction(act_measure)
+        act_recipes = QAction("Recipes…", self)
+        act_recipes.setToolTip(
+            "How a construct was operationalized: which measures stand in for "
+            "it, by which methods, with which parameters. A recipe PINS its "
+            "parameters, so it does not follow the two dialogs above.")
+        act_recipes.triggered.connect(self.open_recipes)
+        file_menu.addAction(act_recipes)
         act_tools = QAction("Optional tools…", self)
         act_tools.triggered.connect(self.open_optional_tools)
         file_menu.addAction(act_tools)
@@ -602,6 +610,21 @@ class MainWindow(QMainWindow):
                         f"fingerprinting and cannot be checked either way.")
         self.statusBar().showMessage(message, 12000)
 
+    def open_recipes(self) -> None:
+        """How a construct was operationalized — the third settings axis.
+
+        Not a settings dialog in the sense the other two are: a recipe PINS its
+        parameters rather than following the config, so nothing here changes
+        `self._cfg` and nothing here invalidates a cached result. It reads the
+        config to pin from it and to report where a recipe's pins have since
+        diverged. See `ARCHITECTURE.md` §3b.
+
+        Given the current scope so "apply to the current scope" means the same
+        set of episodes the rest of the window is showing.
+        """
+        from ui.recipes import RecipesDialog
+        RecipesDialog(self._cfg, self._root, self._scope, self).exec()
+
     def open_optional_tools(self) -> None:
         from ui.optional_tools import OptionalToolsDialog
         OptionalToolsDialog(self).exec()
@@ -739,7 +762,16 @@ class MainWindow(QMainWindow):
         self._automated = AutomatedTab(self)
         self._automated.library_changed.connect(self._on_analysis_finished)
 
-        self._tabs.addTab(self._build_pipeline(), "Pipeline")
+        self._pipeline_page = self._build_pipeline()
+        self._tabs.addTab(self._pipeline_page, "Pipeline")
+        # Beside Pipeline on purpose. `MEASUREMENT_MODEL.md` §2 names three
+        # views of one research process: Pipeline is the study WORKFLOW
+        # ("what are the stages of my study?"), Constructs is the
+        # MEASUREMENT view ("how did I operationalize what I wanted to
+        # study?"). They are peers, not a screen inside a screen.
+        from ui.constructs_tab import ConstructsTab
+        self._constructs = ConstructsTab(self)
+        self._tabs.addTab(self._constructs, "Constructs")
         self._library_page = self._build_library()
         self._tabs.addTab(self._library_page, "Library")
 
@@ -757,7 +789,10 @@ class MainWindow(QMainWindow):
         self._trials = TrialsTab(self)
         self._tabs.addTab(self._trials, "Trials")
 
-        self._tabs.setCurrentIndex(1)
+        # By WIDGET, not by index: adding a tab renumbers every one after it,
+        # and a hard-coded index then opens a different screen with nothing to
+        # reveal that it changed.
+        self._tabs.setCurrentWidget(self._library_page)
 
     # ---- pipeline ----
 
@@ -833,6 +868,8 @@ class MainWindow(QMainWindow):
             lambda: self._open_stage_screen(self._canvas.selected_node()))
         self._inspector.exclude_requested.connect(
             self._exclude_from_selection_node)
+        self._inspector.find_clips_requested.connect(
+            self._find_clips_from_selection_node)
 
         self._undo_stack: list[dict] = []
         self._redo_stack: list[dict] = []
@@ -979,11 +1016,20 @@ class MainWindow(QMainWindow):
                 f"{'were' if len(missing) != 1 else 'was'} not found under "
                 "the root folder, and could not be included above."))
         can_exclude = node.type == "selection" and bool(keys)
+        # Window-scale selection needs no linked sample: a researcher can point
+        # the finder at a folder of episodes directly, which is how a stimulus
+        # set usually starts.
+        can_find_clips = node.type == "selection"
+        if node.config.get("clip_pool_dir"):
+            extra_rows.append(("Clip pool", node.config["clip_pool_dir"]))
+        if node.config.get("clip_export_dir"):
+            extra_rows.append(("Exported clips", node.config["clip_export_dir"]))
         self._inspector.show_node(node, stage, reason,
                                   self._target_for(node),
                                   can_exclude=can_exclude,
                                   extra_rows=extra_rows or None,
-                                  media=media)
+                                  media=media,
+                                  can_find_clips=can_find_clips)
 
     # -- pipeline as a control surface --
 
@@ -1154,7 +1200,8 @@ class MainWindow(QMainWindow):
             save_doc(doc, self._root)
             self._pipe_pick.setItemText(self._pipe_pick.currentIndex(),
                                         doc.name)
-            self._inspector.show_doc(doc, getattr(self, "_source_label", None))
+            self._inspector.show_doc(doc, getattr(self, "_source_label", None),
+                                     getattr(self, "_source_unresolved", ""))
 
     def _duplicate_pipeline(self) -> None:
         doc = self._doc()
@@ -1301,8 +1348,33 @@ class MainWindow(QMainWindow):
                                  for p in build_pipelines(self._root)}
             except Exception:
                 self._derived = {}
-        source = self._derived.get(doc.source_key)
-        self._source_label = source.name if source else None
+        # What this pipeline ACTUALLY draws on, which since per-node binding is
+        # not the same question as what `doc.source_key` says. A Sampling node
+        # carrying its own `sample_key` resolves through that; the document's
+        # key is only a fallback for nodes (and documents) that have none.
+        #
+        # Reading `doc.source_key` here reported a show that contributes
+        # nothing: a pipeline whose Sampling node was bound to an Arthur sample
+        # displayed "Data source: Peep and the Big Wide World/Season 1", the
+        # document's stale leftover key, while every node beside it correctly
+        # read Arthur. `LEARNINGS.md` shape 1 — the display and the calculation
+        # disagreed. `_doc_sample_pipelines` is the one implementation of this
+        # question, already shared by the scope chooser and pipeline selection,
+        # so this asks it rather than deriving a third answer.
+        sources = self._doc_sample_pipelines(doc, self._derived)
+        if len(sources) == 1:
+            self._source_label = sources[0].name
+        elif sources:
+            # A pipeline may legitimately draw on several samples, and naming
+            # one of them would be the "one branch at a time" defect again.
+            self._source_label = ", ".join(p.name for p in sources)
+        else:
+            self._source_label = None
+        # A key that is set but resolves to no known sample or show is its own
+        # state, and saying "not linked" would hide it. Kept separate so the
+        # panel can name the key that no longer resolves.
+        self._source_unresolved = (
+            "" if sources or not doc.source_key else str(doc.source_key))
         self._canvas.load(doc, self._stage_status, self._node_media)
         self._zoom.refresh()
         plural_n = "s" if len(doc.nodes) != 1 else ""
@@ -1310,7 +1382,8 @@ class MainWindow(QMainWindow):
         self._pipe_count.setText(
             f"{len(doc.nodes)} node{plural_n} · "
             f"{len(doc.connections)} link{plural_l}")
-        self._inspector.show_doc(doc, self._source_label)
+        self._inspector.show_doc(doc, self._source_label,
+                                 getattr(self, "_source_unresolved", ""))
 
     def _discover_pipelines(self) -> None:
         """Load this root's pipelines, or offer the default shape if none."""
@@ -1628,6 +1701,69 @@ class MainWindow(QMainWindow):
             f"Wrote a narrowed sample excluding {n} episode{'s' if n != 1 else ''} "
             f"to {outdir.name}. It now appears in Showing: and the Trials tab.",
             10000)
+
+    def _clip_finder_source(self, node) -> Path | None:
+        """The folder of episodes to offer the finder, or None to ask.
+
+        A Selection node knows its upstream sample, and a sample knows its
+        episodes; the candidate pass wants the FOLDER those episodes live in,
+        so this is their common parent. Guessing wrongly here is cheap — the
+        screen shows the folder and the researcher can change it — but
+        guessing at all saves the common case of a single-show sample.
+        """
+        doc = self._doc()
+        if doc is None:
+            return None
+        from analyzer.scope import read_selected
+        derived = getattr(self, "_derived", {})
+        episodes: list[Path] = []
+        for key in doc.upstream_sample_keys(node.id):
+            pipeline = derived.get(key)
+            if pipeline is not None and pipeline.folder:
+                episodes.extend(read_selected(pipeline.folder))
+        parents = {p.parent for p in episodes if p.parent}
+        if len(parents) == 1:
+            return parents.pop()
+        if len(parents) > 1:
+            # Several folders: offer the nearest shared ancestor rather than
+            # one arbitrary branch, and let the recursive option cover it.
+            try:
+                import os
+                return Path(os.path.commonpath([str(p) for p in parents]))
+            except ValueError:
+                return None
+        return None
+
+    def _find_clips_from_selection_node(self) -> None:
+        """Open the Clip Finder for the active Selection node.
+
+        What the finder does is recorded ON the node — the measured pool and
+        any export — so the node states what it holds and a later session
+        opens the same pool instead of measuring the folder again.
+        """
+        doc = self._doc()
+        node = self._canvas.selected_node()
+        if doc is None or node is None or node.type != "selection":
+            return
+        from ui.clip_finder import ClipFinderDialog
+        recorded = node.config.get("clip_pool_dir")
+        dialog = ClipFinderDialog(
+            self,
+            source_dir=self._clip_finder_source(node),
+            run_dir=Path(recorded) if recorded else None,
+        )
+        dialog.exec()
+        changed = False
+        if dialog.pool_dir is not None:
+            changed |= node.config.get("clip_pool_dir") != str(dialog.pool_dir)
+            node.config["clip_pool_dir"] = str(dialog.pool_dir)
+        if dialog.exported_dir is not None:
+            changed |= (node.config.get("clip_export_dir")
+                        != str(dialog.exported_dir))
+            node.config["clip_export_dir"] = str(dialog.exported_dir)
+        if changed:
+            self._save_current()
+            self._on_node_selected(node)
 
     def _episode_count(self, paths: list[Path]) -> int:
         return sum(len(list_episodes(p)) if p.is_dir() else 1 for p in paths)
@@ -1959,6 +2095,14 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
         self._conn = None
+        # Constructs a researcher wrote live under the root
+        # (<root>/.analysis/constructs), so they belong to the library being
+        # opened. Loaded HERE, before anything reads a construct, because
+        # `set_library` replaces the loaded set wholesale — without it, opening
+        # a second library would leave the first one's constructs answering
+        # `get_construct`, and a recipe would resolve its construct against a
+        # definition from a different project.
+        C.set_library(folder)
         self._show_episode_details(None)
         # Samples are discovered under the root, so both the chooser and the
         # current scope belong to the library being opened, not the last one.
@@ -1966,6 +2110,7 @@ class MainWindow(QMainWindow):
         self._automated.set_scope(self._scope)
         self._handcoding.set_scope(self._scope)
         self._language.set_scope(self._scope)
+        self._constructs.set_scope(self._scope)
         self.populate()
         # Pipelines live under the root (<root>/.analysis/pipelines), so the
         # list has to be rebuilt when the root changes. Without this the tab
@@ -2018,6 +2163,10 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_index"):
             self._index.refresh()
             self._trials.refresh()
+            # Recipes live under the root, so the diagram's chooser has to be
+            # rebuilt when the root changes — the same reason the pipeline list
+            # is rebuilt there.
+            self._constructs.refresh()
         self._count.setText(
             f"{shows} show{'s' if shows != 1 else ''}, "
             f"{episodes} episode{'s' if episodes != 1 else ''}")
@@ -2042,6 +2191,11 @@ class MainWindow(QMainWindow):
         self._automated.set_scope(scope)
         self._handcoding.set_scope(scope)
         self._language.set_scope(scope)
+        # Constructs is a VIEW, not a workbench, so it narrows rather than
+        # stages (`DECISIONS.md` § *A view narrows to the scope; a workbench
+        # stages from it*). It also drops any computed contributions, because
+        # those were means over a different set of episodes.
+        self._constructs.set_scope(scope)
         if announce:
             self.statusBar().showMessage(
                 f"Showing {scope.describe()}.", 8000)

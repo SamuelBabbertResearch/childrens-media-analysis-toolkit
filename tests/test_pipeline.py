@@ -168,6 +168,47 @@ def test_merged_pipeline_unions_coverage_across_samples(tmp_path):
         "the union of both samples' episodes has 2 coded, not 1"
 
 
+def _same_stem_pipelines(tmp_path):
+    root = tmp_path / "Library"
+    episodes = [root / "Show A" / "S01 E01.mp4",
+                root / "Show B" / "S01 E01.mp4"]
+    vdir = tmp_path / "validation"
+    for i, episode in enumerate(episodes):
+        episode.parent.mkdir(parents=True, exist_ok=True)
+        episode.write_bytes(b"")
+        draw = vdir / f"draw_{i}"
+        _write_sample(draw, f"Draw {i}", ["placeholder"])
+        (draw / "selected.csv").write_text(
+            f"filepath\n{episode.as_posix()}\n", encoding="utf-8")
+    return root, vdir
+
+
+def test_merged_coverage_does_not_reuse_one_sheet_for_two_shows(tmp_path):
+    """A bare S01 E01 sheet cannot prove that both shows' S01 E01 was coded."""
+    root, vdir = _same_stem_pipelines(tmp_path)
+    (vdir / "S01 E01_manual.csv").write_text("dummy", encoding="utf-8")
+
+    pipelines = P.build_pipelines(root=root, validation_dir=vdir)
+    merged = P.merged_pipeline(pipelines, root=root, validation_dir=vdir)
+
+    assert dict(merged.stage("validation").details)[
+        "Hand-coded episodes available"] == "0"
+
+
+def test_merged_coverage_namespaces_same_stem_by_show_key(tmp_path):
+    root, vdir = _same_stem_pipelines(tmp_path)
+    for show in ("Show A", "Show B"):
+        folder = vdir / show
+        folder.mkdir(parents=True)
+        (folder / "S01 E01_manual.csv").write_text("dummy", encoding="utf-8")
+
+    pipelines = P.build_pipelines(root=root, validation_dir=vdir)
+    merged = P.merged_pipeline(pipelines, root=root, validation_dir=vdir)
+
+    assert dict(merged.stage("validation").details)[
+        "Hand-coded episodes available"] == "2"
+
+
 def test_merged_pipeline_unions_episodes_across_samples(tmp_path):
     """The reported symptom, reproduced directly: two Sampling nodes wired
     into one Selection node must show BOTH shows' episodes, not just one."""
