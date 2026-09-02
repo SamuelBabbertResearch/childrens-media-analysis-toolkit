@@ -1,8 +1,23 @@
 # Children's Media Analysis Toolkit (CMAT)
 
-A desktop toolkit for analyzing children's media, built to equip researchers with a **complete research pipeline** — draw a reproducible episode sample, measure the episodes, code them by hand, and export charts and data:
+**Open-source video analysis software for children's media research.** CMAT is
+a Windows desktop application for reproducible episode sampling, audiovisual
+formal-feature analysis, language and subtitle analysis, human coding,
+validation, and research-data export.
 
-> **sample → analyze → hand-code → validate → chart & export**
+The visual research pipeline keeps the whole study in one understandable flow:
+
+> **Sampling → Selection → Measurement → Validation → Results**
+
+Start with the supplied workflow, click a stage to configure it, and follow the
+connections from source videos to exported evidence. Researchers can use the
+default pipeline without programming, while advanced users can rearrange or
+extend it to match a study design.
+
+Researchers can also **create their own research constructs without writing
+code**. Define the concept in plain language, connect it to CMAT's supported
+measures, choose methods and weights, and save the operationalization as a
+versioned recipe that can be inspected, reused, and cited.
 
 It has two co-equal halves:
 
@@ -15,6 +30,122 @@ Then **validate one against the other**: grade the automated detection against y
 CMAT does **not** issue a verdict on appropriateness. Every composite score shows its component parts, and every design decision in the scoring model is adjustable.
 
 > **Part of the Open Children's Media Index** — an ongoing effort to build a publicly accessible database of formal-feature measurements for children's television.
+
+---
+
+## A visual pipeline for children's media research
+
+CMAT presents a study as five connected stages instead of a collection of
+unrelated analysis tools:
+
+| Stage | What the researcher does | What CMAT preserves |
+|---|---|---|
+| **Sampling** | Draw a census, random sample, systematic sample, or sample stratified by season or era | Selected episodes, random seed, method, strata, and manifest |
+| **Selection** | Narrow the episode sample or use Clip Finder to locate candidate scenes | Exclusions, filters, source timecodes, and the selection query |
+| **Measurement** | Measure cuts, motion, colour, contrast, flashing, audio, speech, and vocabulary | Methods, parameters, recipe version, and measurement fingerprint |
+| **Validation** | Compare automated results with human coding | Precision, recall, F1, Cohen's kappa, and agreement evidence |
+| **Results** | Review, compare, chart, and export findings | Component measures, provenance, CSV/JSON output, and reports |
+
+The interface is designed around progressive disclosure: the canvas shows the
+study at a glance, selecting a block reveals the controls for that stage, and
+double-clicking opens the relevant workspace. A researcher can begin with the
+default layout and make ordinary study decisions without constructing a graph
+from scratch. Undo/redo, saved pipeline documents, visible stage status, and
+direct links from each node to its working screen keep the workflow inspectable.
+
+CMAT also separates the *study workflow* from the *measurement model*. The
+Pipeline tab shows where data moves; the Constructs tab shows how a concept is
+operationalized as **Construct → Aspect → Measure → Method**. Recipes record
+the selected measures, methods, weights, ranges, and parameters so that a
+composite is a documented research decision rather than a hidden formula.
+
+## Create and operationalize your own research constructs
+
+CMAT is not limited to a fixed list of researcher concepts. In the
+**Constructs** tab, click **Constructs…** to create a construct, give it a name
+and definition, and describe the aspects the study intends to represent. Then
+use **Edit** to bind supported audiovisual or language measures to those
+aspects, select the available measurement methods, and set their contribution
+weights. No programming is required.
+
+Save that operationalization as a **recipe**. A recipe preserves the construct,
+measure bindings, methods, parameters, ranges, and weights as a versioned,
+content-hashed research object. This makes a custom composite transparent:
+collaborators and reviewers can see what the construct meant in the study, how
+it was measured, and which exact configuration produced the results.
+
+This supports exploratory construct development, preregistered measurement
+plans, sensitivity analyses, replication, and comparison between alternative
+operationalizations. Researchers may define constructs and combine CMAT's
+supported measures; defining entirely new low-level measures still requires
+adding a detector to the source code and measurement registry.
+
+### Typical workflow
+
+1. Open a folder containing legally obtained episode files.
+2. Use a Sampling node to create or attach a reproducible episode sample.
+3. Use Selection to exclude episodes or open **Clip Finder** for scene-level
+   stimulus selection.
+4. Create or choose a construct and save its operationalization as a recipe.
+5. Run Measurement with that documented configuration.
+6. Hand-code a validation sample and compare it with automated detection.
+7. Inspect the Results stage and export data with its provenance.
+
+---
+
+## Clip Finder: build custom-duration research stimuli
+
+Clip Finder searches contiguous windows inside a folder of episodes using the
+**window length the researcher specifies**. A window might be 10 seconds for a
+brief orienting-response task, 30 seconds for a pacing-rating study, several
+minutes for a comprehension experiment, or another duration required by the
+study protocol. CMAT applies that duration consistently across the source
+episodes so researchers can build a comparable candidate stimulus pool from
+measured properties rather than memory or convenience.
+
+From the **Pipeline** tab, select a **Selection** node and click **Find Clips…**.
+Choose the source folder, enter the custom window length in seconds, decide
+whether to keep a shorter final window, and set any opening or closing time to
+exclude. Then click **Measure Windows**. The work runs in the background,
+caches completed episodes, and can resume without starting the entire pool
+again.
+
+Once measured, filter candidate clips by:
+
+- cuts per minute;
+- mean motion;
+- mean audio RMS intensity;
+- low, middle, or high relative level for each measured feature;
+- episode filename; and
+- any combination of minimum and maximum bounds.
+
+The table updates as filters change and states the complete query in plain
+language. Selected windows can be exported as standalone MP4 files. CMAT
+re-measures the exported files and writes a JSON manifest containing the query,
+source episode, absolute timecodes, pool settings, and measurement fingerprint.
+
+### Why custom windows matter for research
+
+Window duration is part of the research method, not merely an export setting.
+Short windows can isolate rapid formal features such as cuts, flashes, motion,
+or bursts of audio intensity. Longer windows can preserve narrative context,
+dialogue, and sustained pacing while reducing the influence of a single edit.
+Using one declared duration across a candidate pool makes clips easier to
+compare and gives participant tasks consistent exposure times.
+
+CMAT records the chosen duration, excluded opening and closing intervals,
+partial-window rule, source episode, and absolute timecodes. This supports
+repeatable stimulus selection, preregistration, methods reporting, independent
+review, and exact reconstruction of the candidate pool. Researchers should
+choose the duration from the construct and task they intend to study—not after
+seeing which duration produces the preferred clips.
+
+Clip Finder deliberately does not declare a “best” clip. It filters and sorts
+according to criteria the researcher chooses. Its low/middle/high labels are
+thirds of the measured candidate pool—not universal properties—so the pool
+definition and exclusions remain visible beside the results. This makes the
+selection contestable and reproducible without pretending that stimulus choice
+is an automated judgment.
 
 ---
 
@@ -53,10 +184,10 @@ Those frameworks motivate *which* properties are worth measuring. They do not sp
 
 ## Screenshots
 
-<img width="805" height="435" alt="image" src="https://github.com/user-attachments/assets/305685d9-639c-428a-9246-b00e1a5709b6" />
-<img width="357" height="440" alt="image" src="https://github.com/user-attachments/assets/51a6030d-e4c0-4102-92ea-a81a472b54ba" />
-<img width="416" height="313" alt="image" src="https://github.com/user-attachments/assets/9cc86a50-f268-47dc-89d7-3e8b92d2968f" />
-<img width="635" height="401" alt="image" src="https://github.com/user-attachments/assets/9c0f35d7-867e-48de-85ac-079ed28ad2ff" />
+<img width="805" height="435" alt="CMAT children's television video analysis interface" src="https://github.com/user-attachments/assets/305685d9-639c-428a-9246-b00e1a5709b6" />
+<img width="357" height="440" alt="CMAT formal-feature measurement results" src="https://github.com/user-attachments/assets/51a6030d-e4c0-4102-92ea-a81a472b54ba" />
+<img width="416" height="313" alt="CMAT episode sampling and media research tools" src="https://github.com/user-attachments/assets/9cc86a50-f268-47dc-89d7-3e8b92d2968f" />
+<img width="635" height="401" alt="CMAT audiovisual analysis charts for children's media research" src="https://github.com/user-attachments/assets/9c0f35d7-867e-48de-85ac-079ed28ad2ff" />
 
 
 ---
@@ -64,7 +195,7 @@ Those frameworks motivate *which* properties are worth measuring. They do not sp
 ## Download & Install (Windows)
 
 1. Go to the [Releases page](../../releases/latest)
-2. Download `CMAT-v1.0.zip`
+2. Download the latest `CMAT` Windows `.zip`
 3. Unzip anywhere (e.g. `C:\CMAT\`)
 4. Double-click `CMAT.exe`
 
@@ -74,7 +205,14 @@ No Python, no FFmpeg, no other installs required. Everything is bundled.
 
 ## How to use
 
-### 1. Pick a root folder
+### 1. Open the research pipeline
+
+Launch CMAT and open the **Pipeline** tab. The default connected workflow gives
+you a starting point; click a stage to see what it needs and what it produces.
+You can save multiple pipelines for different studies or methods within the
+same media library.
+
+### 2. Pick a root folder
 
 File → Open Root Folder. Organize your library like this:
 
@@ -94,13 +232,13 @@ My Videos/
 
 Each subfolder containing MP4s is a "show." Folders named *Season N*, *Series N*, *S N*, or *Part N* are recognized as season folders and grouped under their parent show name in the index automatically.
 
-### 2. Analyze episodes
+### 3. Analyze episodes
 
 - **Single episode** — Select an episode in the Library tree, click **Analyze Episode**. Results appear on the right with a full metric breakdown and a cuts-per-30s timeline chart.
 - **Whole show** — Select a show folder, click **Analyze Show (Batch)**. Episodes are analyzed in sequence with a live progress bar. Results are cached — re-opening the app never re-analyzes files.
 - **Full series aggregate** — After analyzing all seasons of a show, click **Full Series Aggregate** to see combined statistics across every season folder at once.
 
-### 3. Sample a show for research
+### 4. Sample a show for research
 
 For large shows, use **File → Episode Sampler** to build a reproducible, documented sample instead of analyzing every episode.
 
@@ -112,7 +250,7 @@ For large shows, use **File → Episode Sampler** to build a reproducible, docum
 
 Once analyzed, use **View Sample Aggregate** to load a manifest and see aggregate results for only the sampled episodes — useful for comparing different sample sizes against a full-show baseline.
 
-### 4. Add episode metadata
+### 5. Add episode metadata
 
 Air dates, season numbers, and episode numbers can be attached to any analyzed episode. This enables chronological charting and longitudinal research.
 
@@ -126,7 +264,7 @@ Paste any TVMaze show URL (e.g. `https://www.tvmaze.com/shows/17755/franklin/epi
 
 For shows not on TVMaze, save the Wikipedia "List of X episodes" page as HTML (`Ctrl+S` in your browser), then browse to it in this dialog. CMAT parses the episode table and performs the same match preview and apply workflow.
 
-### 5. Visualize series trends
+### 6. Visualize series trends
 
 Once episodes are analyzed, click **Show Chart** from any show-level or full-series aggregate view. The chart window has three independent controls:
 
@@ -138,17 +276,17 @@ Once episodes are analyzed, click **Show Chart** from any show-level or full-ser
 
 **Era stratification** — Click **Edit Eras…** to define named date ranges (e.g. *Original Run 1992–1997*, *Revival 2003–2006*). Each era gets its own bar colour; episodes outside all defined ranges appear in gray. Eras are saved per-show to the local database and reload automatically the next time you open the chart.
 
-### 6. Browse and compare
+### 7. Browse and compare
 
 - **Index tab** — Sortable, filterable table of every analyzed episode and show. Columns include Air Date, Season, and Episode Number alongside all analysis metrics. Click any column header to sort; type in the filter bar to search.
 - **Compare** — Click **Pin for Compare** on any episode result, then **Compare with Pinned** on another to see a side-by-side metric table.
 - **Notes** — Add per-episode notes in the results panel; saved automatically to the local database.
 
-### 7. Adjust weights and presets
+### 8. Adjust weights and presets
 
 **Settings → Sensory Load Weights** — change how much each metric contributes to the composite score, or adjust normalization ceilings. Age-range and content-type presets are built in. Switching presets re-scores all cached results instantly — no re-analysis needed.
 
-### 8. Analyze speech and vocabulary
+### 9. Analyze speech and vocabulary
 
 The **Language tab** surfaces dialogue-level metrics that are independent of the sensory-load composite.
 
@@ -195,9 +333,46 @@ pip install spacy wordfreq textstat lexical-diversity
 python -m spacy download en_core_web_sm
 ```
 
-### 9. Export
+### 10. Export
 
 From the results panel: **Export JSON**, **Export CSV**, or **Export PDF Report** for a printable one-page summary.
+
+### 11. Build a 30-second study-clip candidate pool from the command line
+
+The current participant study is titled **Adult Perceptions of Pacing in
+Children’s Television** and uses adults' own pacing ratings only. The recipe
+name in the command below retains the former study title because it is a frozen,
+hash-bound provenance identifier; it does not describe the active participant
+protocol.
+
+The CLI can measure a complete season as contiguous 30-second windows without
+first creating hundreds of MP4 files. It writes relative high/middle/low
+profiles for cuts, motion, and audio intensity, then proposes the 12 unique
+clips / six matched contrasts required by the Option 3.5 replicated-feature
+design.
+
+```powershell
+python cli.py study-clips "Shows\Curious George Full Season One HD" `
+  --recipe "Adult Prediction of Children's Perceived Media Pacing - Feature Extraction" `
+  --exclude-first 51 --exclude-last 38
+```
+
+Use `--exclude-first SECONDS` and `--exclude-last SECONDS` to skip repeated
+openings and closings at decode time while retaining absolute source timecodes.
+`--recipe` makes the workflow use the saved recipe's pinned cut detector,
+motion method, shared frame-sampling settings, and audio method. The manifest
+stores the recipe citation and a complete snapshot for reproducibility.
+
+Runs resume from fingerprinted per-episode measurements. Add
+`--export-selected` only after reviewing the proposed scenes; CMAT then exports
+the twelve finalist MP4s and re-measures the exact participant files. See
+[Selecting 30-second study clips with CMAT](STUDY_CLIP_SELECTION.md) for
+outputs, review requirements, HD/SD guidance, and the stimulus-freeze checklist.
+
+Prefer the graphical [Clip Finder](#clip-finder-build-custom-duration-research-stimuli)
+for an interactive, no-code workflow. The command-line route uses the same
+candidate-pool measurements and is useful for scripting or repeating a frozen
+study protocol.
 
 ---
 
@@ -277,7 +452,7 @@ All findings are correlational. CMAT describes the stimulus; it does not predict
 git clone https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit.git
 cd childrens-media-analysis-toolkit
 pip install -r requirements.txt
-python gui.py
+python cmat_qt.py
 ```
 
 **Optional — NLP / vocabulary analysis:**

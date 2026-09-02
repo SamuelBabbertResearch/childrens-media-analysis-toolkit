@@ -44,7 +44,8 @@ from typing import Any
 
 from .cache import load_cached
 from .scope import read_selected
-from .trials import KIND_LABELS, discover_trials, sample_coverage
+from .trials import (KIND_LABELS, coverage_for_episodes, discover_trials,
+                     sample_coverage)
 from .validation import get_validation_dir
 
 # Stage status. Ordered by how much attention it deserves.
@@ -516,6 +517,64 @@ def _validation_stage(trials: list[dict], coverage: dict | None) -> Stage:
     return s
 
 
+def merged_pipeline(pipelines: list[Pipeline], root: Path | None = None,
+                    validation_dir: Path | None = None) -> Pipeline:
+    """A synthetic Pipeline over the UNION of several samples' episodes.
+
+    A node fed by more than one Sampling node — two branches wired into one
+    Selection node, or Validation's two input ports — must not silently
+    report only the first branch and drop the rest. Every stage type gets
+    the same treatment: union the episodes, union the trial records
+    (de-duplicated by the manifest file each came from, in case two samples
+    happen to share an episode), recompute the analyzed count and hand-coding
+    coverage over the union, and run the ordinary single-sample stage logic
+    (`_all_stages`) over that — so "Selection" or "Automated coding" or
+    "Validation" means the same thing for a merged node as it does for one
+    sample, just computed over a bigger episode set, instead of each stage
+    type needing its own special-cased merge.
+
+    Episodes are unioned by normalised PATH, not by stem: two different
+    shows can share an episode's stem ("S01 E01"), and de-duplicating by
+    stem would silently drop one of them from the working set — see
+    `LEARNINGS.md`. Hand-coding coverage uses that same show-plus-stem
+    identity, so one show's coding cannot satisfy the other show's episode.
+
+    Deliberately NOT built: comparing sample A's automated results against
+    sample B's hand coding as if they measured the same thing. A validation
+    comparison run is only meaningful between an automated detection and a
+    hand coding of the SAME episode — this function only ever unions
+    episode sets, never treats two different episodes as comparable. See
+    `DECISIONS.md`.
+    """
+    episodes_by_path: dict[Path, Path] = {}
+    for p in pipelines:
+        if p.folder:
+            for ep in read_selected(p.folder):
+                episodes_by_path.setdefault(ep, ep)
+    episodes = list(episodes_by_path.values())
+
+    trials_by_manifest: dict[Path, dict] = {}
+    for p in pipelines:
+        for t in p.trials:
+            mp = t.get("manifest_path")
+            if mp is not None:
+                trials_by_manifest[mp] = t
+    trials = list(trials_by_manifest.values())
+
+    analyzed = _count_analyzed(root, episodes, cached_stems(root))
+    coverage = coverage_for_episodes(episodes, validation_dir, root)
+
+    return Pipeline(
+        key="merged:" + "|".join(sorted(p.key for p in pipelines)),
+        name=" + ".join(p.name for p in pipelines),
+        description=f"Union of {len(pipelines)} samples",
+        episode_count=len(episodes),
+        trials=trials,
+        stages=_all_stages(root, None, None, episodes, analyzed, coverage,
+                           trials, None),
+    )
+
+
 def _results_stage(root: Path | None, analyzed: int, trials: list[dict],
                    folder: Path | None) -> Stage:
     s = Stage(
@@ -620,7 +679,7 @@ def build_pipelines(
         mine = [t for t in others if t.get("episode") in stems]
         analyzed = _count_analyzed(root, episodes, analyzed_stems)
         try:
-            coverage = sample_coverage(trial, vdir)
+            coverage = sample_coverage(trial, vdir, root)
         except Exception:
             coverage = None
 

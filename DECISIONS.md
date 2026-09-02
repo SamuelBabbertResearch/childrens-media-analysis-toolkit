@@ -711,7 +711,8 @@ platform difference — `glob("*.mp4")` is case-sensitive on Linux and not on
 Windows, so the same library listed differently depending on where it opened.
 **Consequence, less comfortable.** The `.mp4`-only filter had been hiding a
 duplicate. Making the corpus honest made the duplicate visible, which is the
-right order but means `TODO.md` item 0 must be done before the next draw.
+right order but meant the Spongebob show-level aggregate needed recomputing
+before the next draw — done 2026-08-17, see `FOR_PAPER.txt`.
 **Date.** 2026-08-15.
 **Rejected.** Narrowing the sampler to `.mp4` (it would make existing manifests
 undrawable); leaving the two definitions apart and describing the gap in the
@@ -814,6 +815,239 @@ through is the fix when it is needed.
 **Date.** 2026-08-15.
 **Rejected.** Having CMAT choose N episodes for the subset; treating
 `coding_target` as a filter.
+
+### A Selection node's exclusions are written as a sample manifest, not `node.config`
+**Decision.** Excluding episodes on a pipeline Selection node
+(`ui/inspector.py`'s **Exclude Library Selection**,
+`MainWindow._exclude_from_selection_node`) writes a new `selected.csv` +
+`manifest.json` pair, sibling to the linked sample's folder
+(`analyzer/selection.py`) — the same shape an Episode Sampler draw writes —
+rather than storing an exclude list in the pipeline document's
+`node.config`.
+**Reason.** `CLAUDE.md`'s terminology table already says Selection "is a
+property of the study and is recorded in a manifest," and every scope this
+app offers — `discover_trials`, `build_pipelines`, the Showing: chooser —
+already discovers samples by finding that exact file pair
+(`analyzer/trials.py _discover_sample_trials`). Writing it that way meant the
+narrowed sample needed **no new discovery code** and became a real, stable
+entry in the Showing: chooser automatically. A `node.config`-only exclude list
+was rejected specifically because it would have been a second, disconnected
+way of saying "these episodes are out" that the dropdown could not see —
+picking the same base sample from the chooser later would have silently
+forgotten the exclusion, the shape of bug `LEARNINGS.md` already warns about
+(numbers that display correctly but are wrong).
+**Consequence.** This is the "small slice" of `TODO.md`'s "wires carry the
+set": a Selection node narrows the *whole pipeline document's* one linked
+sample, not a set derived by tracing which specific nodes are wired to it.
+Branch-specific narrowing (an automated-coding branch and a hand-coding
+branch on the same canvas getting different working sets) needs per-node
+sample binding — moving `source_key` off the document onto individual
+Sampling nodes — which is the larger, still-open piece.
+**Date.** 2026-08-15.
+**Rejected.** Storing exclusions in `node.config`, read only by the pipeline
+canvas.
+
+### A Sampling node's own binding falls back to the document's `source_key`, never replaces it
+**Decision.** Per-node sample binding
+(`PipelineDoc.upstream_sample_keys`, `node.config["sample_key"]`) reads a
+Sampling node's own key if it has one, and otherwise falls back to
+`doc.source_key` — it does not require every pipeline to be migrated to
+per-node keys, and `doc.source_key` is not deprecated or removed.
+**Reason.** Every pipeline saved before this existed has one Sampling node
+and no `sample_key` on it. Requiring a migration (or worse, silently
+treating an unmigrated pipeline as unlinked) would have broken every
+existing study's derived status the moment this shipped. The fallback means
+a single-sample pipeline — still the common case — needs zero changes and
+behaves exactly as before; only a canvas that deliberately adds a second
+Sampling node needs to give at least one of them (or both, for clarity) an
+explicit key.
+**Consequence at the time — since resolved, twice.** A node reached by more
+than one Sampling node originally resolved its derived STATUS from only the
+first key found, with the others surfaced as an explicit Inspector row
+rather than silently dropped. That was replaced first for Validation only
+(below), then generalized to every node type the same day after a real user
+report: wiring two Sampling nodes directly into one Selection node showed
+only one of the two shows. "Only Validation needs this" turned out to be
+wrong — any node downstream of more than one Sampling node has the same
+problem, Selection included, and Selection is arguably the more common case
+of the two.
+**Date.** 2026-08-15.
+**Rejected.** Requiring per-node keys on every Sampling node (breaks
+existing pipelines).
+
+### Merging unions episodes, and never compares across samples
+**Decision.** A node fed by more than one Sampling node
+(`analyzer.pipeline.merged_pipeline`) reports derived status computed over
+the UNION of every resolvable branch's episodes — union the episode lists
+(de-duplicated by normalised path, in case two branches happen to draw the
+same episode), union the trial records (de-duplicated by manifest file), and
+recompute the analyzed count and hand-coding coverage over the union — then
+run the ordinary single-sample stage logic (`_all_stages`) over that
+synthetic union. This applies uniformly to every stage type — Selection,
+Automated coding, Language, Validation, all of it — not a Validation-specific
+special case. It does **not**, for any stage type, attempt to compare
+sample A's results against sample B's as if they measured the same episodes.
+
+Originally scoped to Validation alone (`merged_validation_view`, since
+folded into this) on the reasoning that Validation was the only node type
+whose whole purpose was comparing two things. That reasoning held for
+*comparison*, but missed that plain *episode-set union* is needed by every
+multi-input node, not just Validation — Selection's whole job is reporting
+the working set, and a working set fed by two samples is honestly the union
+of both, full stop, no comparison semantics involved at all.
+**Reason.** A transition-validation comparison record is inherently
+per-episode — it compares one episode's automated detection to a human
+coding of that SAME episode — and does not care which drawn sample the
+episode happened to belong to. So "how much of the combined working set has
+been validated," or "how many episodes are in the combined working set," are
+real, well-defined questions the union answers correctly for any stage type.
+"Does the automated pass on sample A agree with the hand coding on sample B"
+is not a real question at all when A and B are different episodes: there is
+nothing to compare, and reporting a number for it would be exactly what
+`CLAUDE.md` §2.2 forbids — a claim the data cannot support, dressed up as a
+validation figure. Union is safe everywhere; cross-sample comparison is not
+safe anywhere, and this function never does the second thing regardless of
+which stage type is asking.
+**Consequence.** If a researcher draws a large automated-only sample and a
+separate, smaller hand-coding validation sample, wiring both into one
+Validation node correctly reports validation coverage across the combined
+set. If they instead draw two shows separately and wire both into one
+Selection node, Selection correctly reports both shows' episodes as the
+working set — the bug report that prompted generalizing this beyond
+Validation.
+**Date.** 2026-08-15.
+**Rejected.** Comparing sample A's results against sample B's directly for
+any stage type; scoping the merge to Validation only (the first version,
+replaced the same day); silently reporting only the first branch (the
+behavior before either version of this decision); requiring branches to
+share every episode before a merged node would report anything.
+
+### Linking a sample to the document vs. to one node are two methods, not one that infers
+**Decision.** `MainWindow._link_to_sample` (document default) and
+`_link_node_to_sample` (one Sampling node's own key) are separate methods,
+fired by separate `Inspector` signals (`link_requested` /
+`link_node_requested`). Neither re-derives "did the user mean the document
+or a node" from `self._canvas.selected_node()` at click-time.
+**Reason.** They used to be one method that inferred which was meant from
+whatever happened to be selected on the canvas. `Manage → Link to Episode
+Sample…` is reachable regardless of canvas state, so it silently repointed
+a still-selected Sampling node's own binding instead of the document's, the
+moment a user reached for that familiar menu item with a node selected from
+browsing — see `LEARNINGS.md` for the incident this decision fixes.
+**Consequence.** `Inspector` now decides which signal its one "Link…"
+button fires when it BUILDS the button (`show_doc` vs. `show_node`), not
+when the button is clicked — the intent is fixed at the moment the button
+became visible for a reason, not re-guessed later from state that can have
+moved on.
+**Date.** 2026-08-15.
+**Rejected.** One method inferring intent from canvas selection at
+click-time (the prior, buggy design).
+
+### The Showing: chooser offers pipelines as well as samples
+**Decision.** The scope chooser lists the whole library, every drawn sample,
+and **every pipeline document that draws on more than one sample** (
+`MainWindow._doc_scope`, keyed `pipeline:<doc id>`). A pipeline resolving to
+one sample gets no entry — that sample's own entry already covers it.
+**Reason.** The chooser was built from `build_pipelines`, which despite its
+name returns *derived samples* — one entry per draw. So a study assembled
+from two Sampling nodes could not be named in this control at all: every
+entry narrowed to one branch, and a researcher who had deliberately built a
+two-sample pipeline saw one show at a time with no way to ask for the thing
+they had actually built. Per `CLAUDE.md` §3 a **pipeline** is the workflow
+the user owns and a sample is one draw inside it; a control whose entire job
+is naming the current research context has to be able to name the former.
+The user diagnosed this directly: "the library displays sampling rather than
+pipelines (which can include two samples together)."
+**Consequence.** The chooser is rebuilt at the end of `_discover_pipelines`
+rather than early in `set_root`, because pipeline entries cannot be computed
+until `self._docs` is loaded — which also keeps a root change to a single
+`build_pipelines` pass rather than two. Documents are read from `self._docs`,
+not re-listed from disk, so the chooser cannot disagree with the pipeline
+picker beside it. Binding a Sampling node rebuilds the chooser, so a study
+becomes selectable as soon as it exists rather than after a restart.
+**Date.** 2026-08-15.
+**Rejected.** Offering an entry for every pipeline including single-sample
+ones (duplicates an existing entry under a second name, in a list this
+library already fills with a dozen draws); making the pipeline picker and
+the scope chooser one control (they answer different questions — which study
+am I editing, versus which episodes am I looking at — and `DECISIONS.md`
+already separates scope from selection for the same reason).
+
+### Selecting a pipeline defaults to every sample it draws on
+**Decision.** `_follow_pipeline_scope` scopes to the union of a document's
+Sampling blocks when there is more than one, and to that block's sample when
+there is one. Unchanged: a pipeline with nothing resolvable leaves the scope
+alone.
+**Reason.** The combination of blocks IS the study the researcher assembled,
+so selecting it should not land on one arbitrary half. Before this, a
+two-block pipeline followed `doc.source_key` — a single sample, and often
+not one of the two actually wired up.
+**Consequence.** The application still opens on the whole library
+(`_discover_pipelines` passes `follow_scope=False`), which is a separate,
+earlier decision and its own test; this changes what happens when a pipeline
+is *chosen*, not what the app starts on. `_doc_sample_pipelines` is the one
+implementation of "which samples does this document draw on", shared with
+the chooser so the two cannot answer differently.
+**Date.** 2026-08-15.
+**Rejected.** Defaulting to the first Sampling block (arbitrary, and the
+source of the behaviour this replaces); remembering a per-pipeline last-used
+scope in preferences (a scope is a property of the session and is
+deliberately never persisted — see the scope/selection split above).
+
+### A pipeline node names the media it works on, on the box and in the inspector
+**Decision.** Every node whose upstream samples resolve draws the sample's
+name on the canvas box (`NodeItem.media_line`, under the stage description)
+and shows it as the leading **Media** row and part of the subtitle in the
+Inspector. A node fed by more than one sample names all of them, joined
+with " + ".
+**Reason.** A node's title and description come from the type registry, so
+two Sampling nodes on one canvas were two identical boxes reading "Sampling
+/ How episodes were chosen" — with nothing on either to say which show it
+drew. Per-node sample binding made that ambiguity a real hazard rather than
+a cosmetic one: the whole point is that the two boxes differ, and the
+interface did not show how. `CLAUDE.md` §1's clarity principle ("a
+researcher must be able to see exactly what the software is doing") and §4's
+"the visual pipeline is how a researcher sees what the software is doing"
+both point the same way.
+**Consequence.** The name shown is the engine's own (`Pipeline.name`, from
+the draw's manifest `trial_name`/`entry_id`) — the same string the Trials
+tab and the Showing: chooser use, never a label invented in the view, per
+`CLAUDE.md` §4. A node with no resolvable sample shows nothing rather than a
+placeholder, so an unlinked node still reads as unlinked.
+**Date.** 2026-08-15.
+**Rejected.** Renaming the node itself on link (the title is the
+researcher's to set, and overwriting it would lose their own naming);
+showing the sample's folder path (long, and not what the rest of the
+interface calls that draw).
+
+### Drawing a new sample from a Sampling node binds it there directly, no separate link step
+**Decision.** `MainWindow.open_sampler(self, node=None)` — when opened by
+double-clicking a Sampling node, a completed draw writes
+`node.config["sample_key"]` and saves the document immediately, rather than
+requiring the researcher to draw, then separately open the Inspector and
+use Link to Sample to point the node at what was just drawn.
+**Reason.** The node the user double-clicked to open the sampler IS the
+answer to "which node does this draw belong to" — there is no second
+question to ask. Requiring a manual link-after-draw step for something the
+UI already knows would be exactly the kind of friction `CLAUDE.md` §5's "no
+context drift" and the north-star spec's "researchers interact in the
+language of research methodology" argue against, and it is also what let
+the bug in `LEARNINGS.md` happen in the first place — an extra manual step
+is an extra chance to skip it or do it to the wrong node.
+**Consequence.** Opening the sampler WITHOUT a node context (the File menu,
+the toolbar button — neither tied to a specific pipeline node) keeps the
+old behavior exactly: only the session scope follows the draw, and binding
+it to any pipeline stays a deliberate, separate action. The two contexts
+are genuinely different questions ("what should this node draw" vs. "draw
+something, I'll decide what to do with it after"), so they get different
+answers rather than one compromise behavior for both.
+**Date.** 2026-08-15.
+**Rejected.** Always requiring a manual Link to Sample step after any draw,
+node-triggered or not (consistent, but reintroduces the exact friction that
+caused the reported bug); auto-binding even the node-less File-menu/toolbar
+draw to "whichever pipeline is currently open" (that draw was never asked
+to belong to any particular node or document, so guessing one is a worse
+default than not guessing).
 
 ---
 

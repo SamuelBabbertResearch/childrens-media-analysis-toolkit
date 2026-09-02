@@ -343,3 +343,109 @@ def test_bounds_covers_all_nodes(doc):
     x0, y0, x1, y1 = doc.bounds()
     assert x0 == -500.0 and y0 == -300.0
     assert x1 >= max(n.x + n.w for n in doc.nodes)
+
+
+# ---------------------------------------------------------------------------
+# Which sample feeds a node - the large slice of "wires carry the set"
+# ---------------------------------------------------------------------------
+
+def test_an_unlinked_document_resolves_to_no_sample(doc):
+    automated = next(n for n in doc.nodes if n.type == "automated")
+    assert doc.upstream_sample_keys(automated.id) == []
+
+
+def test_the_document_default_reaches_every_downstream_node(doc):
+    """A pipeline saved before per-node binding existed -- one Sampling node,
+    never given its own key -- must keep resolving exactly as it always did."""
+    doc.source_key = "sample:pilot"
+    for n in doc.nodes:
+        kind = G.node_type(n.type)
+        if kind.inputs == 0 and n.type != "sampling":
+            continue                       # a note: nothing upstream to reach
+        assert doc.upstream_sample_keys(n.id) == ["sample:pilot"], n.type
+
+
+def test_a_nodes_own_binding_overrides_the_document_default(doc):
+    doc.source_key = "sample:pilot"
+    sampling = next(n for n in doc.nodes if n.type == "sampling")
+    sampling.config["sample_key"] = "sample:override"
+    automated = next(n for n in doc.nodes if n.type == "automated")
+    assert doc.upstream_sample_keys(automated.id) == ["sample:override"]
+
+
+def test_converging_paths_to_one_sampling_node_do_not_duplicate_it(doc):
+    """default_doc's Validation node has two upstream paths (automated,
+    handcode_transitions) that both trace back to the SAME single Sampling
+    node -- one sample feeding it, not two."""
+    doc.source_key = "sample:pilot"
+    validation = next(n for n in doc.nodes if n.type == "validation")
+    assert doc.upstream_sample_keys(validation.id) == ["sample:pilot"]
+
+
+def test_two_sampling_nodes_feeding_one_node_report_both():
+    """The actual point: a node fed by two DIFFERENT Sampling nodes reports
+    both keys, nearest first -- not one, collapsed."""
+    doc = G.blank_doc("Branches")
+    a = doc.add_node("sampling", 0, 0)
+    a.config["sample_key"] = "sample:a"
+    b = doc.add_node("sampling", 0, 200)
+    b.config["sample_key"] = "sample:b"
+    val = doc.add_node("validation", 300, 100)
+    doc.connect(a.id, val.id)
+    doc.connect(b.id, val.id)
+
+    keys = doc.upstream_sample_keys(val.id)
+    assert keys == ["sample:a", "sample:b"]
+
+
+def test_a_node_with_no_path_to_any_sampling_node_resolves_to_nothing():
+    doc = G.blank_doc("Orphan")
+    note = doc.add_node("note", 0, 0)
+    results = doc.add_node("results", 200, 0)
+    doc.connect(note.id, results.id)
+    assert doc.upstream_sample_keys(results.id) == []
+
+
+# ---------------------------------------------------------------------------
+# Where a document is saved
+# ---------------------------------------------------------------------------
+
+def test_a_doc_saved_before_a_root_is_known_rehomes_into_the_library(tmp_path):
+    """The "I have to do the sampling again every time I open the pipeline"
+    report.
+
+    A document first saved with no library root lands in the application
+    folder fallback. Saving it again WITH a root must move it into that
+    library, because `list_docs(root)` only ever reads the library's own
+    pipelines folder -- a doc pinned to the fallback saves fine, reloads as
+    nothing, and looks like it never saved at all.
+    """
+    root = tmp_path / "Library"
+    root.mkdir()
+
+    doc = G.blank_doc("Made before a root was chosen")
+    fallback = G.save_doc(doc, None)
+    assert fallback.parent == G.pipelines_dir(None)
+
+    node = doc.add_node("sampling", 0, 0)
+    node.config["sample_key"] = "sample:drawn-later"
+    saved = G.save_doc(doc, root)
+
+    assert saved.parent == G.pipelines_dir(root)
+    assert not fallback.exists(), "moved, not copied -- one doc id, one file"
+
+    reloaded = [d for d in G.list_docs(root) if d.id == doc.id]
+    assert len(reloaded) == 1, "reopening the library must find it"
+    assert reloaded[0].nodes[0].config["sample_key"] == "sample:drawn-later"
+
+
+def test_resaving_an_already_homed_doc_keeps_its_path(tmp_path):
+    """Re-homing must not churn the filename on every ordinary save."""
+    root = tmp_path / "Library"
+    root.mkdir()
+    doc = G.blank_doc("Normal")
+    first = G.save_doc(doc, root)
+    doc.add_node("sampling", 0, 0)
+    second = G.save_doc(doc, root)
+    assert first == second
+    assert len(G.list_docs(root)) == 1

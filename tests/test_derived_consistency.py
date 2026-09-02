@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import inspect
 
+import pytest
+
 
 def test_a_scoring_change_rewrites_the_index_too():
     from ui.main_window import MainWindow
@@ -119,6 +121,50 @@ def test_load_scored_returns_none_when_nothing_is_cached():
     from pathlib import Path
     from analyzer.cache import load_scored
     assert load_scored(Path(tempfile.mkdtemp()), "Show", "nope", None) is None
+
+
+def _fake_ok_result(name: str, cuts: float, sat: float, motion: float) -> dict:
+    """A minimal 'ok' cached episode, the shape save_cache/load_scored expect."""
+    from analyzer.schema import EpisodeResult
+    r = EpisodeResult(file=name, duration_sec=600.0)
+    r.metrics.scene_pacing.cuts_per_min = cuts
+    r.metrics.color_saturation.mean = sat
+    r.metrics.motion.mean = motion
+    return r.to_dict()
+
+
+def test_backfill_merges_a_show_split_across_season_folders(tmp_path):
+    """A show whose episodes sit under Season 1/ and Season 2/ subfolders
+    gives list_shows() one entry PER SEASON, and both seasons' db_show_key
+    collapse to the same parent show (db_show_key groups season folders under
+    their parent so all seasons share one show row). Upserting per show_dir
+    called upsert_show once per season, each with only that season's
+    episodes — the season walked last silently overwrote every earlier
+    season's aggregate instead of merging with it. Found 2026-08-17 on a real
+    library: the stored Spongebob row read as one episode (the last one
+    walked) instead of six.
+    """
+    import cli
+    from analyzer.cache import save_cache
+    from analyzer.db import get_db, query_shows
+    from analyzer.show_index import show_key
+
+    root = tmp_path / "Library"
+    for season, cuts in (("Season 1", 10.0), ("Season 2", 20.0)):
+        d = root / "Show" / season
+        d.mkdir(parents=True)
+        ep = d / "E01.mp4"
+        ep.write_bytes(b"")
+        save_cache(root, show_key(root, d), "E01",
+                   _fake_ok_result("E01.mp4", cuts, 0.5, 0.1))
+
+    cli._db_backfill(root)
+
+    conn = get_db(root)
+    rows = query_shows(conn)
+    assert len(rows) == 1, "the two seasons must merge into one show row"
+    assert rows[0]["episode_count"] == 2
+    assert rows[0]["avg_cuts_per_min"] == pytest.approx(15.0)
 
 
 def test_the_speech_backfill_script_targets_the_library_root():

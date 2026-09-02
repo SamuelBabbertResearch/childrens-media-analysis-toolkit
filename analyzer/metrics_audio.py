@@ -53,7 +53,50 @@ def compute_audio_metrics(video_path: Path) -> AudioMetrics:
     return _compute_from_samples(audio)
 
 
-def _extract_audio(video_path: Path) -> np.ndarray | None:
+def compute_windowed_audio_metrics(
+    video_path: Path,
+    window_sec: float,
+    window_count: int,
+    start_sec: float = 0.0,
+    end_sec: float | None = None,
+) -> list[AudioMetrics]:
+    """Compute audio metrics for contiguous clips after one FFmpeg decode."""
+    if window_sec <= 0:
+        raise ValueError("window_sec must be greater than zero")
+    if window_count <= 0:
+        return []
+
+    try:
+        duration_sec = (
+            max(0.0, end_sec - start_sec) if end_sec is not None else None
+        )
+        audio = _extract_audio(
+            video_path, start_sec=start_sec, duration_sec=duration_sec
+        )
+    except (FileNotFoundError, RuntimeError) as exc:
+        logger.warning("Audio extraction failed for %s: %s", video_path.name, exc)
+        return [AudioMetrics(available=False) for _ in range(window_count)]
+    if audio is None or len(audio) == 0:
+        return [AudioMetrics(available=False) for _ in range(window_count)]
+
+    samples_per_window = max(1, int(round(window_sec * _SAMPLE_RATE)))
+    out: list[AudioMetrics] = []
+    for idx in range(window_count):
+        start = idx * samples_per_window
+        end = min(len(audio), start + samples_per_window)
+        samples = audio[start:end]
+        out.append(
+            _compute_from_samples(samples)
+            if len(samples) else AudioMetrics(available=False)
+        )
+    return out
+
+
+def _extract_audio(
+    video_path: Path,
+    start_sec: float = 0.0,
+    duration_sec: float | None = None,
+) -> np.ndarray | None:
     """
     Run FFmpeg to decode audio as 8 kHz mono float32 PCM piped to stdout.
     Returns None if the file has no audio stream.
@@ -68,16 +111,22 @@ def _extract_audio(video_path: Path) -> np.ndarray | None:
         logger.info("No audio stream in %s", video_path.name)
         return None
 
-    result = subprocess.run(
-        [
-            ffmpeg_exe(), "-i", str(video_path),
+    command = [ffmpeg_exe()]
+    if start_sec > 0:
+        command.extend(["-ss", f"{start_sec:.6f}"])
+    command.extend(["-i", str(video_path)])
+    if duration_sec is not None:
+        command.extend(["-t", f"{duration_sec:.6f}"])
+    command.extend([
             "-vn",                        # drop video
             "-acodec", "pcm_s16le",       # 16-bit signed PCM
             "-ar", str(_SAMPLE_RATE),     # resample to 8 kHz
             "-ac", "1",                   # mono
             "-f", "s16le",                # raw PCM output
             "-",                          # pipe to stdout
-        ],
+    ])
+    result = subprocess.run(
+        command,
         capture_output=True,
         timeout=300, **_NO_WINDOW,
     )

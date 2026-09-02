@@ -3,11 +3,14 @@
 PyInstaller spec for Children's Media Analysis Toolkit (CMAT).
 
 Build with:
+    python -m spacy download en_core_web_sm
+    python -m nltk.downloader -d .analysis/nltk_data cmudict
     python -m PyInstaller build.spec -y
 
 Output:
     dist/CMAT/CMAT.exe          — launch the app
-    dist/CMAT/config.json       — user-editable weights (next to exe)
+    dist/CMAT/config.json       — user-editable weights (copied next to exe
+                                  by the release build command)
     dist/CMAT/_internal/        — bundled Python + libraries
 
 Requirements in dist/CMAT/:
@@ -42,10 +45,14 @@ wordfreq_datas = [
     (os.path.join(_wf_data_dir, 'large_en.msgpack.gz'), 'wordfreq/data'),
 ]
 
+# textstat uses NLTK's CMU pronunciation corpus for English syllable counts.
+# Bundle it so readability analysis works on an offline research workstation.
+nltk_corpus_datas = [('.analysis/nltk_data', 'nltk_data')]
+
 block_cipher = None
 
 a = Analysis(
-    ['gui.py'],
+    ['cmat_qt.py'],
     pathex=[],
     binaries=[
         ('ffmpeg.exe', '.'),    # bundled ffmpeg — no PATH dependency for users
@@ -58,6 +65,7 @@ a = Analysis(
     ],
     datas=[
         ('config.json', '.'),   # lands next to CMAT.exe so users can edit weights
+        ('ui/reference', 'ui/reference'),  # report/pipeline reference stylesheets
         *spacy_datas,
         *en_datas,
         *ct2_datas,
@@ -65,15 +73,14 @@ a = Analysis(
         *thinc_datas,
         *blis_datas,
         *wordfreq_datas,
+        *nltk_corpus_datas,
     ],
     hiddenimports=[
         # matplotlib
-        'matplotlib.backends.backend_tkagg',
+        'matplotlib.backends.backend_qtagg',
         'matplotlib.backends.backend_agg',
         # PIL
-        'PIL._tkinter_finder',
         'PIL.Image',
-        'PIL.ImageTk',
         # pandas / numpy
         'pandas',
         'pandas._libs.tslibs.np_datetime',

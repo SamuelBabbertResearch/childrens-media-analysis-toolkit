@@ -78,6 +78,50 @@ and none of them is why a media researcher would choose this tool.
 
 ---
 
+## Public positioning
+
+Folded in from `design/POSITIONING_BRIEF.md` and
+`design/CMAT_GITHUB_PIPELINE_POSITIONING.md`, both now deleted — this section
+is their content, not a pointer to it.
+
+**The pipeline is the organizing metaphor, not a feature in a list.** The
+README and the app should teach the same structure:
+Sampling → Selection → Measurement → Validation → Results for the study,
+Construct → Aspect → Measure → Method for how a construct was operationalized,
+Source → Observation → Transformation → Result for where a number came from.
+Do not describe CMAT as "a sampling tool + video analyzer + hand coding +
+validation + exports" — describe it as one workflow that preserves the
+methodological decisions between those stages.
+
+**Identity: scientific workflow software for children's media research, not
+generic AI tooling.** Avoid startup language ("AI-powered", "supercharge",
+"next-gen"). The positioning line that has held up: *rigorous enough for
+publication, accessible enough for an undergraduate research assistant.*
+Consistent with `CLAUDE.md` §1's product principles — this is the same claim
+applied to how the project presents itself externally, not a separate brand
+exercise.
+
+**Be precise about what's built.** Any public-facing description of a
+not-yet-implemented capability (full provenance tracing, composite-as-data,
+user-definable codebooks) must say so — "CMAT is being designed around X,"
+not "CMAT provides X." Three tiers: Available now / In development / Long-term
+vision. This is `CLAUDE.md` §2.2's qualifier discipline extended to marketing
+copy, not a new rule.
+
+**README structure**, when it's next revised (`TODO.md` item 5 — the Tk→Qt
+rewrite is the trigger): what CMAT is → hero pipeline screenshot → why it
+exists → the five-stage pipeline → provenance ("where did this number come
+from?") → constructs/measures/methods → automated + human validation →
+research use cases → current capabilities → in development → long-term vision
+→ install → docs → contributing → citation → license.
+
+Not carried forward from the source documents: the SEO keyword lists and
+suggested `/sampling`, `/human-coding` etc. documentation-site page structure.
+Those describe a marketing site CMAT doesn't have; revisit only if one gets
+built.
+
+---
+
 ## Priority 1 — Make composites genuinely customizable
 
 **Status: 1a and 1b are built** (`analyzer/measurements.py` registry, engine

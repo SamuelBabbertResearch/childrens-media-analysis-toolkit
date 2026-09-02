@@ -290,6 +290,40 @@ OUTLIER_LEGEND = (
     "judgements of quality, suitability, or effect on a viewer."
 )
 
+# --- participant-facing pace rating scale (Study Runner) --------------------
+# A five-step ORDINAL ramp in ONE hue, light to dark. It is not part of the
+# analyst palette above, it never renders a CMAT measurement, and nothing in
+# the application proper should read it.
+#
+# Single hue varying only in lightness, for three reasons that are constraints
+# rather than preferences. See STUDY_RATING_SCALE_DESIGN.md for the sources.
+#   1. A red-to-green ramp is read as bad-to-good and shifts responses even
+#      when the wording is neutral (Tourangeau, Couper & Conrad, 2007). The
+#      scale must carry ORDER, not approval — and a participant screen that
+#      implied "very fast = bad" would be the stimulus-only guardrail broken
+#      in front of a child.
+#   2. Lightness survives the common colour-vision deficiencies, a greyscale
+#      printout and a washed-out projector. Hue alone survives none of them,
+#      and a child sample of any size contains a few colour-blind children.
+#   3. The step colour is never the only signal. Position, number and word all
+#      carry the same order, and the SELECTED state is an outline plus a mark,
+#      never a change of fill — so it survives a high-contrast Windows theme.
+# step_ink clears 4.5:1 against every step including step_5.
+PACE_SCALE: dict[str, str] = {
+    "step_1":   "#e9eff1",
+    "step_2":   "#cfe0e5",
+    "step_3":   "#afccd6",
+    "step_4":   "#8ab4c3",
+    "step_5":   "#639bae",
+    "step_ink": "#12242c",   # number and word, on every step
+    "selected": "#16211f",   # the outline and underline mark of the answer
+    "creature": "#4c5a57",   # turtle and rabbit anchors — flat, unemotional
+    "screen":   "#f6f7f4",   # participant screen ground
+}
+
+PACE_STEP_COLORS: tuple[str, ...] = tuple(
+    PACE_SCALE[f"step_{n}"] for n in range(1, 6))
+
 
 def color(name: str) -> str:
     """Look up a token. Unknown names raise rather than rendering black."""

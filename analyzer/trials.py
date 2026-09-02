@@ -316,32 +316,19 @@ def read_sample_episodes(manifest_path: Path) -> list[Path]:
     return out
 
 
-def sample_coverage(trial: dict, validation_dir: Path | None = None) -> dict | None:
-    """For an episode_sample trial: how many sampled episodes have manual coding.
-
-    Reads selected.csv beside the manifest; returns counts of episodes with a
-    transition-coding sheet and with an event-coding sheet, or None if the
-    episode list can't be read.
+def coverage_for_stems(stems: list[str],
+                       validation_dir: Path | None = None) -> dict | None:
+    """How many of *stems* have manual coding — the part of `sample_coverage`
+    that does not care which sample, or how many samples, the stems came
+    from. Shared with `analyzer.pipeline.merged_pipeline`, which unions
+    stems across more than one sample for a Validation node fed by more than
+    one Sampling node — a transition-validation comparison is a per-episode
+    record, indifferent to which drawn sample the episode belongs to.
     """
-    from .validation import find_manual
-    if trial.get("kind") != "episode_sample":
-        return None
-    vdir = validation_dir or get_validation_dir()
-    csv_path = trial["folder"] / "selected.csv"
-    if not csv_path.exists():
-        return None
-    stems: list[str] = []
-    try:
-        with csv_path.open(newline="", encoding="utf-8-sig") as fh:
-            for row in csv.DictReader(fh):
-                fp = (row.get("filepath") or "").strip()
-                if fp:
-                    stems.append(Path(fp).stem)
-    except Exception:
-        return None
     if not stems:
         return None
-
+    from .validation import find_manual
+    vdir = validation_dir or get_validation_dir()
     # Imported here rather than at module scope: event_coding imports this
     # module's neighbours, and the lookup is only needed on this path.
     from .event_coding import find_event_sheet
@@ -352,6 +339,74 @@ def sample_coverage(trial: dict, validation_dir: Path | None = None) -> dict | N
                    if find_event_sheet(Path(f"{s}.mp4"), vdir) is not None)
     return {"n_episodes": len(stems), "n_transition_coded": n_manual,
             "n_event_coded": n_events}
+
+
+def coverage_for_episodes(episodes: list[Path],
+                          validation_dir: Path | None = None,
+                          root: Path | None = None) -> dict | None:
+    """Count coding by show-plus-stem identity, not by bare episode stem.
+
+    When stems collide, coding must be filed below folders matching the show
+    key.  A legacy un-namespaced sheet is ambiguous and is not attributed to
+    either show.  Unique stems retain the existing recursive/prefix lookup.
+    """
+    if not episodes:
+        return None
+    from .validation import find_manual
+    from .event_coding import find_event_sheet
+    from .show_index import db_show_key
+
+    vdir = validation_dir or get_validation_dir()
+    by_stem: dict[str, list[Path]] = {}
+    for episode in episodes:
+        by_stem.setdefault(episode.stem.casefold(), []).append(episode)
+
+    def episode_show_key(episode: Path) -> str:
+        if root is not None:
+            try:
+                return db_show_key(root, episode.parent)
+            except (OSError, ValueError):
+                pass
+        return episode.parent.name
+
+    n_manual = n_events = 0
+    for group in by_stem.values():
+        if len(group) == 1:
+            episode = group[0]
+            n_manual += find_manual(episode, vdir) is not None
+            n_events += find_event_sheet(episode, vdir) is not None
+        else:
+            for episode in group:
+                show_dir = vdir / Path(episode_show_key(episode))
+                n_manual += find_manual(episode, show_dir) is not None
+                n_events += find_event_sheet(episode, show_dir) is not None
+    return {"n_episodes": len(episodes), "n_transition_coded": n_manual,
+            "n_event_coded": n_events}
+
+
+def sample_coverage(trial: dict, validation_dir: Path | None = None,
+                    root: Path | None = None) -> dict | None:
+    """For an episode_sample trial: how many sampled episodes have manual coding.
+
+    Reads selected.csv beside the manifest; returns counts of episodes with a
+    transition-coding sheet and with an event-coding sheet, or None if the
+    episode list can't be read.
+    """
+    if trial.get("kind") != "episode_sample":
+        return None
+    csv_path = trial["folder"] / "selected.csv"
+    if not csv_path.exists():
+        return None
+    episodes: list[Path] = []
+    try:
+        with csv_path.open(newline="", encoding="utf-8-sig") as fh:
+            for row in csv.DictReader(fh):
+                fp = (row.get("filepath") or "").strip()
+                if fp:
+                    episodes.append(Path(fp))
+    except Exception:
+        return None
+    return coverage_for_episodes(episodes, validation_dir, root)
 
 
 KIND_LABELS = {

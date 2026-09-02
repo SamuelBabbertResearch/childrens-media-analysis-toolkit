@@ -16,6 +16,23 @@ import numpy as np
 from .schema import ColorSaturationMetrics, MotionMetrics, FlashingMetrics
 
 
+def _motion_value(
+    previous: np.ndarray,
+    current: np.ndarray,
+    method: str,
+) -> float:
+    """Return CMAT's motion value for one sampled-frame transition."""
+    if method == "farneback":
+        flow = cv2.calcOpticalFlowFarneback(
+            previous, current, None, 0.5, 3, 15, 3, 5, 1.2, 0
+        )
+        mag = np.sqrt(flow[..., 0] ** 2 + flow[..., 1] ** 2)
+        # Typical max displacement per sampled-frame gap ~= 20 px.
+        return min(1.0, float(np.mean(mag)) / 20.0)
+    diff = cv2.absdiff(current, previous)
+    return float(np.mean(diff)) / 255.0
+
+
 def compute_frame_metrics(
     video_path: Path,
     sample_fps: float,
@@ -90,16 +107,7 @@ def compute_frame_metrics(
             # --- Motion ---
             motion = 0.0
             if prev_gray is not None:
-                if motion_method == "farneback":
-                    flow = cv2.calcOpticalFlowFarneback(
-                        prev_gray, gray, None, 0.5, 3, 15, 3, 5, 1.2, 0
-                    )
-                    mag = np.sqrt(flow[..., 0] ** 2 + flow[..., 1] ** 2)
-                    # Typical max displacement per sampled-frame gap ≈ 20 px; clamp to [0,1]
-                    motion = min(1.0, float(np.mean(mag)) / 20.0)
-                else:
-                    diff = cv2.absdiff(gray, prev_gray)
-                    motion = float(np.mean(diff)) / 255.0
+                motion = _motion_value(prev_gray, gray, motion_method)
                 motion_values.append(motion)
 
             prev_gray = gray
@@ -143,6 +151,88 @@ def compute_frame_metrics(
             luminance_delta_events_per_min=round(flashing_events / duration_min, 3),
         ),
     )
+
+
+def compute_windowed_motion(
+    video_path: Path,
+    sample_fps: float,
+    duration_sec: float,
+    window_sec: float = 30.0,
+    motion_method: str = "absdiff",
+    include_partial: bool = False,
+    progress_cb: Callable[[float], None] | None = None,
+    start_sec: float = 0.0,
+    end_sec: float | None = None,
+) -> list[MotionMetrics]:
+    """Measure motion in contiguous windows during one decode pass.
+
+    The first sampled frame in every window establishes a new baseline.  This
+    deliberately omits the transition across a window boundary, matching what
+    CMAT would observe if that window were saved and analyzed as its own clip.
+    """
+    if window_sec <= 0:
+        raise ValueError("window_sec must be greater than zero")
+
+    range_start = max(0.0, start_sec)
+    range_end = min(duration_sec, end_sec) if end_sec is not None else duration_sec
+    range_duration = max(0.0, range_end - range_start)
+    full_windows = int(range_duration // window_sec)
+    has_partial = include_partial and range_duration - full_windows * window_sec > 1e-6
+    n_windows = full_windows + (1 if has_partial else 0)
+    if n_windows == 0:
+        return []
+
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        cap.release()
+        raise RuntimeError(f"Could not open video file: {video_path}")
+
+    video_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    total_frames = max(1, int(cap.get(cv2.CAP_PROP_FRAME_COUNT)))
+    frame_interval = max(1, int(round(video_fps / sample_fps)))
+    values: list[list[float]] = [[] for _ in range(n_windows)]
+    previous_by_window: list[np.ndarray | None] = [None] * n_windows
+
+    start_frame = max(0, int(round(range_start * video_fps)))
+    end_frame = min(total_frames, int(round(range_end * video_fps)))
+    range_frames = max(1, end_frame - start_frame)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+    frame_idx = start_frame
+    relative_idx = 0
+    while frame_idx < end_frame:
+        if relative_idx % frame_interval == 0:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            timestamp = relative_idx / video_fps
+            window_idx = int(timestamp // window_sec)
+            if window_idx >= n_windows:
+                break
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            previous = previous_by_window[window_idx]
+            if previous is not None:
+                values[window_idx].append(
+                    _motion_value(previous, gray, motion_method)
+                )
+            previous_by_window[window_idx] = gray
+            if progress_cb:
+                progress_cb(relative_idx / range_frames)
+        else:
+            ret = cap.grab()
+            if not ret:
+                break
+        frame_idx += 1
+        relative_idx += 1
+
+    cap.release()
+    out: list[MotionMetrics] = []
+    for window_values in values:
+        arr = np.array(window_values) if window_values else np.array([0.0])
+        out.append(MotionMetrics(
+            mean=round(float(np.mean(arr)), 4),
+            peak=round(float(np.max(arr)), 4),
+        ))
+    return out
 
 
 def _count_flashing_events(

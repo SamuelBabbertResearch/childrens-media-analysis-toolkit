@@ -54,6 +54,22 @@ Because each site was written by reasoning locally, and each was correct on
 its own reading. Fixing the first instance is the least useful response.
 *Test:* grep for the shape before fixing the instance.
 
+**6. A many-to-one key's writer was never audited alongside its reader.**
+Added 2026-08-17, from a defect outside the original nineteen. `db_show_key`
+deliberately collapses `Show/Season 1` and `Show/Season 2` into one key so
+the Index shows one show, not two — itself the fix for the defect below,
+*Seasons in subfolders get treated as separate shows*. Three functions
+re-derive the `shows` table from cache by looping over `list_shows()` (one
+entry per season folder) and upserting once per loop iteration, so each
+season's aggregate silently overwrote the one before it instead of merging.
+The collapsing key had been applied everywhere results are *read*; nobody
+had checked everywhere they are *written*, so the same show kept producing a
+plausible, wrong, single-season number through two unrelated fixes that both
+looked complete.
+*Test:* when a key merges many sources into one, grep every writer of that
+key, not just its readers — see *The fix for one season-collapsing defect
+became the cause of the next*, below.
+
 ### Why they survived
 
 - **Verification stopped at "it ran".** Rendering, passing tests and a
@@ -184,6 +200,310 @@ Library reporting "groups shows" is the tree layer; the Index showing one
 `Arthur` is the database layer. **Full Series Aggregate** is the cross-season
 view, and as of 2026-08-14 it exists in both builds — it goes around the tree
 layer entirely, aggregating every cached episode under the root.
+
+### The fix for one season-collapsing defect became the cause of the next
+**What.** The entry above records the fix: `db_show_key` deliberately collapses
+`Show/Season 1` and `Show/Season 2` to the same parent key, so the index shows
+one `Show` rather than two. Three places re-derive the whole `shows` table
+from cache — `cli.py _db_backfill`, `ui/main_window.py MainWindow
+.rescore_index`, `gui.py _backfill_index` — and all three looped `for
+show_dir in list_shows(root): ... upsert_show(...)`, once per `show_dir`.
+Reported 2026-08-17 while closing `TODO.md` item 0 (recompute Spongebob's
+aggregate after de-duplication): `cli.py db shows` read "1 episode,
+avg_load 0.292" — worse than either number already on record as wrong.
+**Why.** `list_shows()` returns one entry **per season folder**, not per
+show. Grouping by `db_show_key` was the fix for the *display* layer (one
+`Show` row, not two); it was never applied to the *write* layer. Each
+season's `upsert_show` call is a full replace (`INSERT OR REPLACE` keyed by
+`show_key`), so the season walked last silently overwrote every earlier
+season's aggregate rather than merging with it. A show that fits in one
+folder never exercises this path — it was invisible on Curious George and
+Arthur, both single-folder in this library, and would stay invisible on any
+show until it happened to be the one laid out with season subfolders.
+**The trap.** Two entries above this one already record a duplicate-count bug
+and a raw-path show-name bug on this exact show. Both looked fixed after
+their own commits. Neither ever produced a *visible*, correct number,
+because every backfill after either fix silently threw away all but one
+season's episodes before anyone read the result — a fix downstream of an
+unrelated bug can look like it didn't work, when the real fault is a third
+thing neither fix touched.
+**Fix.** All three functions now accumulate `(EpisodeResult, dname)` keyed by
+`db_show_key` across every `show_dir` sharing one, and call `upsert_show`
+once per key after the whole walk — not once per `show_dir`. Two regression
+tests build a synthetic show split across two season folders and assert the
+merged count and mean survive a backfill/rescore:
+`tests/test_derived_consistency.py::test_backfill_merges_a_show_split_across_season_folders`,
+`tests/test_scope.py::test_rescore_index_merges_a_show_split_across_seasons`.
+`ui/index_tab.py`'s `summarise_shows` was never affected — it derives from
+episode rows already on screen rather than reading the stored table, which
+is exactly why `DECISIONS.md` gives it that design.
+**Avoid.** When a stable key intentionally maps many source groupings to one
+target row (a season-collapsing key, a normalised name, a content hash),
+grep every writer of that key for a loop that upserts once per *source*
+grouping rather than once per *target* key. A reader that derives on demand
+cannot have this bug by construction; a writer that caches an aggregate can,
+silently, and will keep looking plausible — a valid, if wrong, count and
+mean, not a crash.
+
+### Three patched copies of the season-overwrite fix became one function
+**What.** The entry above fixed the season-overwrite bug identically in all
+three call sites — `cli.py _db_backfill`, `ui/main_window.py MainWindow
+.rescore_index`, `gui.py _backfill_index` — each patched separately. Per
+`CLAUDE.md` §6 ("when a rule must hold at every call site, put it IN the
+call"), three copies of one loop is a standing invitation for a fourth (a
+future export script, a batch tool) to reintroduce the bug from scratch.
+**Fix.** Factored the walk-`list_shows`/accumulate-by-`db_show_key`/upsert-once
+logic into `analyzer.db.rebuild_show_aggregates(conn, root, fetch_result,
+*, set_season=False)`. Only the part that genuinely differs between callers —
+how to resolve one episode's scored `EpisodeResult` — stays with each caller,
+passed in as `fetch_result(show_dir, skey, episode_path)`: `cli.py` rescoring
+via `load_scored` + a loaded config, `gui.py` via `load_cached` +
+`EpisodeResult.from_dict` + `rescore_episode`, `ui/main_window.py` via
+`self._cached`. `set_season=True` reproduces the `auto_set_season` call that
+`gui.py` and `ui/main_window.py` made per episode and `cli.py` never did.
+Regression tests from the original fix (`test_derived_consistency.py`,
+`test_scope.py`) needed no changes — they exercise the call sites, and the
+call sites now share one implementation instead of three.
+**Avoid.** When the same shape gets patched at multiple call sites for the
+same bug, that's the signal to factor immediately, not to move on once the
+bug is gone — the drift risk survives the fix.
+
+### Two copies of "which sample does this node belong to" existed before either was extended
+**What.** Building per-node sample binding (`TODO.md`'s "wires carry the set",
+large slice) meant every node's derived status had to resolve via
+`doc.upstream_sample_keys` instead of always `doc.source_key`. There were two
+places doing that resolution: `MainWindow._stage_for` (feeds the Inspector)
+and `MainWindow._stage_status` (feeds the canvas box subtitle) — the same
+three-line `doc.source_key` → `self._derived.get(...)` → `.stage(key)` lookup,
+independently.
+**Why it mattered here specifically.** Extending only `_stage_for` would have
+left the Inspector correctly showing a branch's own sample while the canvas
+box beside it kept showing the document-default sample's status — the two
+halves of one screen disagreeing about the same node, which is a worse defect
+than either being wrong alone, because neither reading looks broken on its
+own.
+**Fix.** Factored both into one lookup in `MainWindow._stage_for(node)`;
+`_stage_status` now calls `_stage_for` instead of re-deriving the same
+pipeline lookup, and keeps only the formatting that differs (a status
+suffix string vs. Inspector rows). (`_stage_for` absorbed what was briefly a
+separate `_upstream_pipeline` helper once it also had to grow the Validation-
+merge special case below — one lookup function, not two, stayed the rule
+even as its body grew.)
+**Avoid.** Per `CLAUDE.md` §6, this is the same shape as the season-overwrite
+fix above, caught before it drifted rather than after: before extending logic
+that resolves "which sample/pipeline does this node belong to," grep for
+every other reader of `doc.source_key` first — a second copy found while
+already mid-edit is cheap to fold in; one found later, after both have
+diverged, is the harder fix.
+
+### A document saved to one folder and reloaded from another looked like it never saved
+**What.** "It doesn't save and I have to do the sampling again every time I
+open the pipeline." Every write succeeded; nothing was lost or corrupted;
+`save_doc` returned a real path each time. The work simply never came back.
+**Why.** `save_doc` assigned `doc.path` only when it was `None`, and
+`pipelines_dir(root)` returns `<root>/.analysis/pipelines` with a
+`<app folder>/pipelines` fallback for when no library root is known yet. A
+document first saved before a root was chosen — the startup wizard on a
+first run, where `set_root` is never scheduled because there is no
+`last_root_folder` preference — got its path pinned to the fallback. Every
+later save, root or no root, kept writing there. `list_docs(root)` only
+ever reads the library's own folder, so it found nothing and
+`_discover_pipelines` fell back to `[default_doc()]` — a blank pipeline,
+indistinguishable from "your work was never saved."
+**Fix.** `save_doc` re-homes: it keeps `doc.path` only while that path is
+already inside the target folder, otherwise it re-assigns into the target
+and unlinks the old file after the new one is safely written (moved, not
+copied — two files sharing one doc id would both be discovered and diverge).
+**Avoid.** A save path cached on first write is a bug whenever the
+destination can legitimately change later. The tell here was that the write
+and the read used the same helper (`pipelines_dir`) with **different
+arguments** at different times — `save_doc(doc, None)` early, then
+`list_docs(root)` after. When a path helper takes a parameter that varies
+over a session, check every caller passes the same value at every point in
+the lifecycle, or make the later call re-derive rather than reuse. Also:
+"it saves but reloads empty" is a *path* symptom far more often than a
+serialisation one — check WHERE before debugging WHAT.
+
+### The control for choosing a working set could not express the thing the user had built
+**What.** Three rounds of fixes to "only one sample shows in the Library"
+each found a real bug — merge scoped to Validation, then `_follow_node_scope`
+using one key, then the scope union — and the symptom survived all of them.
+The user identified the actual cause: "the library displays sampling rather
+than pipelines (which can include two samples together)."
+**Why.** The Showing: chooser was built entirely from `build_pipelines`,
+which returns one entry per *drawn sample*. A pipeline combining two samples
+had **no entry in the list at all**. So the ordinary way to change what the
+Library shows could only ever express one branch — every fix upstream was
+correct and none of them could reach the symptom, because the symptom was
+that the control offered no such option to pick.
+**Fix.** `_doc_scope` adds one chooser entry per pipeline document that
+draws on more than one sample. See `DECISIONS.md`.
+**Avoid.** Three fixes in a row that each verify green and leave the user's
+symptom unchanged is itself the diagnostic: it means the bug is not on the
+path being fixed. The tests passing were honest — they drove
+`_open_stage_screen`, which *is* fixed — while the user was using the
+Showing: dropdown, which was never in any test. When a report survives a
+fix, ask **which control the user actually touched** before fixing the same
+area again; a test that reaches the right outcome by a path the user never
+takes proves the outcome is reachable, not that it is reachable *by them*.
+Also: `build_pipelines` returning samples rather than pipelines is a naming
+trap this project set for itself, and it hid the gap in plain sight — the
+line read "for pipeline in build_pipelines" and looked exhaustive.
+
+### One resolved sample fed the Library while the node above it reported two
+**What.** With two Sampling nodes wired into one node, the Inspector
+correctly reported the merged set, but the Library tab showed only one
+show's episodes at a time — the other looked lost.
+**Why.** `_stage_for` was fixed to merge across every upstream branch
+(`merged_pipeline`), but `_follow_node_scope` — which decides what the
+Library actually displays — still did `derived[keys[0]]` and built a scope
+from that single draw. The two answers to "which episodes does this node
+work on" were computed in different places from different amounts of the
+available information.
+**Fix.** `analyzer.scope.scope_from_draws` unions episodes across several
+draw folders (de-duplicating by normalised path, `folder=None` because a
+union is not any one draw's folder); `_follow_node_scope` uses it whenever
+more than one upstream sample resolves.
+**Avoid.** Fixing "which sample(s) feed this node" in the *status* path
+without fixing it in the *scope* path left the interface self-contradictory
+— the panel said two, the Library showed one. When a question has more than
+one consumer, grep for every consumer as part of the same change; this is
+the same shape as the two-copies entry below, and it recurred within one
+session of it being written down.
+
+### Drawing a NEW sample from a node never told the node about it
+**What.** After the linking bug below was fixed, the user reported two more
+symptoms from the same session's feature: editing (drawing) one Sampling
+node's episodes looked like it changed "the overall sampling list for the
+pipeline" instead of that node alone, and nothing was ever saved — redrawing
+was required every time the pipeline was reopened.
+**Why.** Two different actions look similar but are not: `_link_to_sample`
+picks an EXISTING sample from a list (fixed below); `open_sampler` draws a
+BRAND NEW one via the Episode Sampler dialog. Double-clicking a Sampling
+node on the canvas opens the sampler through `STAGE_ACTIONS["sampling"]`,
+but that dispatch called `open_sampler()` with **no arguments at all** — the
+method had no way to know which node, if any, it was opened from. On a
+successful draw it only ever called `self.set_scope(...)` (the ephemeral,
+never-persisted session scope) and never touched `node.config["sample_key"]`
+or called `save_doc`. So every draw, from either Sampling node, only ever
+changed the session's current view — both nodes kept falling back to
+whatever `doc.source_key` happened to be (or nothing), and since neither
+node's own config was ever written, there was nothing to save or reload —
+explaining both complaints as one cause.
+**Fix.** `open_sampler(self, node=None)`: passed the triggering node when
+opened from a Sampling node on the canvas (`_open_stage_screen` now calls
+`STAGE_ACTIONS[...][1])(node)`, not `()`); on a successful draw with a node
+given, writes `node.config["sample_key"]` and calls `save_doc` directly,
+the same write `_link_node_to_sample` makes. The two other call sites
+(File menu, toolbar button) have no node context and keep the old
+behavior — rewired through a `lambda: self.open_sampler()` shim so Qt's
+`triggered`/`clicked` signal's boolean `checked` argument does not leak
+into the new `node` parameter via auto arity-matching.
+**Avoid.** When a dispatch table calls a handler with zero arguments
+(`getattr(self, name)()`), and that handler later needs to know WHICH
+caller invoked it, check every dispatch site, not just the one you're
+adding — this table had exactly one entry and was still trivial to miss
+because the call site read as boilerplate ("just invoke the method"),
+not as something that needed updating for the new feature.
+
+### One "Link to Sample" method inferred which of two things it was doing from canvas selection state
+**What.** After the merge fix below shipped, the user's exact reported case
+(two Sampling nodes wired into one Selection node) *still* showed only one
+show. The merge logic itself was correct — verified by a test that builds
+the doc directly and calls `_stage_for` — so the bug had to be in how the
+document actually GOT into that state through real clicking, which no test
+exercised: every test set `node.config["sample_key"]` directly, never
+through the real "Link to Sample" button or dialog.
+**Why.** `_link_to_sample` was one method, reachable from two places —
+`Manage → Link to Episode Sample…` (a menu item, no per-node meaning) and
+the Inspector's button (shown per-node when a Sampling node is selected).
+It decided which one to do by checking `self._canvas.selected_node()` at
+click-time: if a Sampling node happened to be selected, it silently wrote
+that node's `sample_key`; otherwise it wrote the document's `source_key`.
+The likely real sequence: link Sampling node A (node selected, correct),
+click over to link Sampling node B (correct), then reach for the familiar
+`Manage` menu item to double check or relink — with node A (or B) still
+selected from browsing. That menu click silently overwrote the DOCUMENT's
+`source_key` instead of doing nothing, or worse, if a node was selected, it
+looked like it worked but wrote to a different place than the user expected.
+With both Sampling nodes still unbound at the node level after such a
+sequence, both would fall back to the same single `doc.source_key` —
+collapsing two branches into one, exactly the reported symptom.
+**Fix.** Split into two signals and two methods:
+`Inspector.link_requested`/`MainWindow._link_to_sample` always sets the
+document default; `Inspector.link_node_requested`/`MainWindow
+._link_node_to_sample` always sets the selected node's own key. Which one
+fires is decided by which button was shown/pressed (`Inspector` sets an
+internal flag when it builds the button, in `show_doc` vs. `show_node`), not
+re-derived from canvas state when the click lands.
+**Avoid.** A UI action that infers "which of two operations does the user
+mean" from incidental, mutable state (what else happens to be selected right
+now) rather than from which control was actually invoked is a bug waiting
+for the exact sequence of clicks that makes the inference wrong — and by
+its nature, that bug cannot be caught by a test that sets state directly
+instead of driving the real control. When two conceptually different
+actions share one handler, check whether the handler can tell them apart by
+construction (which signal fired) before trusting it to infer correctly
+from context.
+
+### A merge tested on Validation shipped untested on the node type a user actually tried first
+**What.** The multi-Sampling-node merge (`TODO.md`'s "wires carry the set")
+was built and tested against Validation only, on the reasoning that
+Validation was the one node type with real "compare two things" semantics.
+Shipped, described in `TODO.md` as done. The first real use — a user wiring
+two Sampling nodes into one *Selection* node, the more natural topology for
+"combine two draws into one working set" — showed only one of the two shows.
+`_stage_for` special-cased `kind.stage_key == "validation"` before falling
+through to `pipelines[0].stage(kind.stage_key)` for every other stage type,
+silently.
+**Why the scoping was wrong.** Validation being the one node type that
+*compares* two things does not imply it is the one node type that needs
+*merging* — merging is just "union the episode sets," which every stage type
+downstream of more than one Sampling node needs equally. The comparison
+question ("does A's automated pass agree with B's hand coding") is a
+separate, harder, and genuinely Validation-specific question this project
+correctly still refuses to answer (see `DECISIONS.md`) — but refusing that
+one hard question is not a reason to also refuse the easy, safe union for
+every other stage type.
+**Fix.** Generalized `merged_validation_view` into
+`analyzer.pipeline.merged_pipeline`, which builds one synthetic Pipeline
+over the union and lets `.stage(kind.stage_key)` answer for whichever stage
+type is asking — Selection, Automated coding, Language, Validation, all the
+same code path. `analyzer.selection.write_narrowed_selection_from_sources`
+got the matching fix for the Selection node's exclude action.
+**Avoid.** When a fix is demonstrated on one example of a general problem
+("a node fed by more than one Sampling node"), check whether the reasoning
+for *why that example needed fixing* actually justifies restricting the fix
+to it, or whether it was just the first/easiest example to reach for. Here
+the tell was in the TODO/DECISIONS write-up itself: it named the *comparison*
+question as the reason to scope to Validation, but the fix being built
+didn't do any comparing — it only ever unioned, which is exactly what every
+other multi-input node type needed too. A test for the general case (any
+node type, not just Validation) would have caught this before a user did.
+
+### Hand-coding coverage is keyed by bare episode stem, not by show
+**What.** Building the merge (`analyzer.pipeline.merged_pipeline`, unioning
+two samples' episodes for coverage counting) used a test fixture with two
+different shows whose episodes both
+happened to be named "S01 E01.mp4", "S01 E02.mp4", etc. The union of their
+stems collapsed to the smaller show's episode count — one coded episode
+disappeared from the count entirely, silently.
+**Why.** `coverage_for_stems` (and the `sample_coverage` it was factored out
+of) keys hand-coding lookups by `Path(fp).stem` alone. A stem is not a
+globally unique episode identifier — only `db_show_key`-plus-stem is, which
+is exactly why the index and cache already key on the compound form
+(`LEARNINGS.md` § *the season-overwrite* entries, `analyzer/show_index.py`).
+Coverage counting never picked up that convention.
+**Not fixed.** This predates the Validation merge — a single sample coded
+straight from `sample_coverage` has the identical weakness if two of its
+episodes happen to share a stem — so it is not this session's regression to
+silently patch in passing. Logged as its own `TODO.md` item instead: rekey
+`coverage_for_stems` by show + stem.
+**Avoid.** A bare filename stem is not a safe unique key anywhere in this
+codebase; this is at least the third module (index, cache, now coverage) that
+assumed it was one before finding out the collision the hard way. Any new
+code keying anything by episode identity should use `db_show_key` + stem, or
+grep for an existing helper, before reaching for `Path(x).stem` alone.
 
 ### The sampler's CSV paths did not match the cache's keys
 **What.** Loading a sampling template failed to find already-analysed episodes;

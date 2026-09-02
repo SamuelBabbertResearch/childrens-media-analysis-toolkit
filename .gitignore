@@ -35,6 +35,13 @@ htmlcov/
 .coverage
 test_report.pdf
 
+# Local generated output and run data. These may contain large intermediates,
+# exported stimuli, test dependencies, or participant responses and must never
+# be part of a source release.
+/output/
+/participant_data/
+/tmp/
+
 # Scratch / dev files
 Test.pyt
 *.parts
@@ -74,6 +81,9 @@ FOR_PAPER.txt
 # Per-user preferences: last opened folder (an absolute local path), startup
 # window choices. config.json is versioned and shared; this is not.
 user_prefs.json
+
+# Samuel's personal working-style notes for Claude Code — local only.
+CMAT_Claude_Working_Style.md
 
 # User-created pipeline documents (personal project data, not part of the app).
 # Written next to the library when a root folder is set; this is the fallback.

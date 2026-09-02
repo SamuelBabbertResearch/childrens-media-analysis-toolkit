@@ -6,6 +6,14 @@ and a note on whether previously coded episodes were re-checked under the new ru
 
 Coder: Samuel Babbert (single coder; see Limitations in VALIDATION_LOG.md)
 
+**Provenance.** `hard_cut`, `dissolve`, `fade_in`/`fade_out`, `wipe`, and `iris`
+are standard editing / shot-boundary-detection terms, not a coding scheme
+adapted from a specific cited source. The operational definitions, timestamp
+conventions, and decision rules below — including the choice to bucket wipe,
+iris, whip-pan-disguised-cut, and page-turn together under `other` because the
+tool cannot yet distinguish them — were written for this study and have not
+been verified against a published instrument.
+
 ---
 
 ## Transition types and operational definitions

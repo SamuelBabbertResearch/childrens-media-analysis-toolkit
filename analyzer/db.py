@@ -10,8 +10,11 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
+from .aggregate import compute_show_aggregate
 from .schema import EpisodeResult, ShowAggregate
+from .show_index import db_show_key, display_show_name, list_episodes, list_shows, show_key
 
 
 # ---------------------------------------------------------------------------
@@ -566,6 +569,69 @@ def auto_set_season(conn: sqlite3.Connection, file_path: str, season_num: int) -
         (season_num, file_path),
     )
     conn.commit()
+
+
+def rebuild_show_aggregates(
+    conn: sqlite3.Connection,
+    root: Path,
+    fetch_result: Callable[[Path, str, Path], EpisodeResult | None],
+    *,
+    set_season: bool = False,
+) -> int:
+    """Walk every show under root, upsert each episode, then upsert each show aggregate.
+
+    Accumulates episodes by `db_show_key`, not by show_dir: a show split across
+    season subfolders (Season 1/, Season 2/, ...) gives `list_shows()` one entry
+    PER SEASON, and every season's db_show_key collapses to the same parent show.
+    Upserting the aggregate per show_dir instead of once per db_show_key after the
+    full walk is exactly the bug found 2026-08-17 on Spongebob (see LEARNINGS.md):
+    the season walked last silently overwrote every earlier season's aggregate
+    instead of merging with it. This was independently patched into cli.py's
+    `_db_backfill`, gui.py's `_backfill_index`, and
+    `MainWindow.rescore_index` before being factored out here.
+
+    `fetch_result(show_dir, skey, episode_path)` resolves how a caller gets a
+    scored EpisodeResult for one episode — load from cache, rescore under current
+    config, whatever differs between callers — and returns None to skip an
+    episode. Everything downstream of that (the per-db_show_key accumulation and
+    the show upsert) is shared.
+
+    `set_season`: also call `auto_set_season` for each episode's detected season
+    (only cli.py's backfill omits this — it has no auto-detected season to set).
+
+    Returns the number of episode rows written.
+    """
+    written = 0
+    by_key: dict[str, tuple[str, list[EpisodeResult]]] = {}
+    for show_dir in list_shows(root):
+        skey = show_key(root, show_dir)
+        stable_key = db_show_key(root, show_dir)
+        dname, auto_s = display_show_name(root, show_dir)
+        for ep in list_episodes(show_dir):
+            try:
+                result = fetch_result(show_dir, skey, ep)
+            except Exception:
+                continue
+            if result is None or result.status != "ok":
+                continue
+            try:
+                upsert_episode(conn, result, dname, str(ep), show_key=stable_key)
+                if set_season and auto_s is not None:
+                    auto_set_season(conn, str(ep), auto_s)
+            except Exception:
+                continue
+            _, results = by_key.setdefault(stable_key, (dname, []))
+            results.append(result)
+            written += 1
+    for stable_key, (dname, show_results) in by_key.items():
+        if not show_results:
+            continue
+        try:
+            agg = compute_show_aggregate(dname, show_results)
+            upsert_show(conn, agg, dname, show_key=stable_key)
+        except Exception:
+            pass
+    return written
 
 
 def upsert_show_metadata(

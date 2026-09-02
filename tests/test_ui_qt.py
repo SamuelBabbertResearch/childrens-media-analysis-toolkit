@@ -436,17 +436,24 @@ def test_double_clicking_a_node_asks_for_its_screen():
 
 
 def test_a_pipeline_links_to_a_sample_not_a_show():
-    """`source_key` must be a key `build_pipelines()` actually produces.
+    """`source_key` (and a Sampling node's own `sample_key`) must be a key
+    `build_pipelines()` actually produces.
 
     A show key ("Show/Season 1") and a derived pipeline key
     ("sample:<folder>") are different namespaces. Link to Episode Sample
     offered SHOWS, so the look-up never matched and every node of every
     linked pipeline reported "no derived status" — which is why the derived
-    state looked like it was merely undisplayed.
+    state looked like it was merely undisplayed. `_link_to_sample` (the
+    document's default) and `_link_node_to_sample` (one Sampling node's own
+    key) both go through `_pick_sample`, which is the one place this must
+    hold — see `LEARNINGS.md` on the two used to be one method that inferred
+    which was meant.
     """
     import inspect
     from ui.main_window import MainWindow
-    src = inspect.getsource(MainWindow._link_to_sample)
+    src = (inspect.getsource(MainWindow._link_to_sample)
+          + inspect.getsource(MainWindow._link_node_to_sample)
+          + inspect.getsource(MainWindow._pick_sample))
     assert "build_pipelines" in src
     assert "show_key" not in src
 
@@ -775,19 +782,49 @@ def test_no_screen_drops_its_worker_reference_in_a_slot():
     The C++ object is deleted while still inside emit, so it dies with no
     traceback and no Python exception. Guards must use isRunning() and keep
     the reference — the pattern AutomatedTab has always used.
-    """
-    import pathlib
-    import ui
-    offenders = []
-    for path in pathlib.Path(ui.__file__).parent.glob("*.py"):
-        for number, line in enumerate(
-                path.read_text(encoding="utf-8").splitlines(), 1):
-            if line.strip() == "self._worker = None":
-                offenders.append(f"{path.name}:{number}")
-    assert offenders == [], (
-        "these free a QThread from a slot connected to it: "
-        + ", ".join(offenders))
 
+    Checked by PARSING rather than by matching the line's text. The text check
+    this replaced looked for exactly `self._worker = None`, which meant every
+    screen that wrote `self._worker: SomeWorker | None = None` slipped past it
+    — including inside a slot, where it is fatal — while a perfectly safe
+    initialiser in `__init__` failed it. It was wrong in both directions at
+    once. This walks the AST instead: any assignment of None to a
+    worker-shaped attribute, annotated or not, outside `__init__`.
+    """
+    import ast
+    import pathlib
+
+    import ui
+
+    def _worker_attr(target) -> str | None:
+        if isinstance(target, ast.Attribute) and                 isinstance(target.value, ast.Name) and target.value.id == "self":
+            name = target.attr
+            if "worker" in name.lower() or "transcriber" in name.lower():
+                return name
+        return None
+
+    offenders = []
+    for path in sorted(pathlib.Path(ui.__file__).parent.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for func in ast.walk(tree):
+            if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if func.name == "__init__":
+                continue          # setting up the attribute is not freeing it
+            for node in ast.walk(func):
+                targets = []
+                if isinstance(node, ast.Assign):
+                    targets = node.targets
+                elif isinstance(node, ast.AnnAssign) and node.value is not None:
+                    targets = [node.target]
+                for target in targets:
+                    attr = _worker_attr(target)
+                    if attr and isinstance(node.value, ast.Constant)                             and node.value.value is None:
+                        offenders.append(f"{path.name}:{node.lineno} ({func.name})")
+
+    assert offenders == [], (
+        "these free a QThread outside __init__, which is fatal if the method "
+        "is connected to that worker's own signal: " + ", ".join(offenders))
 
 def test_startup_path_imports_no_heavy_library_at_module_scope():
     """A module-level import is a cost paid on every launch.
