@@ -66,40 +66,99 @@ def compute_show_aggregate(
 
 
 def results_to_dataframe(results: list[EpisodeResult]) -> "pd.DataFrame":
-    """Flatten episode results into a tidy DataFrame (one row per episode)."""
+    """Flatten episode results into a tidy DataFrame (one row per episode).
+
+    MISSING IS NOT ZERO. Three cases have to stay apart in a research export
+    and used to collapse into one:
+
+      * a FAILED episode {D} the decode threw, or the file was not there.
+        Every metric on it was left at its dataclass default of 0.0, so the row
+        exported `cuts_per_min = 0.0`: a plausible figure for a slow programme,
+        indistinguishable from one, and silently poolable into a mean. Those
+        cells are now EMPTY, and `error` says what happened.
+      * an UNAVAILABLE measurement on an otherwise fine episode {D} a silent
+        film has no audio to measure. Empty, with `audio_available` False and
+        `audio_unavailable_reason` naming the cause.
+      * a MEASURED ZERO {D} an episode with no detected flash really does have
+        `flashing_events_per_min = 0.0`, and that zero is data.
+
+    Speech, provenance and the measurement fingerprint are exported too: a
+    row that cannot be traced to a build and a configuration cannot be
+    replicated, and the fingerprint is what says whether two rows were even
+    measured the same way.
+    """
     import pandas as pd
     rows = []
     for r in results:
         m = r.metrics
+        ok = r.status == "ok"
+
+        def _v(value, available: bool = True):
+            """A measured value, or empty when there is nothing to report."""
+            return value if (ok and available) else None
+
         rows.append({
             "file": r.file,
             "status": r.status,
-            "duration_sec": r.duration_sec,
-            "shot_length_mean_sec": m.shot_length.mean_sec,
-            "shot_length_median_sec": m.shot_length.median_sec,
-            "shots_per_min": m.shot_length.shots_per_min,
-            "shot_count": m.shot_length.count,
-            "cuts_per_min": m.scene_pacing.cuts_per_min,
-            "shot_length_cv": m.scene_pacing.shot_length_cv,
-            "color_saturation_mean": m.color_saturation.mean,
-            "color_saturation_temporal_var": m.color_saturation.temporal_var,
-            "color_contrast_mean": m.color_saturation.contrast_mean,
-            "motion_mean": m.motion.mean,
-            "motion_peak": m.motion.peak,
-            "flashing_events_per_min": m.flashing.luminance_delta_events_per_min,
-            "audio_rms_mean": m.audio.rms_mean if m.audio.available else None,
-            "audio_rms_peak": m.audio.rms_peak if m.audio.available else None,
-            "audio_rms_temporal_var": m.audio.rms_temporal_var if m.audio.available else None,
-            "audio_dynamic_range_db": m.audio.dynamic_range_db if m.audio.available else None,
+            "error": r.error or None,
+            "duration_sec": _v(r.duration_sec),
+            "shot_length_mean_sec": _v(m.shot_length.mean_sec),
+            "shot_length_median_sec": _v(m.shot_length.median_sec),
+            "shots_per_min": _v(m.shot_length.shots_per_min),
+            "shot_count": _v(m.shot_length.count),
+            "cuts_per_min": _v(m.scene_pacing.cuts_per_min),
+            "shot_length_cv": _v(m.scene_pacing.shot_length_cv),
+            "color_saturation_mean": _v(m.color_saturation.mean),
+            "color_saturation_temporal_var": _v(m.color_saturation.temporal_var),
+            "color_contrast_mean": _v(m.color_saturation.contrast_mean),
+            "motion_mean": _v(m.motion.mean),
+            "motion_peak": _v(m.motion.peak),
+            "flashing_events_per_min": _v(
+                m.flashing.luminance_delta_events_per_min),
+            "audio_rms_mean": _v(m.audio.rms_mean, m.audio.available),
+            "audio_rms_peak": _v(m.audio.rms_peak, m.audio.available),
+            "audio_rms_temporal_var": _v(m.audio.rms_temporal_var,
+                                         m.audio.available),
+            "audio_dynamic_range_db": _v(m.audio.dynamic_range_db,
+                                         m.audio.available),
             "audio_available": m.audio.available,
-            "sensory_load_score": m.sensory_load.score,
+            # Which of "silent programme", "no FFmpeg here" and "the decode
+            # threw" produced the empty cells above. Blank when audio was
+            # measured.
+            "audio_unavailable_reason": m.audio.unavailable_reason or None,
+            # --- speech: exported from 2026-09-04. It was measured, stored and
+            # charted, and then left out of the CSV, so the file a researcher
+            # analysed had no words-per-minute column in it at all.
+            "speech_available": m.speech.available,
+            # "srt" | "vtt" | "whisper" | "none" | "disabled". WPM from a
+            # caption file and WPM from a Whisper transcript are different
+            # measurements and must not be pooled without saying so.
+            "speech_source": m.speech.source,
+            "words_per_minute": _v(m.speech.words_per_minute,
+                                   m.speech.available),
+            # WPM divides by DIALOGUE TIME, not runtime. Reported together or
+            # not at all (CLAUDE.md §2.2): alone, WPM invites "how talkative
+            # is this episode", which is the question density answers.
+            "speech_density": _v(m.speech.speech_density, m.speech.available),
+            "total_words": _v(m.speech.total_words, m.speech.available),
+            "ffc_score": _v(m.sensory_load.score),
+            # Legacy spelling of ffc_score, kept so scripts written against
+            # earlier exports keep working. Same number, both columns.
+            "sensory_load_score": _v(m.sensory_load.score),
             "sensory_load_audio_available": m.sensory_load.audio_available,
-            "sensory_load_pacing": m.sensory_load.components.pacing,
-            "sensory_load_saturation": m.sensory_load.components.saturation,
-            "sensory_load_contrast": m.sensory_load.components.contrast,
-            "sensory_load_motion": m.sensory_load.components.motion,
-            "sensory_load_flashing": m.sensory_load.components.flashing,
-            "sensory_load_audio": m.sensory_load.components.audio,
+            "sensory_load_pacing": _v(m.sensory_load.components.pacing),
+            "sensory_load_saturation": _v(m.sensory_load.components.saturation),
+            "sensory_load_contrast": _v(m.sensory_load.components.contrast),
+            "sensory_load_motion": _v(m.sensory_load.components.motion),
+            "sensory_load_flashing": _v(m.sensory_load.components.flashing),
+            "sensory_load_audio": _v(m.sensory_load.components.audio),
+            # --- provenance. Empty on rows cached before 2026-09-04. --------
+            "measurement_fingerprint": r.measurement_fingerprint or None,
+            "analyzed_at_utc": r.analyzed_at_utc or None,
+            "cmat_version": r.cmat_version or None,
+            "git_commit": r.git_commit or None,
+            "source_bytes": r.source_bytes or None,
+            "source_sha256": r.source_sha256 or None,
         })
     return pd.DataFrame(rows)
 

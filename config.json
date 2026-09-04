@@ -48,7 +48,7 @@
   "presets": {
     "General / All Ages": {
       "builtin": true,
-      "description": "Broad absolute ceilings - good for cross-genre comparison.",
+      "description": "ILLUSTRATIVE CONFIGURATION — not a validated norm. Broad ceilings, so a wide range of content lands inside the 0-1 scale without clamping. The ceilings were fitted to what one 78-episode working corpus produced (CEILINGS.md); the weights have no recorded derivation at all. Use it as a starting point for cross-genre comparison, and record whatever you actually use.",
       "sensory_load_weights": {
         "pacing": 0.25,
         "saturation": 0.05,
@@ -82,11 +82,13 @@
           "min": 0.0,
           "max": 0.35
         }
-      }
+      },
+      "illustrative": true,
+      "derivation": "none recorded"
     },
     "Toddler (0-2)": {
       "builtin": true,
-      "description": "Tight ceilings for infants and toddlers. Even a few cuts/min is meaningful at this age. Flashing weighted higher, so a difference in flashing moves the composite more at these ceilings. NOT a safety assessment \u2014 the flashing measure is unvalidated and implements neither the area threshold nor the red-flash criterion.",
+      "description": "ILLUSTRATIVE CONFIGURATION — not a developmental norm, not a safety threshold, and not evidence about 0-2 year-olds. The age name says which population a STUDY using it is about; it says nothing about what any child can tolerate. Ceilings are set low so that small differences between quiet programmes stay visible instead of collapsing near zero on a wide scale, and content above a ceiling clamps to 1.0 rather than being ranked. Flashing carries a larger weight here, which changes what the composite is a summary OF; this is not a safety assessment - the flashing measure is unvalidated and implements neither the area threshold nor the red-flash criterion that broadcast photosensitivity guidance specifies. No published source specifies these numbers.",
       "sensory_load_weights": {
         "pacing": 0.2,
         "saturation": 0.05,
@@ -120,11 +122,13 @@
           "min": 0.0,
           "max": 0.1
         }
-      }
+      },
+      "illustrative": true,
+      "derivation": "none recorded"
     },
     "Preschool (2-5)": {
       "builtin": true,
-      "description": "Calibrated for preschoolers - the age range in Lillard & Peterson (2011). Pacing and motion weighted higher.",
+      "description": "ILLUSTRATIVE CONFIGURATION — not a developmental norm. The age band is the one studied in Lillard & Peterson (2011); THE CEILINGS AND WEIGHTS BELOW ARE NOT FROM THAT PAPER OR ANY OTHER. That study compared two programmes on children's immediate executive function and reports no formal-feature thresholds, so nothing here is calibrated to it. Mid-range ceilings keep typical preschool animation spread across the scale.",
       "sensory_load_weights": {
         "pacing": 0.25,
         "saturation": 0.05,
@@ -158,11 +162,13 @@
           "min": 0.0,
           "max": 0.15
         }
-      }
+      },
+      "illustrative": true,
+      "derivation": "none recorded"
     },
     "Early Childhood (5-8)": {
       "builtin": true,
-      "description": "For early school-age children. Wider tolerances than preschool; pacing still meaningful.",
+      "description": "ILLUSTRATIVE CONFIGURATION — not a developmental norm. Wider ceilings than the preschool configuration, which changes the denominators and therefore the scores; it does not represent a measured change in what 5-8 year-olds tolerate. No published source specifies these numbers.",
       "sensory_load_weights": {
         "pacing": 0.25,
         "saturation": 0.05,
@@ -196,11 +202,13 @@
           "min": 0.0,
           "max": 0.18
         }
-      }
+      },
+      "illustrative": true,
+      "derivation": "none recorded"
     },
     "Tween (8-12)": {
       "builtin": true,
-      "description": "Approaching adult tolerance. Motion weighted slightly higher.",
+      "description": "ILLUSTRATIVE CONFIGURATION — not a developmental norm. Ceilings close to the General configuration, so fast content is ranked rather than clamped. 'Approaching adult' describes the ceilings, not any measured tolerance. No published source specifies these numbers.",
       "sensory_load_weights": {
         "pacing": 0.25,
         "saturation": 0.05,
@@ -234,11 +242,13 @@
           "min": 0.0,
           "max": 0.2
         }
-      }
+      },
+      "illustrative": true,
+      "derivation": "none recorded"
     },
     "Animated / Cartoon": {
       "builtin": true,
-      "description": "Optimized for comparing animated shows. Saturation weighted higher \u2014 vivid cartoon palettes are a meaningful stimulation dimension in animation. Use this when your library contains only animated content.",
+      "description": "ILLUSTRATIVE CONFIGURATION. Saturation carries a larger weight, on the reasoning that saturation varies informatively between animated titles and is a poor discriminator once live action is in the pool. That reasoning is a working assumption, not a result. Intended for animation-only corpora.",
       "sensory_load_weights": {
         "pacing": 0.25,
         "saturation": 0.15,
@@ -272,11 +282,13 @@
           "min": 0.0,
           "max": 0.2
         }
-      }
+      },
+      "illustrative": true,
+      "derivation": "none recorded"
     },
     "Live-Action / YouTube": {
       "builtin": true,
-      "description": "Optimized for live-action and YouTube content. Saturation near-zeroed (blown-out production style makes it unreliable); contrast weighted higher to capture dramatic lighting and visual intensity. Use when comparing YouTube, reality TV, or documentary content.",
+      "description": "ILLUSTRATIVE CONFIGURATION. Saturation weight is set to zero because blown-out live-action grading makes the measure unstable, and contrast carries more weight instead. Both choices are working assumptions about the measures' behaviour on this material, not validated adjustments. Intended for live-action or user-generated corpora.",
       "sensory_load_weights": {
         "pacing": 0.25,
         "saturation": 0.0,
@@ -310,7 +322,9 @@
           "min": 0.0,
           "max": 0.2
         }
-      }
+      },
+      "illustrative": true,
+      "derivation": "none recorded"
     }
   }
 }

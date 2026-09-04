@@ -4,11 +4,24 @@ Audio loudness metrics via FFmpeg.
 Extracts mono PCM audio through FFmpeg (assumed on PATH), then computes
 windowed RMS loudness to capture both overall intensity and temporal variation.
 
-Why these metrics:
-  - mean_rms: overall loudness level — loud music/screaming drives arousal directly.
-  - rms_temporal_var: how much volume jumps around — sudden peaks are more startling
-    than steady noise of the same average level.
-  - dynamic_range_db: peak-to-mean ratio; high values indicate surprising loud events.
+WHAT IS COMPUTED. The track is downmixed to mono and RESAMPLED TO 8 kHz before
+any measurement, so everything below is amplitude on a band-limited signal, not
+perceptual loudness. It is not LUFS and not EBU R128; two files mastered to the
+same broadcast loudness can differ here, and a file's values are comparable only
+with files measured by this same path.
+
+  - rms_mean: mean of the per-window (1 s) RMS amplitude, linear, 0-1.
+  - rms_peak: the loudest single 1-second window.
+  - rms_temporal_var: variance of the per-window RMS — how much the level moves
+    about, as distinct from how high it sits.
+  - dynamic_range_db: 20*log10(peak / mean) over those windows.
+
+Why these are measured at all: audio intensity is one of the formal features
+Huston & Wright's framework identifies, and Lang's LC4MP treats structural
+change as a processing demand. That literature motivates measuring the
+stimulus; it does not make any of these four numbers a measure of arousal,
+startle, or anything else occurring in a listener, and none of them has been
+graded against a perceptual criterion.
 """
 
 from __future__ import annotations
@@ -42,13 +55,22 @@ def compute_audio_metrics(video_path: Path) -> AudioMetrics:
         audio = _extract_audio(video_path)
     except FileNotFoundError:
         logger.warning("FFmpeg not found on PATH — skipping audio metrics.")
-        return AudioMetrics(available=False)
+        return AudioMetrics(
+            available=False,
+            unavailable_reason=AudioMetrics.REASON_NO_FFMPEG)
     except RuntimeError as exc:
         logger.warning("Audio extraction failed for %s: %s", video_path.name, exc)
-        return AudioMetrics(available=False)
+        return AudioMetrics(
+            available=False,
+            unavailable_reason=AudioMetrics.REASON_EXTRACTION_FAILED)
 
     if audio is None or len(audio) == 0:
-        return AudioMetrics(available=False)
+        # No samples came back. Either the container has no audio stream, or
+        # it has one and it is empty; both are "there is nothing to measure",
+        # which is NOT the same as "the audio measured zero".
+        return AudioMetrics(
+            available=False,
+            unavailable_reason=AudioMetrics.REASON_NO_AUDIO_TRACK)
 
     return _compute_from_samples(audio)
 

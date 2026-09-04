@@ -289,6 +289,8 @@ class MeasureItem(CanvasNode):
 
         if self._method is not None and self._method.kind == C.HAND_CODED:
             out.append(("status", "human-coded"))
+        elif self._method is not None and self._method.status == "deterministic":
+            out.append(("status", "deterministic — no detection step to grade"))
         elif self._method is not None and self._method.status != "validated":
             out.append(("flag", f"{self._method.status} — not graded"))
 

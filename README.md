@@ -28,8 +28,10 @@ CMAT is designed to keep the decisions linking a research question to a result
 visible. Researchers can define a construct in plain language, connect it to
 supported measures, choose methods and weights, and save the operationalization
 as a versioned recipe that can be inspected, reused, and cited. The same
-workflow supports hand coding and comparison of automated results against
-human-coded ground truth.
+workflow supports hand coding and comparison of automated results against a
+human-coded reference. That reference is a measurement with its own error, not
+a ground truth: CMAT's own is quantised to whole seconds and runs about 0.55 s
+early, which is why its match tolerance has a floor.
 
 ## Validation and scope
 
@@ -82,7 +84,7 @@ unrelated analysis tools:
 
 | Stage | What the researcher does | What CMAT preserves |
 |---|---|---|
-| **Sampling** | Draw a census, random sample, systematic sample, or sample stratified by season or era | Selected episodes, random seed, method, strata, and manifest |
+| **Sampling** | Draw a census, simple random sample, systematic sample, positional-chunk ("spread") sample, or hand-picked set, optionally stratified by season or era | The drawn episodes **and the candidate frame they came from**, the seed, method, strata, the regexes and extensions that defined a unit, and a manifest |
 | **Selection** | Narrow the episode sample or use Clip Finder to locate candidate scenes | Exclusions, filters, source timecodes, and the selection query |
 | **Measurement** | Measure cuts, motion, colour, contrast, flashing, audio, speech, and vocabulary | Methods, parameters, recipe version, and measurement fingerprint |
 | **Validation** | Compare automated results with human coding | Precision, recall, F1, Cohen's kappa, and agreement evidence |
@@ -195,14 +197,24 @@ is an automated judgment.
 
 ### Formal media-feature measures
 
-| Metric | What it captures |
-|--------|-----------------|
-| **Scene pacing** | Editing and shot-transition frequency and timing. |
-| **Motion** | Average frame-to-frame visual movement, used as a quantitative measure of visual dynamism. |
-| **Color saturation** | The vividness and purity of colours in the image. |
-| **Color contrast** | The spatial spread of brightness within a frame. |
-| **Flashing** | Rapid whole-frame luminance changes per minute. This is a comparative measurement, not a photosensitivity safety assessment. |
-| **Audio intensity** | Average RMS audio intensity and dynamic range. |
+Each row states the quantity that is actually computed, in the units it is
+reported in. The name is a label for that quantity and nothing more.
+
+| Metric | What is computed | Units | Notes and limits |
+|---|---|---|---|
+| **Shot-boundary rate** (`cuts_per_min`) | Boundaries reported by the selected detector, divided by runtime. Shipped detector: PySceneDetect `ContentDetector` at threshold 27. | boundaries/min | **Detected boundaries, not semantic scene changes** — a cut inside one continuous scene counts. Frame-differencing misses gradual transitions (dissolves) by construction: it cannot separate two shots blending from one shot panning. |
+| **Shot length** | Mean and median interval between consecutive boundaries; coefficient of variation of those intervals. | seconds; CV unitless | Derived from the same boundaries, so it inherits their errors. |
+| **Motion** (`motion_mean`) | Mean absolute difference in grayscale pixel intensity between **consecutive sampled frames**, rescaled 0–255 — 0–1. | 0–1 | Measures **image change, not depicted movement**: a cut, a camera pan and a running character all raise it. **Depends on the sampling rate** (default 2 fps) — values measured at different rates are not comparable. An optional Farneback optical-flow method exists and is on a different, uncalibrated scale. |
+| **Color saturation** (`color_saturation_mean`) | Mean of the HSV **S** channel per frame, averaged over sampled frames. | 0–1 | Unstable on blown-out live-action grading. |
+| **Color contrast** (`color_contrast_mean`) | **Spatial** standard deviation of the HSV **V** channel within each frame, averaged over sampled frames. | 0–1 | **Within-frame brightness spread, not a perceptual contrast metric.** High for stark dark/light regions — slides, whiteboards — so it can be elevated on footage a viewer would call calm. |
+| **Flashing** (`flashing_events_per_min`) | Count of consecutive sampled frames whose **whole-frame mean** luminance differs by more than a threshold (default 0.1), at a dedicated rate (default 10 fps). | events/min | **NOT a photosensitivity safety assessment.** It implements neither the area threshold nor the red-flash criterion broadcast photosensitivity guidance specifies; a flash confined to part of the screen is diluted by the whole-frame mean; and it has never been graded against human coding. **Zero does not indicate safety.** Comparable only across episodes measured at the same rate and threshold. |
+| **Audio intensity** (`audio_rms_mean`, `audio_dynamic_range_db`) | Mean and peak of per-second **RMS amplitude**, and 20·log10(peak/mean), on the track downmixed to mono and **resampled to 8 kHz**. | linear 0–1; dB | **Linear amplitude, not perceptual loudness — not LUFS, not EBU R128.** Two files mastered to the same broadcast loudness can differ here. The 8 kHz resample discards high frequencies. |
+
+**Missing is not zero.** An episode with no audio track has `audio_available`
+false, empty audio columns, and `audio_unavailable_reason` distinguishing "no
+audio track" from "FFmpeg not found" from "extraction failed". A failed
+analysis exports empty metrics and an `error`, never a plausible-looking 0.0.
+A `0.0` in a CMAT export is a measured zero.
 
 ### Optional researcher-defined composite
 
@@ -214,7 +226,7 @@ is an automated judgment.
 
 | Metric | What it captures |
 |--------|-----------------|
-| **Words per minute** | Average spoken word rate during dialogue segments. Sourced from `.srt`/`.vtt` subtitle files; Whisper AI transcription used as fallback when enabled. |
+| **Words per minute** | Words divided by **dialogue time, not runtime** — how fast characters speak when they speak, not how talkative an episode is. Reported with speech density or not at all. Sourced from `.srt`/`.vtt` subtitle files; Whisper transcription used as a fallback when enabled. **A caption-derived count and a Whisper-derived count are different measurements** and the export records which one produced each row (`speech_source`); do not pool them without saying so. Caption files carry the captioner's choices — omitted song lyrics, bracketed sound descriptions — into the count. |
 | **Speech density** | Fraction of episode runtime containing dialogue. Separates talk-heavy shows from those with long musical or silent passages. |
 | **Readability** | Flesch Reading Ease, Flesch-Kincaid Grade Level, Spache, Dale-Chall, Coleman-Liau, ARI — six formulas applied to the cleaned dialogue transcript. |
 | **Vocabulary frequency tiers** | Zipf-scale tier breakdown: Tier 1 (everyday words, ≥ 4.5), Tier 2 (academic/cross-domain, 3.0–4.5), Tier 3 (rare/domain-specific, < 3.0). |
@@ -292,10 +304,32 @@ Each subfolder containing MP4s is a "show." Folders named *Season N*, *Series N*
 For large shows, use **File → Episode Sampler** to build a reproducible, documented sample instead of analyzing every episode.
 
 - Choose a stratification strategy (by season, or unstratified)
-- Choose a selection method: census, simple random, systematic, or spread (chunk) sampling
+- Choose a selection method (below)
 - Set your sample size and random seed
 - Preview the selected episodes, then **Send to Analysis Queue** to analyze only those episodes
 - The sampler saves a `manifest.json` and `selected.csv` alongside your output — a permanent record of exactly how the sample was drawn
+
+**The five methods, and what they actually do.** Ordering is by episode number
+by default, or by air date when you ask for it; `spread` and `systematic` cut
+the run into chunks along that order, so the order is part of the design and
+the manifest records it. If you order by air date and some episodes have none,
+the sampler says so in its notes rather than drawing quietly from a different
+sequence.
+
+| Method | Implementation | Standard name |
+|---|---|---|
+| `census` | Every unit in the stratum. | Census. Not a sample. |
+| `srs` | `random.sample` over the stratum — equal-probability, without replacement. | Simple random sampling. |
+| `systematic` | `k = max(1, N // n)`, a random start in `[0, k-1]`, then every `k`th unit. | Systematic sampling with a random start. **The realised sample size is `N/k` rounded, which is not always the `n` you asked for** — check the manifest's `total_selected`. Warns when `k <= 2`, where a repeating episode pattern can alias. |
+| `spread` | Split the ordered stratum into `n` contiguous, near-equal chunks; take one unit uniformly at random from each. | **Not a standard named design.** It is *stratified random sampling with equal-sized positional strata and one unit per stratum*. "Spread" and "chunk" are CMAT's own words for it. Inclusion probabilities are `1/chunk_size` and differ between chunks when `N` is not divisible by `n`; they are not equal across the frame, and any estimate that assumes equal probabilities will be biased. It is CMAT's default because it gives even coverage of a run without the aliasing risk of a fixed interval, not because it is more principled than `srs`. |
+| `manual` | Hand-picked identifiers. | **Not a sample.** Flagged `probability: false` in the manifest, and no seed is recorded — a seed beside a hand-picked set would imply it was drawn. |
+
+**Reproducibility of a draw.** Seeds are derived per stratum from
+`sha256(seed:entry_id:stratum_key)`, so adding a stratum later does not disturb
+the seeds of existing ones. Re-running with the same seed, frame and ordering
+reproduces the draw exactly; a test pins this. What the manifest records so a
+reader can check the frame was the same — not merely the same size — is
+listed under [Reproducibility and provenance](#reproducibility-and-provenance).
 
 Once analyzed, use **View Sample Aggregate** to load a manifest and see aggregate results for only the sampled episodes — useful for comparing different sample sizes against a full-show baseline.
 
@@ -429,9 +463,12 @@ study protocol.
 
 Automated measurement should be validated for the measure, method, corpus, and
 research use at hand. CMAT includes a **human-coding and validation workbench**
-for comparing automated results with hand-coded ground truth—and for coding
+for comparing automated results with a hand-coded reference—and for coding
 phenomena a pixel measure cannot represent. Hand coding is also a measurement
-method in its own right, not merely a check on automation.
+method in its own right, not merely a check on automation, and it is a
+*reference*, not a ground truth: a human coder has resolution limits and
+systematic biases of their own, and calling their labels truth is what hides
+them.
 
 ### Built-in coding editor with an embedded player
 
@@ -455,7 +492,7 @@ Open a coding sheet from the **Validation** tab and you get a form-style editor 
 
 - **Precision / recall / F1** per transition type, with a match tolerance you set, and a windowed mode for coding only part of an episode.
 - An **error-annotation grid** with a controlled failure-reason vocabulary, so "F1 = 0.17" becomes "the detector misses gentle dissolves under snowfall" — a documented error taxonomy.
-- A **parameter sweep** to tune detection settings against your ground truth (with train/test discipline built into the workflow).
+- A **parameter sweep** to tune detection settings against your reference coding. It reports a **resubstitution estimate**: the configuration is chosen by taking the maximum over a grid on your coded sample, and the score beside it is computed on that same sample, so it is optimistically biased by construction. CMAT labels it as such in the result, the manifest, the Trials registry and every screen that shows it. The tuning/test split is yours to impose — the software does not hold out data for you, and the coded sample is usually too small to split.
 - **Cohen's κ** for the within-scene classifier and **two-coder inter-rater reliability** for event coding.
 - Every run writes a **provenance manifest** (parameters, date, tool version) and appears in a **Trials registry** — a browsable audit trail of every sampling + coding study.
 
@@ -466,46 +503,248 @@ available for inspection rather than treating the output as self-validating.
 
 ---
 
-## Age-range presets
+## Illustrative presets — not validated developmental norms
 
-| Preset | Best for |
+A preset is a bundle of **composite weights and normalization ceilings**. A
+ceiling is the **denominator** of a metric's 0–1 scale, not a limit: exceeding
+one means "at or above the top of this scale", never "too much". Changing a
+preset changes every composite score and no raw measurement.
+
+**None of the shipped values is derived from anything.** The ceilings were
+fitted to what one 78-episode working corpus produced
+([CEILINGS.md](CEILINGS.md)); the weights have no recorded derivation at all
+([ARCHITECTURE.md](ARCHITECTURE.md) §8.1a). Each preset carries
+`"illustrative": true` and `"derivation": "none recorded"` in `config.json`, and
+the Settings dialog says so above the chooser in both front-ends.
+
+| Preset | What it is |
 |--------|---------|
-| General / All Ages | Cross-genre comparison baseline |
-| Toddler (0–2) | Starting configuration for studies of this population |
-| Preschool (2–5) | Starting configuration for studies of this population |
-| Early Childhood (5–8) | Starting configuration for studies of this population |
-| Tween (8–12) | Starting configuration for studies of this population |
-| Animated / Cartoon | Saturation weighted higher for cartoon-vs-cartoon comparison |
-| Live-Action / YouTube | Contrast weighted higher; saturation near-zeroed |
+| General / All Ages | Broad ceilings, so a wide range of content lands inside the scale without clamping |
+| Toddler (0–2) | Low ceilings, so small differences between quiet programmes stay visible; content above a ceiling clamps rather than being ranked |
+| Preschool (2–5) | Mid-range ceilings |
+| Early Childhood (5–8) | Wider ceilings than the preschool configuration |
+| Tween (8–12) | Ceilings close to General, so fast content is ranked rather than clamped |
+| Animated / Cartoon | Saturation weighted higher, on the working assumption that it discriminates between animated titles and not across live action |
+| Live-Action / YouTube | Saturation zeroed (blown-out grading makes it unstable); contrast weighted higher instead |
 
-Custom presets can be created and saved. Built-in presets cannot be deleted.
-Age-named presets are reference configurations for study design; they are not
-recommendations, appropriateness ratings, or safety thresholds.
+**An age name says which population a study using the preset is about.** It is
+not a recommendation, an appropriateness rating, a safety threshold, or
+evidence about that age group. In particular:
+
+- The `Preschool (2–5)` band is the one studied by Lillard & Peterson (2011).
+  **The ceilings and weights are not from that paper or any other.** That study
+  compared two programmes on children's immediate executive function and
+  reports no formal-feature thresholds.
+- `Toddler (0–2)` weights flashing more heavily, which changes what the
+  composite summarises. **This is not a safety weighting**: the flashing measure
+  is unvalidated and implements neither the area threshold nor the red-flash
+  criterion.
+- "Wider tolerances" and "near-adult tolerances" described the ceilings, not
+  any measured tolerance. The wording has been removed.
+
+**Where an inferential claim depends on the composite, define and preregister a
+configuration for the study**, and report the weights and ceilings you used
+alongside the component measures. Custom presets can be created and saved;
+built-in presets cannot be deleted.
 
 ---
 
 ## Research grounding and interpretation
 
-The conceptual framework comes from media research on **formal features** — the
-perceptually salient, content-independent structural attributes of video (cuts,
-motion, pace, sound). This literature discusses such features in relation to
-the **orienting response**: an automatic, reflexive reallocation of attention
-toward novel or changing stimuli.
+### Four things that are not the same thing
 
-Key references:
-- Huston & Wright — formal features framework
-- Lang — Limited Capacity Model of Mediated Message Processing (LC4MP)
-- Lillard & Peterson (2011), *Pediatrics* — pacing and immediate executive function in 4-year-olds
-- Lillard et al. (2015) — fantastical content as a possible moderator
-- Christakis et al. (2004), *Pediatrics* — early TV exposure and attention (correlational)
-- Itti & Koch — bottom-up visual saliency and motion
-- Kuperman et al. (2012) — Age of Acquisition norms
-- Brysbaert et al. (2014) — Concreteness norms
+CMAT keeps these apart everywhere — in the interface, the documentation and the
+exports — and asks that write-ups do the same. Collapsing any two of them is
+the commonest way a formal-feature measurement is over-read.
 
-The cited literature helps frame research questions and interpretation; it does
-not establish a causal meaning for each CMAT measure. Findings involving media
-features and child outcomes should be described as correlational. CMAT
-describes the stimulus; it does not predict outcomes for an individual child.
+1. **An observed, computed property of the stimulus.** "This episode has 11.4
+   detected shot boundaries per minute." This is what CMAT produces.
+2. **A theoretical construct.** "Pacing." Not observable, not in the file. A
+   measure is *offered as* an operationalization of a construct; it is never
+   identical to one.
+3. **An empirical association reported in prior literature.** "Programmes
+   differing in pace differed in children's immediate executive-function
+   scores in this experiment." A finding about particular stimuli, samples and
+   outcome measures.
+4. **An outcome in an individual viewer.** CMAT observes no viewer, has no
+   information about a viewer, and predicts nothing about one.
+
+**The literature below motivates measuring these properties. None of it
+validates CMAT's detectors, thresholds, scaling ranges, weights, or the
+composite.** No paper cited here specifies a cuts-per-minute threshold, a
+normalization ceiling, or a weighting scheme, and none was used to derive one.
+Where the literature reports associations between media features and child
+outcomes, those associations are correlational, contested, and about
+particular stimuli and samples — not properties of a number CMAT computes.
+
+### What motivates measuring which property
+
+**Formal features as a class of stimulus property.**
+Huston, A. C., Wright, J. C., Wartella, E., Rice, M. L., Watkins, B. A.,
+Campbell, T., & Potts, R. (1981). Communicating more than content: Formal
+features of children's television programs. *Journal of Communication*,
+*31*(3), 32–48. <https://doi.org/10.1111/j.1460-2466.1981.tb00426.x>
+— *Motivates:* treating pace, visual change, colour and sound as
+content-independent structural attributes worth measuring separately from
+content. *Does not:* specify any measure, detector or threshold.
+
+**Rate of change as a processing demand.**
+Lang, A. (2000). The limited capacity model of mediated message processing.
+*Journal of Communication*, *50*(1), 46–70.
+<https://doi.org/10.1111/j.1460-2466.2000.tb02833.x>
+— *Motivates:* measuring transition rate at all, and CMAT's separation of
+*related* from *unrelated* cuts (the within-scene / scene-change classifier).
+*Does not:* license reading any CMAT number as a quantity of cognitive load.
+CMAT's classifier is unvalidated and is flagged wherever it appears.
+
+**Visual salience and motion.**
+Itti, L., Koch, C., & Niebur, E. (1998). A model of saliency-based visual
+attention for rapid scene analysis. *IEEE Transactions on Pattern Analysis and
+Machine Intelligence*, *20*(11), 1254–1259.
+<https://doi.org/10.1109/34.730558>
+— *Motivates:* motion as one feature channel worth extracting. *Does not:*
+support any statement about children, about television, or about what a
+`motion_mean` value does to a viewer. It is a computational model of image
+salience, and CMAT's frame-difference measure is not its saliency map.
+
+### Associations reported in the outcome literature
+
+Cited so a reader can see what the field has looked at. **All correlational or
+experimental findings about particular stimuli; none is a property of a CMAT
+measurement, and none is evidence about a programme CMAT has measured.**
+
+Lillard, A. S., & Peterson, J. (2011). The immediate impact of different types
+of television on young children's executive function. *Pediatrics*, *128*(4),
+644–649. <https://doi.org/10.1542/peds.2010-1919>
+— Compared 4-year-olds' immediate executive-function performance after
+watching a fast-paced fantastical cartoon, an educational programme, or
+drawing. **Reports no formal-feature thresholds**, and is not the source of any
+value in `config.json` — see the note under
+[Illustrative presets](#illustrative-presets--not-validated-developmental-norms).
+
+Lillard, A. S., Drell, M. B., Richey, E. M., Boguszewski, K., & Smith, E. D.
+(2015). Further examination of the immediate impact of television on children's
+executive function. *Developmental Psychology*, *51*(6), 792–805.
+<https://doi.org/10.1037/a0039097>
+— Separated pacing from fantastical content across several experiments and
+found fantastical content the more consistent factor. This is the motivation
+for CMAT's **hand-coded** fantastical-event codebook: the variable is coded by
+a person because no pixel measure represents it.
+
+Lillard, A. S., Li, H., & Boguszewski, K. (2015). Television and children's
+executive function. In J. B. Benson (Ed.), *Advances in Child Development and
+Behavior* (Vol. 48, pp. 219–248). Elsevier.
+<https://doi.org/10.1016/bs.acdb.2014.11.006>
+— Review of the area, including the mixed and contested findings.
+
+Christakis, D. A., Zimmerman, F. J., DiGiuseppe, D. L., & McCarty, C. A.
+(2004). Early television exposure and subsequent attentional problems in
+children. *Pediatrics*, *113*(4), 708–713.
+<https://doi.org/10.1542/peds.113.4.708>
+— Observational, from a parent-reported longitudinal survey. **Measures hours
+of exposure, not formal features**, so it motivates nothing CMAT computes; it is
+listed because it is the study most often invoked in this area, and because
+what it does and does not show is routinely overstated.
+
+### Norm files used by the vocabulary analysis
+
+Neither is redistributed here; both are free for research use. CMAT applies
+them as published and has not revalidated either.
+
+Kuperman, V., Stadthagen-Gonzalez, H., & Brysbaert, M. (2012).
+Age-of-acquisition ratings for 30,000 English words. *Behavior Research
+Methods*, *44*(4), 978–990. <https://doi.org/10.3758/s13428-012-0210-4>
+— Supplies the `Age of Acquisition` column. Ratings are adult retrospective
+estimates for written English words, from a crowdsourced sample; they are not
+observations of when children acquired the words, and CMAT applies them to
+lemmatized dialogue, which is a use the norms were not built for.
+
+Brysbaert, M., Warriner, A. B., & Kuperman, V. (2014). Concreteness ratings for
+40 thousand generally known English word lemmas. *Behavior Research Methods*,
+*46*(3), 904–911. <https://doi.org/10.3758/s13428-013-0403-5>
+— Supplies the concreteness column, with the same caveat.
+
+### The readability formulas
+
+Flesch Reading Ease, Flesch—Kincaid, Spache, Dale—Chall, Coleman—Liau and ARI
+were developed and validated on **written prose for readers**, not on
+transcribed speech. Applied to dialogue they are a relative index across
+episodes measured the same way, not a grade level a child can read at, and not
+a claim about comprehension. CMAT reports all six rather than one because they
+disagree, and the disagreement is informative.
+
+### What CMAT does not claim
+
+CMAT describes the stimulus. It does not predict outcomes for an individual
+child, measure cognition, rate appropriateness, assess safety, or establish
+that any feature causes any effect. Age, temperament, sensory-processing
+profile, viewing context and exposure history are not captured and cannot be
+inferred from anything it produces.
+
+---
+
+## Reproducibility and provenance
+
+A number is only reproducible if a reader can identify how it was produced.
+This is what CMAT records, and where. Everything below is machine-readable.
+
+### Every episode result
+
+Written into the cache and into JSON exports; empty on results cached before
+these fields existed, which is why every reader has to treat an empty value as
+*not recorded* rather than as a value.
+
+| Field | What it pins |
+|---|---|
+| `cmat_version`, `git_commit` | The build. The commit carries `-dirty` when the working tree differed from it, and reads `unavailable (not a git checkout)` for a frozen build — never an empty string, which reads as "clean". |
+| `analyzed_at_utc` | When the run finished. |
+| `source_bytes`, `source_sha256` | **The input file itself.** A filename is not an identity: files get renamed, re-encoded and trimmed, and CMAT's own Clip Finder writes new MP4s from old ones. The hash survives all of it. |
+| `measurement_fingerprint` | A hash of the detector, thresholds and sample rates that produced the raw numbers. **Two rows are comparable only if this matches.** It deliberately excludes weights and ceilings, which are re-scorable from cache and therefore not part of measurement identity. |
+| `measurement_tools` | Each measurement's tool and its status, e.g. `PySceneDetect — ContentDetector [validated]`, `Frame differencing [deterministic]`. |
+| `config` | The full resolved runtime configuration, not the intended one. |
+
+### Every export
+
+JSON exports carry `export_schema`, `exported_at_utc`, a `software` block
+(version, commit, and the versions of Python, OpenCV, NumPy and PySceneDetect
+— the libraries that can move a number), and the validation-provenance block.
+CSV exports carry the same in a `_PROVENANCE.txt` sidecar written beside them,
+which also states the empty-cell and comparability rules. Keep the two
+together.
+
+### Every sampling draw
+
+`manifest.json` records the method, allocation, seed, per-stratum seeds'
+derivation, `probability` flag, strata, **the candidate frame's episode labels
+per stratum** (not only its size, so a redraw against a folder that has since
+gained files is detectable), the video extensions and season/episode regexes
+that defined a unit, `cmat_version` and `cmat_git_commit`, and any notes the
+draw generated. `software_version` is the **sampler module's** version string
+and is not a commit; it is displayed under its own name.
+
+### Every validation and coding run
+
+A `*_manifest_*.json` beside the outputs, with the date, commit, detector
+configuration, match tolerance, coded window, and counts. Runs appear in the
+**Trials registry**, which is a browsable index of these manifests.
+
+**Parameter sweeps additionally record `selection_estimate: "resubstitution"`,
+`tuned_and_scored_on_same_data: true`, `held_out_data: false` and the warning
+text**, because a grid maximum computed on the sample it was fitted to is not
+an estimate of performance and must not be reported as one.
+
+### Every clip exported by Clip Finder
+
+A JSON manifest with the plain-language query, the source episode, absolute
+source timecodes, the pool settings (window length, excluded opening and
+closing intervals, partial-window rule) and the measurement fingerprint. CMAT
+re-measures the exported file, so the manifest describes the participant
+stimulus and not only the window it was cut from.
+
+### What is deliberately not recorded
+
+OS build, CPU, and the full installed package list. None of them changes a
+metric, and a provenance block nobody reads protects nobody.
 
 ---
 

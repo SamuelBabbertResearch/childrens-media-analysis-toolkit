@@ -9,7 +9,7 @@ grows materially — see *When to revisit* at the bottom.
 
 ## What a ceiling does, in one paragraph
 
-Every component of the sensory-load composite is rescaled to 0–1 before it is
+Every component of the Formal-Feature Composite (FFC) is rescaled to 0–1 before it is
 weighted, using `(value − min) / (max − min)`, clamped into [0, 1]. The `max` is
 the **ceiling**. It defines what counts as "the top of the scale" for that
 metric. It is not a threshold, not a limit, and carries no judgement about the
@@ -52,9 +52,20 @@ where a single extreme episode each remains clamped. That is deliberate: both
 metrics are heavily skewed (median far below max), so a ceiling set at the
 extreme would push all ordinary content into the bottom tenth of the scale.
 
-The age presets keep their own deliberate ceiling ladder — `Toddler (0-2)` is
-tight *on purpose*, because a few cuts per minute is a meaningful difference at
-that age. **Only their motion ceilings were corrected** (0.5/0.7/0.85/1.0 →
+The age-named presets keep their own ceiling ladder. `Toddler (0-2)` is tight
+so that small differences between quiet programmes stay visible instead of
+collapsing near zero on a broad scale — a **scaling** choice about resolution
+at the bottom of the range, made in exchange for clamping at the top.
+
+**Corrected 2026-09-04.** This paragraph previously justified the ladder as
+"because a few cuts per minute is a meaningful difference at that age". **No
+source supports that**, no study establishes it, and it is a developmental
+claim standing in for a scaling decision — the same error, in a different
+place, as the withdrawn "Calibrated for preschoolers" preset description
+(`DECISIONS.md`). The ladder is a convenience for keeping a corpus spread
+across the scale. It says nothing about any age group.
+
+**Only their motion ceilings were corrected** (0.5/0.7/0.85/1.0 →
 0.18/0.25/0.30/0.35), because the motion scale error was present in every
 preset and is a mistake rather than a design.
 
@@ -70,6 +81,12 @@ preset and is a mistake rather than a design.
   scale", never "too much".
 - **Not a verdict.** `CLAUDE.md` §2.1 — CMAT measures the stimulus. A ceiling
   is a denominator.
+- **Not age-specific.** An age-named preset's ceilings are not a measured
+  property of that age group, and no published source specifies them. The name
+  says which population a study using the preset is about. Each preset carries
+  `"illustrative": true` and `"derivation": "none recorded"` in `config.json`
+  so the caveat travels with the values into any configuration they are saved
+  to.
 
 ## Known limitations of the current values
 

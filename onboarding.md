@@ -4,9 +4,82 @@ Previously-on, for a session starting with zero memory. Read this, then
 `TODO.md`, then `DECISIONS.md` and `LEARNINGS.md`. `INDEX.md` points at
 everything else.
 
-**Last updated:** 2026-09-04 (Formal-Feature Composite terminology; the
-adult-only participant redesign, Clip Finder, and 2026-08-29 rating-scale
-entries follow.)
+**Last updated:** 2026-09-04 (research-credibility audit; Formal-Feature
+Composite terminology; the adult-only participant redesign, Clip Finder, and
+2026-08-29 rating-scale entries follow.)
+
+---
+
+## What changed on 2026-09-04 (later): the research-credibility audit
+
+A full pass over the repository for claims a methods reviewer or replication
+researcher could be misled by. **Nothing about how a metric is computed
+changed, so no cached result is stale and no published figure moved.** What
+changed is what CMAT says about its numbers, and what travels with them.
+
+**Read `DECISIONS.md` for the three decisions and `LEARNINGS.md` for the five
+defect write-ups before touching any of this.** In brief:
+
+1. **A fourth measurement status, `DETERMINISTIC`.** `VALIDATED` was carrying
+   two senses at once, and `describe_selection()` writes the status into
+   `measurement_tools` on every cached result {D} so every CSV, JSON export and
+   PDF said `Frame differencing [validated]` for a tool never compared against
+   any criterion. **Exactly one tool in the registry is now `VALIDATED`:**
+   `pyscenedetect_content`. Motion, colour, audio, frame sampling and caption
+   parsing are `DETERMINISTIC`, which claims nothing about construct validity.
+   `ungraded_measurements()` behaves identically, so no flag on screen moved.
+
+2. **Both parameter sweeps declare their selection bias.**
+   `analyzer.validation.selection_provenance()` returns
+   `selection_estimate: "resubstitution"` plus the warning text, and
+   `run_sweep` / `grade_cut_classifier` attach it to their return value *and*
+   their on-disk manifest. The Trials registry, the CLI and the Tk sweep
+   window all carry the word. The README's claim of "train/test discipline
+   built into the workflow" was false and is gone {D} no split, holdout or
+   leakage check exists in `analyzer/validation.py`, and the coded sample is
+   too small to build one.
+
+3. **The shipped presets are illustrative configurations.** Keys, weights and
+   ceilings unchanged; every description rewritten, plus
+   `"illustrative": true` / `"derivation": "none recorded"` in `config.json` so
+   the caveat travels into any saved config, and a standing banner over the
+   chooser in both front-ends from `ui.settings.PRESET_BANNER`.
+   `Preschool (2-5)` no longer claims to be "calibrated" to Lillard & Peterson
+   (2011); it never was.
+
+4. **`analyzer/version.py` is new** and is the one place CMAT says which build
+   made a result: `cmat_version`, a `git_commit` that appends `-dirty` and
+   reads `unavailable (not a git checkout)` for a frozen build, and the four
+   library versions that can move a number. `EpisodeResult` now carries
+   `analyzed_at_utc`, `cmat_version`, `git_commit`, `source_bytes` and
+   `source_sha256` (hashed during analysis, which already reads the file).
+   The sampler manifest gained `cmat_git_commit` **and the candidate frame's
+   episode labels per stratum** {D} `total_available` counted the frame,
+   nothing recorded what was in it.
+
+5. **Missing is no longer zero in exports.** A failed episode exported
+   `cuts_per_min = 0.0`; it now exports empty cells and an `error`. Audio
+   carries `unavailable_reason` distinguishing three failures. **Speech is in
+   the CSV at all for the first time** {D} it was measured, cached and charted,
+   and left out of `results_to_dataframe`.
+
+6. **Two real defects fixed in passing.** `rescore_episode` {D} reached through
+   `load_scored()`, THE ONE WAY TO READ A CACHED RESULT {D} rebuilt the
+   dataclass by naming fields, silently dropping `measurement_fingerprint` and
+   `measurement_tools` on every read; it uses `dataclasses.replace` now.
+   `analyzer/trials.py` displayed the sampler module's version string
+   ("1.0.0") in a field labelled **Code version / git commit**.
+
+`tests/test_research_claims.py` (42 tests) protects all of it. Everything was
+verified against artefacts, not renders: a real episode analysed and its
+provenance read back, a real draw from `Shows/Arthur` with its frame checked
+against its selection, and a real sweep against the Charlie Brown hand coding
+with its manifest read off disk.
+
+**What was deliberately NOT done:** no validation evidence was invented, no
+citation added without checking it supports the specific nearby claim, no
+detector rewritten, no preset key renamed, and no age-named preset removed
+(`DECISIONS.md` settles that the names stay; the framing carries the caveat).
 
 ---
 

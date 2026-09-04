@@ -1059,10 +1059,14 @@ class SweepWindow(tk.Toplevel):
         warn = tk.Label(
             self, fg="#aa4400", justify="left", wraplength=600, padx=10,
             pady=6, font=("TkDefaultFont", 8),
-            text="⚠ Sweep only on TUNING episodes. Using the sweep on episodes "
-                 "you plan to report results from is overfitting — the "
-                 "reported numbers must come from held-out episodes scored "
-                 "once with frozen settings.")
+            text="⚠ RESUBSTITUTION. This sweep picks the configuration that "
+                 "fits the coding in front of it, then reports the score AT that "
+                 "configuration ON that same coding. The number is optimistically "
+                 "biased and is not the detector's accuracy — taking the maximum "
+                 "over a grid takes the maximum of the grid's noise too. Sweep on "
+                 "TUNING episodes only, then grade the chosen setting on episodes "
+                 "that took no part in the sweep, and record the split in "
+                 "VALIDATION_LOG.md.")
         warn.pack(fill=tk.X)
 
         row = tk.Frame(self, padx=10)
@@ -1154,11 +1158,14 @@ class SweepWindow(tk.Toplevel):
                                     r["diss_F1"]),
                             tags=("best",) if is_best else ())
                     self._best_var.set(
-                        f"Best dissolve F1 = {best['diss_F1']:.3f} at "
-                        f"floor {best['noise_floor']}, "
-                        f"min frames {best['min_frames']}  "
+                        f"Best FIT on this sample: floor "
+                        f"{best['noise_floor']}, min frames "
+                        f"{best['min_frames']} — dissolve F1 there = "
+                        f"{best['diss_F1']:.3f} "
                         f"(P {best['diss_precision']:.3f} / "
-                        f"R {best['diss_recall']:.3f})")
+                        f"R {best['diss_recall']:.3f}). "
+                        f"RESUBSTITUTION — tuned and scored on the same "
+                        f"coding; not the detector's accuracy.")
                 elif kind == "error":
                     self._btn.config(state=tk.NORMAL)
                     self._status.set("")

@@ -31,11 +31,13 @@ from __future__ import annotations
 
 import argparse
 import sys
+import textwrap
 from pathlib import Path
 
 from analyzer.validation import (
     aggregate_summary, classify_cuts_for_video, compare_detections,
     episode_status, export_detections, get_validation_dir,
+    RESUBSTITUTION_WARNING,
     grade_cut_classifier, run_sweep, sec_to_hms, write_template,
 )
 
@@ -159,6 +161,17 @@ def cmd_compare(args: argparse.Namespace) -> None:
           "each miss in VLC — that becomes your error taxonomy.")
 
 
+def _k(value) -> str:
+    """Cohen's kappa for printing. None means UNDEFINED, and must not print
+    as a number - 0.000 there reads as "no agreement beyond chance" for what
+    is actually perfect unanimity."""
+    return "n/a" if value is None else f"{value:.3f}"
+
+
+def _wrap(text: str, width: int = 78) -> str:
+    return "\n".join(textwrap.wrap(text, width))
+
+
 def cmd_sweep(args: argparse.Namespace) -> None:
     video_path, manual_path = Path(args.video), Path(args.manual)
     if not manual_path.exists():
@@ -192,12 +205,14 @@ def cmd_sweep(args: argparse.Namespace) -> None:
         print(f"{floor:>6.1f} | " + " | ".join(f"{c:<6}" for c in cells))
 
     best = res["best"]
-    print(f"\nBest dissolve F1: {best['diss_F1']:.3f} at "
-          f"noise_floor={best['noise_floor']}, min_frames={best['min_frames']} "
-          f"(P={best['diss_precision']:.3f}, R={best['diss_recall']:.3f})")
+    print(f"\nBest-FITTING configuration on THIS sample: noise_floor="
+          f"{best['noise_floor']}, min_frames={best['min_frames']}")
+    print(f"  dissolve F1 there = {best['diss_F1']:.3f} "
+          f"(P={best['diss_precision']:.3f}, R={best['diss_recall']:.3f}) "
+          f"— RESUBSTITUTION, over {len(res['grid_rows'])} grid points")
     print(f"Grid CSV → {res['csv_path']}")
-    print("Remember: sweep on TUNING episodes only. The held-out test set is "
-          "scored once, with frozen parameters.")
+    print()
+    print(_wrap(RESUBSTITUTION_WARNING))
 
 
 def cmd_summary(args: argparse.Namespace) -> None:
@@ -280,14 +295,15 @@ def cmd_grade_cuts(args: argparse.Namespace) -> None:
     print(f"\n{'threshold':>9}  {'accuracy':>8}  {'kappa':>6}")
     print("-" * 28)
     for r in res["sweep_rows"]:
-        star = "  <- best" if r["threshold"] == res["best"]["threshold"] else ""
+        star = "  <- best fit" if r["threshold"] == res["best"]["threshold"] else ""
         print(f"{r['threshold']:>9.3f}  {r['accuracy']:>8.3f}  "
-              f"{r['kappa']:>6.3f}{star}")
+              f"{_k(r['kappa']):>6}{star}")
 
     b = res["best"]
     c = res["confusion"]
-    print(f"\nBest: threshold {b['threshold']:.3f}  "
-          f"accuracy {b['accuracy']:.3f}  kappa {b['kappa']:.3f}")
+    print(f"\nBest-FITTING threshold on THIS sample: {b['threshold']:.3f}  "
+          f"accuracy {b['accuracy']:.3f}  kappa {_k(b['kappa'])}  "
+          f"— RESUBSTITUTION, over {res['n_thresholds_searched']} thresholds")
     print("Confusion at best threshold (human → predicted):")
     print(f"  within → within : {c['within_within']:>3}   "
           f"within → change : {c['within_change']:>3}  (missed within-scene)")
@@ -295,7 +311,11 @@ def cmd_grade_cuts(args: argparse.Namespace) -> None:
           f"change → change : {c['change_change']:>3}")
     print(f"\nDetail → {res['csv_path']}")
     print("kappa guide: <0.4 poor, 0.4–0.6 moderate, 0.6–0.8 substantial, "
-          ">0.8 near-human.")
+          ">0.8 near-human. 'n/a' means kappa is UNDEFINED here, not zero: "
+          "both raters used a single identical class, so there is no chance "
+          "agreement to correct for.")
+    print()
+    print(_wrap(RESUBSTITUTION_WARNING))
 
 
 def cmd_status(args: argparse.Namespace) -> None:

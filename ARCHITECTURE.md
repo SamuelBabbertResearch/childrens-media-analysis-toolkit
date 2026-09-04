@@ -469,13 +469,20 @@ a Methods section or a reviewer will ask about each one first.
    independently additive; neither has been tested.
 2. **Why these default weights** — pacing 25%, saturation 5%, contrast 10%,
    motion 25%, flashing 15%, audio 20%. Pacing and motion carry five times the
-   weight of saturation. That is a substantive theoretical claim about what
-   drives sensory load, and it is written down nowhere. The per-preset
-   `description` fields in `config.json` explain each preset's *emphasis*, not
-   the base weighting.
-3. **Where the ceilings came from.** `cuts_per_min` max 60, contrast max 0.35,
-   flashing max 30/min, audio RMS max 0.2. No source, derivation, or corpus is
-   recorded for any of them, and they set the scale every score sits on.
+   weight of saturation. Weighting one measured feature above another is a
+   claim about their relative contribution to whatever the composite is meant
+   to summarise, and **nothing in this repository supports the particular
+   ratios**. From 2026-09-04 each preset in `config.json` carries
+   `"derivation": "none recorded"` so this is stated in the data rather than
+   only here; the `description` fields explain each preset's *emphasis*, which
+   is a different question from where the base weighting came from.
+3. **Where the ceilings came from.** Originally `cuts_per_min` max 60,
+   contrast max 0.35, flashing max 30/min, audio RMS max 0.2 — **those are the
+   ORIGINAL values, not the current ones**; five of the six were refitted on
+   2026-08-14 and `CEILINGS.md` carries the current table, the corpus and the
+   reasoning. That refit is the only recorded basis any ceiling has ever had,
+   and it is a fit to 78 episodes that happened to be analysed, not a
+   derivation. They set the scale every score sits on.
 
 The theoretical grounding is named — Huston & Wright's formal features, Lang's
 LC4MP (`CLAUDE.md` §2.2) — but **nothing maps a specific metric to a specific
@@ -485,6 +492,14 @@ Until this is written down, the composite is best described as *a configurable
 weighted index whose defaults are a working judgement*, not as an operational
 measure of a construct. That framing is honest and defensible; claiming more
 would not be. See `TODO.md`.
+
+**It cannot be closed by coding, and that is worth saying plainly.** Hand
+coding can grade a detector, because a human can see a cut. No amount of hand
+coding can tell you whether pacing should be weighted 0.25 or 0.30 — that
+needs a criterion outside the tool (a behavioural, physiological or rated
+outcome the composite could be related to), and this project has none. The
+2026-09-04 audit made the absence explicit in the interface, in `config.json`
+and in every export. It did not close it, and documentation cannot.
 
 #### What IS recorded, and what the corpus shows (2026-08-14)
 
@@ -725,22 +740,33 @@ code so the interface, the exports and the paper cannot drift apart.
 | Measurement | Tools (status) |
 |---|---|
 | `transitions` | `pyscenedetect_content` **validated** · `pyscenedetect_adaptive` *unvalidated* · `transnetv2` *experimental* |
-| `motion` | `absdiff` **validated** · `farneback` *unvalidated* |
-| `color` | `hsv_mean` **validated** |
-| `audio` | `ffmpeg_rms` **validated** |
-| `speech` | `captions_only` **validated** · `captions_then_whisper` *unvalidated* |
-| `sampling` | `uniform` **validated** |
+| `motion` | `absdiff` *deterministic* · `farneback` *unvalidated* |
+| `color` | `hsv_mean` *deterministic* |
+| `audio` | `ffmpeg_rms` *deterministic* |
+| `speech` | `captions_only` *deterministic* · `captions_then_whisper` *unvalidated* |
+| `sampling` | `uniform` *deterministic* |
 | `flashing` | `luminance_delta` — ***unvalidated*** |
 | `dissolves` | `cmat_plateau` — *experimental* |
 | `scene_relation` | `frame_similarity` — ***unvalidated*** |
 
-Five statuses, and they mean different things. The table above shows only the first three; the last two apply to whole metric families (see `METRIC_STATUS` in `analyzer/provenance.py`):
+**Exactly one tool in CMAT has been graded against human coding**:
+`pyscenedetect_content`. Everything else is either ungraded or has no
+detection step that could be graded.
 
-- **validated** — graded against human coding.
+Five statuses, and they mean different things. `human` applies to a whole
+metric family and appears only in `METRIC_STATUS` (`analyzer/provenance.py`):
+
+- **validated** — graded against human coding, error published. In the whole
+  registry this is `pyscenedetect_content` and nothing else.
 - **unvalidated** — works, ungraded. Flag it wherever its numbers appear.
 - **experimental** — ungraded *and* known to be rough.
-- **deterministic** — colour, motion and audio are direct signal measurements
-  with no detection or classification step to validate.
+- **deterministic** — a direct signal computation with no detection or
+  classification step to grade: colour, motion, audio, frame sampling, and
+  caption parsing. **This status makes no claim about construct validity.**
+  Whether mean HSV saturation is a good stand-in for "visual salience", or
+  linear RMS amplitude for "loudness as heard", is exactly the kind of
+  question the status does *not* answer — it says only that there is no
+  detector inside to compare against a human.
   **Flashing is NOT in this group**, though `analyzer/provenance.py` described
   it as such until 2026-08-14 — and that description was published on the
   site and in every PDF. The *signal* is deterministic; whether the whole-frame
@@ -749,6 +775,17 @@ Five statuses, and they mean different things. The table above shows only the fi
   wherever its numbers appear.
 - **human** — fantastical events. The tool structures the coding; it does not
   detect fantasy.
+
+**Corrected 2026-09-04.** Until this date the registry spelled the five
+deterministic tools **validated**, because `VALIDATED` was carrying two senses
+at once: "graded against human coding" and "nothing here to worry about". The
+consequence was published, not merely internal — `describe_selection()` writes
+the status into `measurement_tools` on every cached result, so every CSV, JSON
+export and PDF report said `Frame differencing [validated]` for a tool that has
+never been compared against any criterion. A methods reviewer would reasonably
+have read that as evidence that did not exist. `DETERMINISTIC` was added so the
+true statement is available; `tests/test_measurements.py` now pins the
+distinction.
 
 ### The headline accuracy figure
 
@@ -861,7 +898,10 @@ format presets exist because saturation systematically favours animation — see
 
 ## 11. Test suite
 
-581 collected: 568 passed, 13 skipped (2026-08-16). What each file protects:
+789 collected: 775 passed, 13 skipped, 1 pre-existing failure
+(`test_study_runner_scale.py::test_selecting_is_exclusive_and_reports_the_value`,
+a Qt radio-button check unrelated to measurement) as of 2026-09-04.
+What each file protects:
 
 | File | Guards |
 |---|---|
@@ -879,6 +919,7 @@ format presets exist because saturation systematically favours animation — see
 | `test_tables.py`, `test_theme.py` | Tk-era table and theme behaviour |
 | `test_ui_qt.py` | tokens, stylesheet, the HTML report, the guardrails |
 | `test_vocab_complexity.py` | language metrics |
+| `test_research_claims.py` | **the claims CMAT makes about itself** — that `VALIDATED` names only tools with a published grading, that both parameter sweeps declare their resubstitution bias on the manifest as well as the return value, that a result can be traced to a build and an input file and survives a cache rescore, that an empty export cell is distinguishable from a measured zero, that no shipped preset claims to be calibrated or normative, and that the README promises nothing the code does not do. Every test names the specific defect it was written for |
 
 The Tk tests `importorskip("tkinter")`, which is where most of the 13 skips
 come from.

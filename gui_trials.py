@@ -188,7 +188,7 @@ class TrialDetailWindow(tk.Toplevel):
             ("Key result", trial["result"]),
             ("Detail", trial["detail"]),
             ("Published to site", "yes" if trial["published"] else "no"),
-            ("Tool version (git)", trial["git_commit"]),
+            ("CMAT commit", trial["git_commit"] or "not recorded"),
         ]
         if trial["kind"] == "episode_sample":
             from analyzer.trials import sample_coverage

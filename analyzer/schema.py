@@ -52,11 +52,27 @@ class FlashingMetrics:
 
 @dataclass
 class AudioMetrics:
-    rms_mean: float = 0.0          # mean per-window RMS loudness (linear 0–1)
+    """Linear RMS amplitude on a mono, 8 kHz-resampled signal. NOT LUFS.
+
+    When `available` is False every number here is 0.0 and MEANS NOTHING —
+    read `available` first. `unavailable_reason` says which failure it was,
+    because "this episode is silent", "this machine has no FFmpeg" and "the
+    decode threw" are three different facts and a research pipeline that
+    collapses them into one zero has turned a failure into data.
+    """
+    rms_mean: float = 0.0          # mean per-window RMS amplitude (linear 0-1)
     rms_peak: float = 0.0          # loudest 1-second window
-    rms_temporal_var: float = 0.0  # variance of per-window RMS — captures sudden peaks
-    dynamic_range_db: float = 0.0  # peak-to-mean ratio in dB
+    rms_temporal_var: float = 0.0  # variance of per-window RMS
+    dynamic_range_db: float = 0.0  # 20*log10(peak/mean), dB
     available: bool = False        # False when FFmpeg is absent or no audio track
+    # "" when available. Otherwise one of REASON_* below.
+    unavailable_reason: str = ""
+
+    # Why no measurement exists. Distinguishing these is the difference
+    # between "this show is quiet" and "this install cannot measure audio".
+    REASON_NO_FFMPEG = "ffmpeg_not_found"
+    REASON_NO_AUDIO_TRACK = "no_audio_track"
+    REASON_EXTRACTION_FAILED = "extraction_failed"
 
 
 @dataclass
@@ -115,6 +131,14 @@ class EpisodeResult:
     # validation status into exports and reports so a number produced by an
     # ungraded component cannot be read as if it were validated.
     measurement_tools: dict[str, str] = field(default_factory=dict)
+    # --- provenance, added 2026-09-04 ---------------------------------------
+    # Empty on results cached before this existed, which is why every reader
+    # must treat "" as "not recorded" rather than as a value.
+    analyzed_at_utc: str = ""       # ISO-8601 UTC, when this run finished
+    cmat_version: str = ""          # the release that produced it
+    git_commit: str = ""            # the commit, "-dirty" if the tree differed
+    source_bytes: int = 0           # size of the input file, 0 = not recorded
+    source_sha256: str = ""         # content hash of the input, "" = not taken
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -143,6 +167,11 @@ class EpisodeResult:
             config=d.get("config", {}),
             measurement_fingerprint=d.get("measurement_fingerprint", ""),
             measurement_tools=d.get("measurement_tools", {}) or {},
+            analyzed_at_utc=d.get("analyzed_at_utc", ""),
+            cmat_version=d.get("cmat_version", ""),
+            git_commit=d.get("git_commit", ""),
+            source_bytes=int(d.get("source_bytes", 0) or 0),
+            source_sha256=d.get("source_sha256", ""),
             metrics=EpisodeMetrics(
                 shot_length=ShotLengthMetrics(**sl) if sl else ShotLengthMetrics(),
                 scene_pacing=ScenePacingMetrics(
@@ -162,7 +191,14 @@ class EpisodeResult:
                 ) if cs else ColorSaturationMetrics(),
                 motion=MotionMetrics(**mo) if mo else MotionMetrics(),
                 flashing=FlashingMetrics(**fl) if fl else FlashingMetrics(),
-                audio=AudioMetrics(**au) if au else AudioMetrics(),
+                # Filtered, not splatted: a cache written by a build with a
+                # field this one does not have must load, not raise.
+                audio=AudioMetrics(**{
+                    k: v for k, v in au.items()
+                    if k in {"rms_mean", "rms_peak", "rms_temporal_var",
+                             "dynamic_range_db", "available",
+                             "unavailable_reason"}
+                }) if au else AudioMetrics(),
                 speech=SpeechMetrics(
                     available=spe.get("available", False),
                     source=spe.get("source", "none"),

@@ -262,6 +262,72 @@ Lillard & Peterson (2011) **for the age band, not for the ceiling values**. The
 decision itself — age names denote the study population, not suitability — is
 unaffected and still stands; only the false provenance claim is withdrawn.
 
+### Age-named presets are presented as illustrative configurations
+**Decision.** Keep the preset keys and the age names; present every shipped
+preset as an **illustrative configuration** rather than a starting
+configuration. `config.json` carries `"illustrative": true` and
+`"derivation": "none recorded"` on each; both front-ends show a standing
+banner above the chooser ("Illustrative presets — not validated developmental
+norms"), imported from `ui.settings.PRESET_BANNER` so the two cannot drift.
+**Reason.** The framing was doing less work than the names. `Preschool (2-5)`
+read "**Calibrated** for preschoolers — the age range in Lillard & Peterson
+(2011)", which claims a derivation that does not exist: that study compared two
+programmes on children's immediate executive function and reports no
+formal-feature thresholds. `Toddler (0-2)` promised "tight ceilings" for a
+population, `Early Childhood` "wider tolerances" and `Tween` "near-adult
+tolerance" — all developmental claims standing in for scaling decisions, none
+sourced. A prose caveat in each description is also one a researcher meets
+after choosing.
+**Date.** 2026-09-04.
+**Rejected.** Dropping the age names — already settled above, and the reason
+still holds: they are the clearest label for the population a study is about.
+Renaming the keys — it would break every saved configuration for a
+presentational gain that the banner and the `illustrative` marker deliver
+without one.
+**Compatibility.** Keys, weights and ceilings are unchanged, so cached scores
+and saved configurations are unaffected. Only the presentation and the
+descriptions changed. A preset the researcher saves is marked
+`"derivation": "user-defined in this install; not recorded here"` rather than
+inheriting the shipped marker.
+
+### A tool is "validated" only if it was graded against human coding
+**Decision.** Add a fourth status, `DETERMINISTIC`, to
+`analyzer/measurements.py`, and retag frame sampling, motion, colour, audio and
+caption parsing with it. `VALIDATED` now names exactly one tool:
+`pyscenedetect_content`.
+**Reason.** `VALIDATED` was carrying two senses — "graded against human
+coding" and "nothing here to worry about". `describe_selection()` writes the
+status into `measurement_tools` on every cached result, so every CSV, JSON
+export and PDF report said `Frame differencing [validated]` for a tool that has
+never been compared against any criterion. A methods reviewer would reasonably
+read that as evidence the repository does not hold.
+**Date.** 2026-09-04.
+**Rejected.** Leaving it and explaining in the documentation — the string
+travels into exports, where the documentation does not follow it.
+**Note.** `DETERMINISTIC` makes no claim of construct validity. Whether mean
+HSV saturation stands in well for visual salience is untested and is the
+researcher's argument to make; the status says only that there is no detector
+inside to compare against a human.
+
+### A parameter sweep's best score is labelled a resubstitution estimate
+**Decision.** `run_sweep` and `grade_cut_classifier` attach
+`selection_provenance()` — `selection_estimate: "resubstitution"`,
+`tuned_and_scored_on_same_data: true`, `held_out_data: false` and the warning
+text — to both their return value and their on-disk manifest. Every surface
+that prints one of these figures prints the warning.
+**Reason.** Both fit a parameter by taking the maximum over a grid ON a coded
+sample and then report the score AT that parameter ON that same sample. That is
+optimistically biased by construction, and the bias grows with the grid and
+shrinks with the sample — and CMAT's coded sample is two episodes' opening
+five minutes. The Trials registry listed "best diss F1" and "κ 0.71 @ thr
+0.55" beside genuinely held-out figures in one table with nothing to tell them
+apart, and the README claimed "train/test discipline built into the workflow",
+which no code implements.
+**Date.** 2026-09-04.
+**Rejected.** Building a holdout split into the sweep — the coded sample is
+too small to split and still say anything, so the honest fix is the label, not
+a split that would produce two unusable halves.
+
 ### Unusual values are marked with a glyph and a named comparison set
 **Decision.** ▲/▽ plus a legend naming the set (e.g. "the 24 episodes listed
 here"), never colour alone. Tukey fences, and not computed below eight values.

@@ -20,6 +20,28 @@ legacy `sensory_load` storage keys remain compatibility identifiers only; see
 `DECISIONS.md` and `onboarding.md`. The CLI accepts `ffc_score` and `avg_ffc`
 as user-facing sort aliases.
 
+**Research-credibility audit completed 2026-09-04.** Statuses, sweep-bias
+labelling, preset framing, provenance, missing-data semantics and citations
+were corrected; `tests/test_research_claims.py` pins them. No measurement
+changed, so nothing is stale. See `onboarding.md` and `DECISIONS.md`. Three
+things it surfaced and deliberately did **not** attempt, because each is a
+session of its own:
+
+- **The composite's weights still have no derivation.** They cannot be
+  validated by coding — that needs a criterion outside the tool
+  (`ROADMAP.md`). The audit made the absence explicit everywhere; it did not
+  close it, and no amount of documentation can.
+- **`ungraded_measurements()` covers the six shipped composite inputs only.**
+  The language measures (readability formulas, Zipf tiers, AoA, MTLD) are not
+  in the measurement registry, so they get no status and no flag — they are
+  applied as published and have not been revalidated on transcribed dialogue,
+  which the README now says and the interface does not.
+- **`grade_cut_classifier` has no interface at all** — it is reachable only
+  through `validate_cuts.py gradecuts`, so the within-scene classifier can be
+  graded from a terminal and nowhere else. (Its undefined-kappa crash on the
+  CLI print path was fixed; `ui/handcoding.py` already handled `None`
+  correctly for the two-coder kappa, which is a different statistic.)
+
 **Ready now, and in this order.** Each is its own session with its own
 verification against real output — do not do two at once.
 
