@@ -41,11 +41,12 @@ measurement instrument, and a result should be qualified by the coding basis,
 sample, settings, and match rule used to produce it.
 
 The formal-feature literature motivates the properties CMAT can measure; it
-does not prescribe one universal construct or a single composite score. An
-optional sensory-load composite is therefore a transparent,
-researcher-defined operationalization. Its component measures remain visible,
-and its weights and normalization ceilings are configurable rather than
-theory-derived or validated.
+does not prescribe one universal construct or a single composite score. The
+optional **Formal-Feature Composite (FFC)** is a configurable composite of
+observable audio-visual production and editing features. Its component measures
+remain visible, and its weights and normalization ceilings are configurable
+rather than theory-derived or validated. It is not a validated measure of
+viewer sensory load, arousal, or developmental impact.
 
 > **Scope:** CMAT measures the stimulus, not the viewer. It cannot account for
 > a child's age, temperament, sensory-processing profile, viewing context, or
@@ -207,7 +208,7 @@ is an automated judgment.
 
 | Measure | What it captures |
 |--------|-----------------|
-| **Sensory-load composite** | A transparent, weighted summary of selected formal media-feature measures. It is configured by the researcher, always displays its component parts, and is not a validated construct or a verdict. |
+| **Formal-Feature Composite (FFC)** | A configurable composite of observable audio-visual production and editing features. It always displays its component parts and is not a validated measure of viewer sensory load, arousal, or developmental impact. |
 
 ### Language metrics *(optional — requires subtitle files or Whisper AI)*
 
@@ -319,7 +320,7 @@ Once episodes are analyzed, click **Show Chart** from any show-level or full-ser
 | Control | Options |
 |---------|---------|
 | **X-axis** | Air Date (when ≥ 80 % of episodes have dates) · Episode Number |
-| **Y-axis** | Sensory Load Score · Cuts per Minute · Color Saturation · Color Contrast · Motion · Flashing / min · Audio RMS |
+| **Y-axis** | FFC Score · Cuts per Minute · Color Saturation · Color Contrast · Motion · Flashing / min · Audio RMS |
 | **Colour by** | Season · Era |
 
 **Era stratification** — Click **Edit Eras…** to define named date ranges (e.g. *Original Run 1992–1997*, *Revival 2003–2006*). Each era gets its own bar colour; episodes outside all defined ranges appear in gray. Eras are saved per-show to the local database and reload automatically the next time you open the chart.
@@ -332,11 +333,11 @@ Once episodes are analyzed, click **Show Chart** from any show-level or full-ser
 
 ### 8. Adjust weights and presets
 
-**Settings → Sensory Load Weights** — change how much each metric contributes to the composite score, or adjust normalization ceilings. Age-range and content-type presets are built in. Switching presets re-scores all cached results instantly — no re-analysis needed.
+**Settings → Formal-Feature Composite Weights** — change how much each metric contributes to the FFC, or adjust normalization ceilings. Age-range and content-type presets are built in. Switching presets re-scores all cached results instantly — no re-analysis needed.
 
 ### 9. Analyze speech and vocabulary
 
-The **Language tab** surfaces dialogue-level metrics that are independent of the sensory-load composite.
+The **Language tab** surfaces dialogue-level metrics that are independent of the FFC.
 
 #### Speech sub-tab
 

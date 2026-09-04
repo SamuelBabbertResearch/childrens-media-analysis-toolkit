@@ -14,6 +14,11 @@ traceable. The plan of record is [`MEASUREMENT_MODEL.md`](MEASUREMENT_MODEL.md)
 *Now* below is still real and still true; none of it is a prerequisite for
 this, and this does not licence expanding into it.
 
+**Terminology settled 2026-09-04.** The shipped configurable aggregate is the
+**Formal-Feature Composite (FFC)**, not a measure of viewer sensory load. Its
+legacy `sensory_load` storage keys remain compatibility identifiers only; see
+`DECISIONS.md` and `onboarding.md`.
+
 **Ready now, and in this order.** Each is its own session with its own
 verification against real output — do not do two at once.
 

@@ -4,8 +4,25 @@ Previously-on, for a session starting with zero memory. Read this, then
 `TODO.md`, then `DECISIONS.md` and `LEARNINGS.md`. `INDEX.md` points at
 everything else.
 
-**Last updated:** 2026-08-31 (adult-only participant redesign; the Clip Finder
-and 2026-08-29 rating-scale entries follow it, then 2026-08-16.)
+**Last updated:** 2026-09-04 (Formal-Feature Composite terminology; the
+adult-only participant redesign, Clip Finder, and 2026-08-29 rating-scale
+entries follow.)
+
+---
+
+## What changed on 2026-09-04: Formal-Feature Composite (FFC)
+
+The configurable aggregate formerly labelled "sensory load" is now the
+**Formal-Feature Composite (FFC)**: *a configurable composite of observable
+audio-visual production and editing features.* The rename applies to the Qt
+and classic interfaces, charts, PDFs, the public-site generator, and README.
+The stored `sensory_load` field, configuration keys, and cache schema remain
+unchanged for compatibility with existing analyses.
+
+The FFC is not a validated measure of viewer sensory load, arousal, or
+developmental impact. Results and exports describe it as a configurable 0–1
+composite rather than as low/high stimulation. `DECISIONS.md` records the
+terminology decision.
 
 ---
 

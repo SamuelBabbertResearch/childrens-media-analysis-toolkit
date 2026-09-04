@@ -218,7 +218,7 @@ def test_no_public_text_claims_the_composite_is_grounded_or_validated():
     The composite's weights and ceilings are AI-generated defaults never traced
     to a source (`ARCHITECTURE.md` §8.1a). Huston & Wright and Lang justify
     WHICH properties are measured and say nothing about how to combine them, so
-    a phrase like "empirically grounded database of sensory-load profiles"
+    a phrase like "empirically grounded database of FFC profiles"
     claims a derivation that does not exist. Four such phrasings were live on
     2026-08-14, including the site's landing page.
     """

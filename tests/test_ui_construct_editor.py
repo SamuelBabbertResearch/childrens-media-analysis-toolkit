@@ -338,7 +338,7 @@ def test_the_new_menu_offers_every_construct_including_measureless_ones(
     assert all(enabled for _t, enabled in entries), \
         [t for t, e in entries if not e]
     assert any(t.startswith("Mine") for t, _e in entries)
-    assert any("Sensory load" in t for t, _e in entries)
+    assert any("Formal-Feature Composite" in t for t, _e in entries)
     assert any("New construct" in t for t, _e in entries)
     dialog.deleteLater()
 

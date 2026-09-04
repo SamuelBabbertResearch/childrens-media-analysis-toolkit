@@ -216,6 +216,24 @@ canvas. Qt renders HTML/CSS, so the design becomes declarative.
 
 ## Product identity
 
+### The configurable aggregate is the Formal-Feature Composite (FFC)
+**Decision.** Rename the user-facing aggregate **Formal-Feature Composite
+(FFC)**, defined as *a configurable composite of observable audio-visual
+production and editing features.*
+**Reason.** "Sensory load" implies a validated claim about a viewer. CMAT
+measures formal properties of a media stimulus and combines six such measures
+using configurable, underived weights and normalization ceilings. The new name
+states what the software calculates without presenting it as a psychometric
+instrument or a viewer-effect measure.
+**Date.** 2026-09-04.
+**Rejected.** "Custom Formal-Feature Composite" — misleading for CMAT's
+shipped configuration; "Media Presentation Feature Composite" — less aligned
+with the established formal-features terminology; and retaining "sensory
+load" with a caveat — the primary label would still overclaim.
+**Compatibility.** Stored `sensory_load` fields and configuration keys remain
+unchanged so existing caches, exports, and recipes continue to load. They are
+implementation identifiers, not public terminology.
+
 ### CMAT issues no verdict
 **Decision.** No token, badge, column, field, preset, or export reports
 appropriateness, target audience age, educational value, or quality. CMAT

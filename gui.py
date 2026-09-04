@@ -1419,10 +1419,10 @@ class App(tk.Tk):
 
         m = result.metrics
 
-        # --- Sensory load ---------------------------------------------------
-        self._section(t, "Sensory load")
+        # --- Formal-Feature Composite --------------------------------------
+        self._section(t, "Formal-Feature Composite (FFC)")
         t.insert(tk.END, f"{m.sensory_load.score:.3f}", "score")
-        t.insert(tk.END, "   0 = low stimulation, 1 = high\n")
+        t.insert(tk.END, "   Configurable 0–1 composite; not a viewer-effect measure.\n")
         if not m.sensory_load.audio_available:
             t.insert(tk.END, "Visual only — no audio track.\n", "dim")
 
@@ -1748,7 +1748,7 @@ class App(tk.Tk):
             Column("max", "Max", width=56, numeric=True),
         ]
         stats = [
-            ("Sensory load score",   agg.sensory_load_score),
+            ("Formal-Feature Composite (FFC)", agg.sensory_load_score),
             ("Cuts / min",           agg.cuts_per_min),
             ("Shot length mean (s)", agg.shot_length_mean_sec),
             ("Colour saturation",    agg.color_saturation_mean),
@@ -2543,9 +2543,9 @@ class App(tk.Tk):
                 return None
 
         _METRIC_DEFS = [
-            ("Sensory Load Score",
+            ("Formal-Feature Composite (FFC)",
              lambda r: r.metrics.sensory_load.score,
-             "Sensory Load Score (0–1)"),
+             "Formal-Feature Composite (FFC, 0–1)"),
             ("Cuts per Minute",
              lambda r: r.metrics.scene_pacing.cuts_per_min,
              "Cuts per Minute"),
@@ -3276,8 +3276,8 @@ class App(tk.Tk):
                      "Spoken-word content (lectures, narration) often scores higher here\n"
                      "than music-backed animation with quieter dialogue.\n"
                      "'n/a' if no audio track detected.",
-            "load":  "Sensory load composite score (0-1) — weighted combination of all metrics.\n"
-                     "Higher = more stimulating.\n\n"
+            "load":  "Formal-Feature Composite (FFC, 0–1) — configurable weighted combination of observable audio-visual production and editing features.\n"
+                     "It is not a viewer-effect measure.\n\n"
                      "Scores are calibrated to the preset active when each episode was analyzed.\n"
                      "Cross-genre comparisons (e.g., cartoons vs. lectures) may be misleading\n"
                      "under the General preset — see Help → About metrics for details.",
@@ -3291,7 +3291,8 @@ class App(tk.Tk):
         _IndexTooltip(self._idx_sh_tree, {
             "show":  "Show name",
             "eps":   "Number of analyzed episodes in the index",
-            "load":  "Average sensory load score across all episodes (0-1).\n\n"
+            "load":  "Average Formal-Feature Composite (FFC) score across all episodes (0-1).\n"
+                     "It is not a viewer-effect measure.\n\n"
                      "Scores are calibrated to the preset used at analysis time.\n"
                      "A lecture with high-contrast slides and loud speech can\n"
                      "score above an animated show under the General preset because\n"
@@ -4191,7 +4192,7 @@ class App(tk.Tk):
           "  an overstimulation marker.")
         br()
 
-        h2("SENSORY LOAD COMPOSITE")
+        h2("FORMAL-FEATURE COMPOSITE (FFC)")
         p("  Weighted combination of normalized sub-metrics using fixed reference\n"
           "  ranges — comparable across shows and runs. Each metric is divided by\n"
           "  the preset's reference-range ceiling before weighting, so the ceiling\n"
@@ -4213,8 +4214,8 @@ class App(tk.Tk):
           "  and louder speech audio may score above an animated children's show\n"
           "  under the General preset — because contrast and audio are absolute\n"
           "  measurements that do not adjust for genre. This is mathematically correct\n"
-          "  but may not match your intuition about which content is more stimulating\n"
-          "  for a child.")
+          "  but may not match your intuition about the formal features that\n"
+          "  contribute to the composite.")
         br()
         tip("  Best practice: use Preschool or Early Childhood presets when your\n"
             "  library contains only children's content. Use General only when you\n"
@@ -4509,7 +4510,7 @@ class SettingsDialog(tk.Toplevel):
         columns = tk.Frame(self)
         columns.pack(fill=tk.BOTH, expand=True, padx=10, pady=4)
 
-        wf = tk.LabelFrame(columns, text="Sensory Load Weights", padx=8, pady=6)
+        wf = tk.LabelFrame(columns, text="Formal-Feature Composite Weights", padx=8, pady=6)
         wf.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 6))
         for label, key in zip(self._WEIGHT_LABELS, self._WEIGHT_KEYS):
             row = tk.Frame(wf)
@@ -4911,7 +4912,7 @@ class CompareWindow(tk.Toplevel):
             self._fill_show(row, a, b)
 
         ttk.Separator(self, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=6, pady=(6, 2))
-        tk.Label(self, text="◀  =  calmer / less stimulating on this metric",
+        tk.Label(self, text="◀  =  lower value on this metric",
                  font=("TkDefaultFont", 8), fg="#555555").pack()
         tk.Button(self, text="Close", command=self.destroy,
                   padx=20).pack(pady=(4, 10))
@@ -4922,7 +4923,7 @@ class CompareWindow(tk.Toplevel):
         row("Duration (min)", a.duration_sec / 60, b.duration_sec / 60,
             lower_better=False, fmt=".1f")
 
-        row("Sensory Load", section=True, va=None, vb=None)
+        row("Formal-Feature Composite (FFC)", section=True, va=None, vb=None)
         row("Composite score", ma.sensory_load.score, mb.sensory_load.score)
         ca, cb = ma.sensory_load.components, mb.sensory_load.components
         row("  Pacing",     ca.pacing,     cb.pacing)
@@ -4967,7 +4968,7 @@ class CompareWindow(tk.Toplevel):
             float(b.episode_count - b.failed_count),
             lower_better=False, fmt=".0f")
 
-        row("Sensory Load", section=True, va=None, vb=None)
+        row("Formal-Feature Composite (FFC)", section=True, va=None, vb=None)
         row("Mean score",   a.sensory_load_score.mean,   b.sensory_load_score.mean)
         row("Median score", a.sensory_load_score.median, b.sensory_load_score.median)
         row("Std dev",      a.sensory_load_score.std,    b.sensory_load_score.std)

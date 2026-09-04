@@ -76,7 +76,8 @@ divides by *dialogue time, not runtime* — it is how fast characters speak when
 they speak, not how talkative an episode is. Alone it invites the wrong
 reading.
 
-**Say "sensory load" only for the composite.** Six numbers feed it —
+**Call the composite the "Formal-Feature Composite (FFC)".** Six numbers feed
+it —
 `cuts_per_min`, saturation mean, contrast mean, motion mean, flashing rate,
 audio RMS mean. Shot length, rhythm variability, motion peak, dynamic range,
 speech and hand-coded events are measured and reported but **not scored**.

@@ -441,23 +441,28 @@ LOUDNESS = Construct(
     ),
 )
 
+FORMAL_FEATURE_COMPOSITE_NAME = "Formal-Feature Composite (FFC)"
+FORMAL_FEATURE_COMPOSITE_SHORT_NAME = "Formal-Feature Composite"
+FORMAL_FEATURE_COMPOSITE_DEFINITION = (
+    "A configurable composite of observable audio-visual production and "
+    "editing features."
+)
+
 SENSORY_LOAD = Construct(
     key="sensory_load",
-    name="Sensory load",
-    definition=(
-        "The overall perceptual demand a programme places on a viewer, taken "
-        "as a single summary quantity."
-    ),
+    name=FORMAL_FEATURE_COMPOSITE_NAME,
+    definition=FORMAL_FEATURE_COMPOSITE_DEFINITION,
     grounding=(
         "READ THIS BEFORE USING IT. Huston & Wright's formal features and "
         "Lang's LC4MP justify MEASURING pacing, colour, motion, luminance "
         "change and loudness. **Neither says how to combine them into one "
         "number**, and nothing in CMAT derives the combination: the shipped "
-        "composite's weights, its normalization ceilings and its additive form "
+        "FFC's weights, its normalization ceilings and its additive form "
         "were authored during implementation and have no recorded derivation "
         "(`ARCHITECTURE.md` §8.1a). Expressing that composite as a recipe "
         "makes the choice explicit and inspectable. It does not justify it, "
-        "and naming this construct does not retroactively derive a weight."
+        "and the FFC is not a validated measure of viewer sensory load, "
+        "arousal, or developmental impact."
     ),
 )
 

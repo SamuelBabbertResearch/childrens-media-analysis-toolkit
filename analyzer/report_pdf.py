@@ -77,7 +77,7 @@ def _bar_png(value: float, width_px: int = 200, height_px: int = 14) -> bytes:
 
 
 def _component_chart_png(result: "EpisodeResult", cfg: dict) -> bytes:
-    """Reproduce the GUI sensory-load bar chart as PNG."""
+    """Reproduce the GUI Formal-Feature Composite bar chart as PNG."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -102,7 +102,7 @@ def _component_chart_png(result: "EpisodeResult", cfg: dict) -> bytes:
     ax.set_ylim(0, 1.05)
     ax.set_ylabel("Value (0-1)", fontsize=8)
     ax.legend(fontsize=7)
-    ax.set_title("Sensory Load Components", fontsize=9)
+    ax.set_title("Formal-Feature Composite Components", fontsize=9)
     fig.tight_layout()
 
     buf = io.BytesIO()
@@ -174,7 +174,7 @@ def export_episode_pdf(result: "EpisodeResult", cfg: dict, dest: Path) -> None:
     cfg_w = cfg.get("sensory_load_weights", {})
 
     # Header
-    story.append(Paragraph("Sensory Load Report", S["title"]))
+    story.append(Paragraph("Formal-Feature Composite Report", S["title"]))
     story.append(Paragraph(f"<b>Episode:</b> {result.file}", S["body"]))
     if result.duration_sec:
         story.append(Paragraph(
@@ -183,9 +183,10 @@ def export_episode_pdf(result: "EpisodeResult", cfg: dict, dest: Path) -> None:
     story.append(HRFlowable(width="100%", thickness=0.5, color=_BLUE, spaceAfter=6))
 
     # Score
-    story.append(Paragraph("Sensory Load Score", S["h2"]))
+    story.append(Paragraph("Formal-Feature Composite (FFC)", S["h2"]))
     story.append(Paragraph(f"{m.sensory_load.score:.3f}", S["score"]))
-    story.append(Paragraph("0 = low stimulation  ·  1 = high stimulation", S["dim"]))
+    story.append(Paragraph(
+        "Configurable 0–1 composite; not a viewer-effect measure.", S["dim"]))
     if not m.sensory_load.audio_available:
         story.append(Paragraph("[Visual only — no audio track]", S["dim"]))
     story.append(Spacer(1, 6))
@@ -287,7 +288,7 @@ def export_show_pdf(
     story = []
 
     # Header
-    story.append(Paragraph("Sensory Load Report", S["title"]))
+    story.append(Paragraph("Formal-Feature Composite Report", S["title"]))
     story.append(Paragraph(f"<b>Show:</b> {agg.show_name}", S["body"]))
     analyzed = agg.episode_count - agg.failed_count
     story.append(Paragraph(
@@ -301,7 +302,7 @@ def export_show_pdf(
     agg_rows = [["Metric", "Mean", "Median", "Std Dev", "Min", "Max"]]
     def _s(stat): return [f"{stat.mean:.3f}", f"{stat.median:.3f}",
                            f"{stat.std:.3f}",  f"{stat.min:.3f}", f"{stat.max:.3f}"]
-    agg_rows.append(["Sensory load score"] + _s(agg.sensory_load_score))
+    agg_rows.append(["Formal-Feature Composite (FFC)"] + _s(agg.sensory_load_score))
     agg_rows.append(["Cuts / min"]         + _s(agg.cuts_per_min))
     agg_rows.append(["Shot length mean (s)"]+ _s(agg.shot_length_mean_sec))
     agg_rows.append(["Color saturation"]   + _s(agg.color_saturation_mean))
@@ -315,7 +316,7 @@ def export_show_pdf(
     story.append(_tbl(agg_rows, cw2))
     story.append(Spacer(1, 10))
 
-    # Sensory load distribution chart
+    # Formal-Feature Composite distribution chart
     ok_results = [r for r in results if r.status == "ok"]
     if ok_results:
         loads = [r.metrics.sensory_load.score for r in ok_results]
@@ -326,8 +327,8 @@ def export_show_pdf(
         ax.set_yticks(y)
         ax.set_yticklabels(names, fontsize=7)
         ax.set_xlim(0, 1)
-        ax.set_xlabel("Sensory Load Score", fontsize=8)
-        ax.set_title("Sensory Load by Episode", fontsize=9)
+        ax.set_xlabel("FFC score", fontsize=8)
+        ax.set_title("Formal-Feature Composite by Episode", fontsize=9)
         ax.axvline(agg.sensory_load_score.mean, color="#c00000", linestyle="--",
                    linewidth=1.0, label=f"Mean: {agg.sensory_load_score.mean:.3f}")
         ax.legend(fontsize=7)

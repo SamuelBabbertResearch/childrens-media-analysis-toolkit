@@ -7,7 +7,7 @@ Expected rough ranges:
   - color saturation mean: 0.15–0.60  (soft watercolor palette)
   - motion mean: 0.001–0.10  (gentle animation)
   - flashing events/min: 0–10  (very calm, no strobe effects)
-  - sensory load score: 0.0–0.50  (overall low-stimulation)
+  - FFC score: 0.0–0.50  (below the configured reference midpoint)
 """
 
 from pathlib import Path
@@ -47,7 +47,7 @@ def test_normalize_clamps_below():
 
 
 # ---------------------------------------------------------------------------
-# Sensory load composite (unit — no video needed)
+# Formal-Feature Composite (unit — no video needed)
 # ---------------------------------------------------------------------------
 
 def test_sensory_load_zero_inputs():
@@ -162,10 +162,10 @@ def test_sensory_load_bounded(little_bear_result):
 
 
 @SKIP_IF_NO_VIDEO
-def test_little_bear_is_low_stimulation(little_bear_result):
-    """Little Bear's gentle pace and watercolor art should yield a low sensory load."""
+def test_little_bear_ffc_is_below_configured_reference_midpoint(little_bear_result):
+    """This reference episode remains below the configured FFC midpoint."""
     score = little_bear_result.metrics.sensory_load.score
-    assert score < 0.50, f"Expected low sensory load for Little Bear, got {score:.3f}"
+    assert score < 0.50, f"Expected FFC below 0.50 for Little Bear, got {score:.3f}"
 
 
 # ---------------------------------------------------------------------------

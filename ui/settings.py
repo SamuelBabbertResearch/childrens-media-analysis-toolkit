@@ -138,7 +138,7 @@ class SettingsDialog(QDialog):
         pr.setContentsMargins(0, 0, 0, 0)
         pr.setSpacing(6)
 
-        weights_box = QGroupBox("Sensory Load Weights")
+        weights_box = QGroupBox("Formal-Feature Composite Weights")
         wgrid = QGridLayout(weights_box)
         wgrid.setContentsMargins(8, 6, 8, 6)
         wgrid.setVerticalSpacing(3)
