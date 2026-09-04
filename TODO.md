@@ -5,6 +5,260 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
 
 ---
 
+## Current phase — the measurement model
+
+**Agreed 2026-08-16.** The pipeline is built and intuitive enough; the work now
+is to make the measurement system scientifically serious, flexible and
+traceable. The plan of record is [`MEASUREMENT_MODEL.md`](MEASUREMENT_MODEL.md)
+— read it, and `CLAUDE.md` §2.5, before writing any of this. Everything under
+*Now* below is still real and still true; none of it is a prerequisite for
+this, and this does not licence expanding into it.
+
+**Ready now, and in this order.** Each is its own session with its own
+verification against real output — do not do two at once.
+
+- ~~**A. Answer the six open decisions.**~~ **Done 2026-08-16.** All six
+  answered by the author; `MEASUREMENT_MODEL.md` §7 now states the answers and
+  `DECISIONS.md` carries the reasoning and the rejections. The consequential
+  one: **a recipe pins its parameters**.
+- ~~**B. The data model**~~ — **Done 2026-08-16** for constructs, measures and
+  methods, in `analyzer/constructs.py` with `tests/test_constructs.py` (29
+  tests). **Recipes and versions are NOT part of what shipped** — they are C
+  and the version-tracking item below. Verified as the item asked: every
+  shipped measure resolved against a real cached episode and a real coding
+  sheet in this working copy, printed beside the existing engine and
+  `manual_pacing_metrics()` numbers, all matching. Two things came out of it
+  that are now on record rather than in anyone's head:
+  - **A real data defect** — three of five transition-coding sheets have no
+    recorded coded window, and dividing one by the full runtime gave 0.084
+    cuts/min against a detected 17.785. The model now refuses. `LEARNINGS.md`
+    § *A coded segment divided by the whole runtime*, and `FOR_PAPER.txt`.
+  - **Only two constructs ship** (pacing, speech), per `MEASUREMENT_MODEL.md`
+    §4.3's instruction not to generalize past two. Saturation, contrast,
+    motion, flashing and audio are measured by the engine and **not yet
+    expressed in the model**; they arrive with the shipped composite recipe.
+    **Superseded by item D**, which brought all five in — seven constructs and
+    sixteen measures now.
+- ~~**C. Recipe save / load**~~ — **Done 2026-08-16**, in
+  `analyzer/recipes.py` with `tests/test_recipes.py` (34 tests). Create, save,
+  load, list, duplicate, delete, export, import, **evaluate**, and version.
+  Verified as §4.2 asks — by reading the written JSON, and by saving a recipe
+  in one library, moving it, and reopening it in another, where it produced
+  identical scores for three real episodes. Decision 4's accepted cost is
+  discharged: `divergences()` reports where a recipe's pins differ from the
+  live Measurement settings, and `evaluate()` **refuses** a part whose pinned
+  parameters do not match the parameters that produced the cached number.
+  It also closed **§4.4 in part** (recipe versioning: content-addressed, a
+  reason is required, renaming is not a new version) and **§4.7 in part**
+  (recipes export/import; an unresolvable method becomes a named gap, never a
+  substitution). One real defect was found by the verification —
+  `LEARNINGS.md` § *Attribution read off a rescored copy*.
+- ~~**D. The shipped composite as a locked recipe**~~ — **Done 2026-08-16**,
+  `recipes.shipped_composite(config)` with `tests/test_shipped_composite.py`
+  (28 tests). Built from `config.json`'s weights and ranges, never restated.
+  **Verified as this item asked**: it reproduces
+  `metrics_sensory.compute_sensory_load` exactly on all 14 cached episodes in
+  this working copy, and reproduces `effective_weights()` on the silent-episode
+  path none of them exercises. Locked; duplicating is the route to
+  alternatives. It derives nothing, and its notes and its construct's grounding
+  both say so.
+
+  It brought the other five inputs in, so the model now holds seven constructs
+  and sixteen measures. It also needed one new capability worth knowing about:
+  **a measure can gate on an availability flag** (`available_path`), so
+  `audio.rms_mean` counts only when `audio.available` is true and the speech
+  measures only when `speech.available` is. That fixed a live wrong answer —
+  `words_per_minute` had been resolving 0.0 for episodes with no speech block
+  at all, of which there are four here.
+- ~~**E. The recipe editor**~~ — **Done 2026-08-16**, `ui/recipes.py` with
+  `tests/test_ui_recipes.py` (19 tests), reached from **File → Recipes…**.
+  Lists recipes (the shipped composite first, generated rather than stored),
+  shows each down to the pinned parameter, reports divergences, edits
+  method / transform / range / weight / missing-data policy / notes, records a
+  version with its reason, applies a recipe to the current scope on a worker
+  thread, and duplicates / deletes / exports / imports.
+
+  **Audited by output, as this item asked** — driven headlessly against a
+  mirror of the real 137-episode library, reading the generated HTML and every
+  control's enabled state. That found three defects, all invisible from the
+  interface:
+  - **The dirty check ran one edit behind**, so Save was available for a
+    changed recipe with no reason given — the version rule the screen exists
+    to enforce could be walked straight past. `LEARNINGS.md`.
+  - **A recipe with every weight still at zero scored 0.0**, which reads as a
+    measured composite rather than an unset one. `evaluate` now refuses.
+  - **124 unanalysed episodes produced 744 identical refusal rows**, burying
+    the one refusal that differed. The table groups by measure and reason now.
+
+  Left deliberately: the **Tk build has no equivalent** and is not getting one
+  (`gui.py` is being retired, item 9 below). Note that when it is audited.
+- ~~**F. The construct diagram**~~ — **Done 2026-08-16**, the **Constructs
+  tab** (`ui/constructs_tab.py`) beside Pipeline, with
+  `tests/test_ui_constructs_tab.py` (21 tests). Three columns: target
+  construct, contributing constructs as their own blocks, measures. Read-only: it draws a recipe as
+  a graph and writes nothing. Wire thickness is the **contribution share**, so
+  `ARCHITECTURE.md` §8.1a is finally visible — on this library colour contrast
+  declares 0.10 and contributes 21% while motion declares 0.25 and contributes
+  18%. No arrowheads, refusals keep their boxes, and the diagram exports as a
+  PNG for a methods figure. Two defects found by driving it, both in
+  `LEARNINGS.md`: one recipe's computed numbers drawn under another recipe's
+  name, and a long-standing worker-reference guard that turned out to be wrong
+  in both directions.
+
+  **Verified with real fonts by nobody.** This environment's offscreen Qt
+  platform has zero font families, so every drawn screen renders tofu. Layout
+  and content are checked by reading the scene; appearance is not. Look at it
+  in the real application before trusting the visual density.
+
+- ~~**G. Authoring on the construct canvas**~~ — **Done 2026-08-16**, both
+  halves. The canvas drew; it builds now. The thing originally asked for —
+  **assemble a custom composite by combining constructs** — works end to end: a
+  construct of your own, a recipe over it, shipped measures bound to it from a
+  palette, versioned with a reason, and drawn where you put it.
+
+  **G1 — the data model. DONE 2026-08-16**, in `analyzer/constructs.py` and
+  `analyzer/recipes.py`, with `tests/test_construct_store.py` (33 tests).
+  `MEASUREMENT_MODEL.md` §4.1's "researchers add their own" now exists: a
+  construct is created, saved to `<root>/.analysis/constructs/`, renamed,
+  redefined and deleted, and comes back from the **ordinary `get_construct`
+  lookup** — the merge is inside that one call, so no call site needed editing
+  (`CLAUDE.md` §6). A recipe records the construct hash it was authored
+  against and `construct_divergence()` reports current / redefined / missing /
+  unknown.
+
+  **Verified by reading the written files**, as this item asked: the construct
+  JSON, and the recipe JSON's `construct_hash` matching it. Redefining moves
+  the divergence to `redefined` while the recipe's own `content_hash` does not
+  move and `bump_version` still refuses — confirmed by **reintroducing the
+  defect** (folding the construct hash into `canonical()`) and watching
+  `::test_the_construct_hash_is_not_part_of_the_recipes_canonical_form` fail.
+  Driven through a real `MainWindow.set_root` against the real `Shows` library,
+  which has **no saved recipes and no constructs folder**, so nothing existing
+  is disturbed — and equally, the "old recipes report unknown" grandfathering
+  path has **no real instance here** and has only been exercised synthetically.
+  One real defect found on the way: `new_recipe` accepted a method key that
+  does not exist (`LEARNINGS.md`).
+
+  **G2 — canvas authoring. DONE 2026-08-16.** `ui/construct_editor.py` (new,
+  with `tests/test_ui_construct_editor.py`, 12 tests) and an **Edit** mode on
+  the Constructs tab (`tests/test_ui_constructs_tab.py`, now 35). A researcher
+  can define a construct, create a recipe over it, bind shipped measures to it
+  from a palette, set each one's method and weight, save with a reason, and
+  arrange the diagram — the arrangement persisting in the sidecar decision 3
+  called for. The Recipes New menu no longer disables a measureless construct;
+  it creates the recipe empty and says where the bindings come from, which is
+  the route this item always described.
+
+  **Verified by reading the written files**, as this item asked: the construct
+  JSON, the recipe JSON after a canvas save (v2, both weights on the right
+  measures, the reason in the history), and the `<recipe id>.view.json`
+  sidecar — checking the recipe's own `content_hash` and version did *not*
+  move when a box did. Driven against the real `Shows` library too, which
+  still has no recipes and no constructs folder and gained neither by being
+  opened.
+
+  **Five defects found on the way, all in `LEARNINGS.md`.** The one worth
+  naming here: **every edit refilled the bound-measures list, and
+  `QListWidget.clear()` drops the current row to −1**, so the selection snapped
+  back to the first binding and two weights entered for two measures were both
+  written onto the first. The panel looked right throughout; only the recipe
+  file said otherwise.
+
+  **What G2 does NOT give you.** Transforms, reference ranges, pinned
+  parameters, missing-data policy and notes are still edited only on
+  **File → Recipes…** — the canvas edits what is bound and how much it counts,
+  and points at that screen for the rest. Deliberate: `ui/recipes.py` shows a
+  recipe down to the parameter and duplicating that here would be two editors
+  of one object. Aspects can be written but nothing yet binds a measure to a
+  specific aspect from this screen.
+
+  **THREE RULES WERE ALREADY SETTLED** and survived into what was built
+  (`DECISIONS.md`):
+  1. The canvas stays **typed** — a method attaches to a measure, a measure to
+     a construct, only a composite takes weighted inputs. Free-form
+     box-to-box wiring is the generic node editor `MEASUREMENT_MODEL.md` §6
+     forbids, and typing is the whole difference.
+  2. **Constructs and aspects may be free-form; measures may not.** A measure
+     must be chosen from a palette of things that actually resolve to a number.
+     A user-defined measure with no data path is `LEARNINGS.md` shape 2 — the
+     defect this entire phase exists to remove — reintroduced through a nicer
+     interface.
+  3. Writes go through `recipes.save_recipe`, and a changed operationalization
+     still needs a **reason** before it can be saved. The shipped composite
+     stays locked.
+
+  **THE FOUR OPEN DECISIONS ARE ANSWERED** — 2026-08-16, by the author, before
+  any code, as `MEASUREMENT_MODEL.md` §7's precedent demanded. Reasoning and
+  what was rejected are in `DECISIONS.md` § *Authoring on the canvas: the four
+  shaping decisions, answered*. In brief:
+  1. **User-defined constructs live with the library**, in
+     `<root>/.analysis/constructs/`, beside the recipes that cite them,
+     following `pipeline_graph.py`'s conventions including re-homing.
+     Portability stays §4.7's job: the export already embeds each construct's
+     definition alongside its key, and an unresolvable one is a named
+     `ImportGap`, never a substitution.
+  2. **A construct is content-hashed** over its definition, grounding and
+     aspects — not its name, so renaming is free. A recipe records the
+     construct hash it was authored against, **beside** its own content hash
+     and **not inside `Recipe.canonical()`**: editing a construct must not
+     silently bump a citing recipe's version without the reason `bump_version`
+     requires. A redefinition is reported as a **divergence**, the same shape
+     pinned parameters already use — and a divergence is not an error.
+  3. **Node positions persist in a sidecar**, `<recipe id>.view.json` beside
+     the recipe, deleted with it, never in `content_hash()`. A missing sidecar
+     means auto-layout. Decisive argument: `save_recipe` refuses the locked
+     composite, so a layout stored inside the recipe file could never be saved
+     for the one diagram most likely to become a methods figure.
+  4. **A composite may NOT contain another composite.** One level; construct
+     blocks stay derived. Combining constructs already works flat — the shipped
+     composite binds six measures across five constructs — so nesting would buy
+     recursive contribution share and graph staleness for no gain. Reversible
+     later; shipping saved nested recipes would not be.
+
+  All four held. Two further interface-shape questions were put to the author
+  and answered on 2026-08-16 — construct creation lives in **one shared editor
+  reached from both the Constructs tab and the Recipes New menu**, and the
+  canvas **edits in place behind an Edit toggle** rather than in a separate
+  authoring screen. Neither changes what is stored. `DECISIONS.md`.
+
+  **SEEN WITH FONTS, and it paid immediately — four findings in the first
+  hour, none of which a test could have produced.** A label reading as a
+  contradiction against the canvas behind it ("8 measures of its own" beside
+  "1 measure"); the Edit panel drawn off the right-hand edge of the window,
+  because it had a maximum width its own contents could not fit in; a default
+  transform that would have summed a rate against a fraction and called it a
+  composite; and no way to create a construct or a recipe from the screen for
+  authoring them. All four fixed — `LEARNINGS.md` has the first three.
+
+  **Keep looking at it.** What is still unjudged: the density of the canvas
+  itself, whether the splitter's default division is right on a smaller
+  monitor, and how any of it prints. The question "do the palette and the
+  canvas fit side by side" is now answered — they did not, and the fix was a
+  splitter — but only at one window size on one screen.
+
+- **H. Stale detection (§4.5)** — next after those. The decision is settled (a flag per
+  episode result per recipe version) and `cache.is_stale` is the one edge that
+  already works, including its grandfathering rule. The recipe half is now
+  possible because a recipe has a content hash to depend on.
+- Then method comparison (§4.6), reproducibility reports, methods text,
+  citation. `MEASUREMENT_MODEL.md` §4 has what each one
+  means here and how each is verified.
+
+**Found while building B, not fixed, and not a blocker.** The SpongeBob
+transitions sheet is filed as `SpongeBob S01E01A Help Wanted_manual.csv` while
+the video stem is `SpongeBob SquarePants S01E01A Help Wanted`, so
+`coding_for_stem`'s prefix match (which requires the stem to *start with* the
+sheet's base name) does not find it and the episode reads as uncoded. That
+lookup is shared by five readers and is deliberate as written; renaming the
+sheet is the cheap fix, changing the matcher is not. Decide which.
+
+**Two traps this phase walks straight into**, both already on this project's
+record: a second list of detectors written beside the registry
+(`LEARNINGS.md` shape 3), and a control whose data path is empty — a construct
+that names a measure that resolves to nothing (shape 2).
+
+---
+
 ## Now
 
 **Delete `_duplicates_quarantined_2026-08-15/` when you are satisfied.** The
@@ -298,17 +552,78 @@ session** — each needs its own verification against real output.
   were otherwise identical, which per-node binding made a real hazard. See
   `DECISIONS.md`.
 
-  **Found in passing, not fixed — worth its own item:** `coverage_for_stems`
-  (and the `sample_coverage` it replaced) key hand-coding coverage by bare
-  episode *stem* ("S01 E01"), not by show + stem. Two different shows whose
-  video files happen to share a stem — plausible if a researcher names files
-  by season/episode number alone — would silently collapse to one entry in
-  any coverage count, single-sample or merged. Not introduced by the
-  Validation merge above (the same weakness already existed in
-  `sample_coverage`), but the merge's wider episode sets make a collision
-  more likely to actually occur. Fix would key coverage lookups by
-  `db_show_key` + stem, matching how the cache and index already avoid this
-  exact class of bug.
+  **Fixed:** hand-coding coverage now keys episode identity by `db_show_key`
+  plus stem. If two shows both contain "S01 E01", each sheet must live below
+  that show's validation subfolder; one ambiguous legacy top-level sheet is
+  not silently credited to both. Unique stems retain the legacy recursive and
+  shortened-filename lookup. Regression tests cover both the ambiguous
+  one-sheet case and two correctly namespaced sheets.
+
+## Clip Finder — what the first slice does not do
+
+Built 2026-08-30. A Selection node now opens a Clip Finder
+(`ui/clip_finder.py`, `analyzer/clip_query.py`): measure every contiguous
+window of a folder of episodes on a worker thread, then filter the pool by
+cuts per minute, motion, audio, relative level and episode, and export the
+chosen windows as standalone files. Verified end to end against the twelve
+real study clips — 43 windows measured, filtered to 5, read back off disk.
+`DECISIONS.md` carries the three decisions; do not add a ranking.
+
+Not done, roughly in order of how much each is missed:
+
+- **No preview.** A researcher cannot watch a window before choosing it, which
+  is the single most obvious omission — `ui/player.py` already plays a range.
+- **No recipe pin.** `run_candidate_pool` accepts an `analysis_recipe` that
+  pins the measurement parameters, and the screen does not offer one, so every
+  pool is measured with the live Measurement settings. The manifest records the
+  fingerprint either way, but a recipe is the inspectable form (`CLAUDE.md`
+  §2.5) and the screen should offer it.
+- **The matched-pair half is untouched.** `study_clips` proposes Option 3.5
+  contrasts and the finder ignores them entirely; pairing is still CLI-only.
+- **No marked set across filters.** Selection is the table's own, so changing
+  a filter loses what was chosen. Collecting windows across several different
+  queries is the obvious next want.
+- **Progress is indeterminate.** The pass reports the episode it is on but the
+  bar cannot show how far through it is.
+- **The source folder is guessed from the node's sample.** If a sample spans
+  several folders the finder offers their common ancestor, which may be far too
+  wide. It is visible and editable, but it is a guess.
+
+## Study Runner — the participant rating scale
+
+Built 2026-08-29: the vertical radio column is gone and the rating screen is a
+horizontal labelled 1-5 ramp with turtle and rabbit end anchors
+(`study_runner/scale.py`, 15 tests). The design, the evidence and what was
+rejected are in `STUDY_RATING_SCALE_DESIGN.md`; the decision is in
+`DECISIONS.md`. **Read that document before changing the scale** — its
+properties are findings, not styling, and the tests assert them.
+
+**Protocol changed 2026-08-31.** The active study is adult-only and collects
+one adult self-perception rating per clip. The current runner and pilot package
+still implement adult prediction and a child flow, so they must not be used for
+piloting or collection. Follow `STUDY_PROCEDURE_ADULT_ONLY.md`.
+
+What the scale still needs, in order:
+
+- **Replace the participant flow.** Remove the prediction question, target-age
+  wording, child blocks, and assent screens. Collect exactly one `adult_self`
+  response after each of 12 clips and update the schema and tests.
+- **The adult practice item and comprehension check.** Use the same widget as
+  the study trials and freeze approved wording before the adult pilot.
+- **Decide whether turtle/rabbit imagery remains for adults.** Preserve the
+  five verbal anchors either way and record the pilot/faculty decision.
+- **Response latency.** Nothing records it yet. Worth logging, but only if
+  the screen stays unpressured — no countdown, no auto-advance.
+- **Move the deployment out of `dist/`.** Found 2026-08-30: the deployed
+  runner lives in `dist/CMAT Study Runner/` with the frozen `study/` clips and
+  `participant_data/` inside it, and PyInstaller clears that directory on every
+  build — a successful rebuild would delete the stimuli and any collected
+  responses. Documented and worked around today (staging build plus an explicit
+  copy, `study_runner/README.md`), but the real fix is that a deployment must
+  not sit in a build output directory at all. Do this before piloting.
+- **Check it on the study computer.** The steps are painted rather than
+  styled specifically so a high-contrast Windows theme cannot change them;
+  that reasoning has not been exercised on the real machine at its real DPI.
 
 ## Ready when the above are done
 

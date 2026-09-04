@@ -1,9 +1,17 @@
 # Children's Media Analysis Toolkit (CMAT)
 
-**Open-source video analysis software for children's media research.** CMAT is
-a Windows desktop application for reproducible episode sampling, audiovisual
-formal-feature analysis, language and subtitle analysis, human coding,
-validation, and research-data export.
+**An open-source research application for quantitative analysis of children's
+audiovisual media.** CMAT is a Windows desktop application for researchers who
+need to measure formal media features in children's television: pacing and shot
+boundaries, shot duration, visual motion, flashing, colour/color and contrast,
+audio intensity/loudness, speech rate, speech density, vocabulary, and related
+properties.
+
+It brings reproducible episode sampling, clip selection, automated measurement,
+human coding, corpus-specific validation, construct operationalization, and
+research-data export into one inspectable workflow. The numbers describe the
+media stimulus; they do not rate a programme or predict effects for an
+individual viewer.
 
 The visual research pipeline keeps the whole study in one understandable flow:
 
@@ -14,20 +22,53 @@ connections from source videos to exported evidence. Researchers can use the
 default pipeline without programming, while advanced users can rearrange or
 extend it to match a study design.
 
-Researchers can also **create their own research constructs without writing
-code**. Define the concept in plain language, connect it to CMAT's supported
-measures, choose methods and weights, and save the operationalization as a
-versioned recipe that can be inspected, reused, and cited.
+## What makes CMAT different
+
+CMAT is designed to keep the decisions linking a research question to a result
+visible. Researchers can define a construct in plain language, connect it to
+supported measures, choose methods and weights, and save the operationalization
+as a versioned recipe that can be inspected, reused, and cited. The same
+workflow supports hand coding and comparison of automated results against
+human-coded ground truth.
+
+## Validation and scope
+
+CMAT includes a validation workbench for comparing an automated detector with
+human coding. It reports precision, recall, F1, Cohen's kappa, and inter-rater
+reliability where those statistics fit the question. Validation is
+measure-, method-, and corpus-specific: CMAT is not a universally validated
+measurement instrument, and a result should be qualified by the coding basis,
+sample, settings, and match rule used to produce it.
+
+The formal-feature literature motivates the properties CMAT can measure; it
+does not prescribe one universal construct or a single composite score. An
+optional sensory-load composite is therefore a transparent,
+researcher-defined operationalization. Its component measures remain visible,
+and its weights and normalization ceilings are configurable rather than
+theory-derived or validated.
+
+> **Scope:** CMAT measures the stimulus, not the viewer. It cannot account for
+> a child's age, temperament, sensory-processing profile, viewing context, or
+> exposure history. Its outputs are profiles to inform research judgment—not
+> appropriateness ratings, safety assessments, or causal conclusions.
 
 It has two co-equal halves:
 
-**Custom automated audio-visual sensory composites.** Measure pacing, motion, colour, contrast, flashing, and audio — then choose the tools and thresholds behind each measurement and combine them into a composite *you* configure, rather than one the tool imposes. CMAT also measures the **linguistic complexity** of dialogue through speech rate, readability formulas, vocabulary frequency tiers, age of acquisition, and lexical diversity.
+**Automated formal-feature measurement.** Measure pacing, motion, colour,
+contrast, flashing, and audio, choosing the tools and thresholds behind each
+measurement. Researchers may combine selected measures into an optional
+composite they configure rather than one the tool imposes. CMAT also measures
+the **linguistic complexity** of dialogue through speech rate, readability
+formulas, vocabulary frequency tiers, age of acquisition, and lexical diversity.
 
-**Structured hand-coding of pacing and fantastical events** — the two features current research focuses on. Code transitions, scene changes, and impossible events against a built-in frame-accurate video player, using your own category systems, and get metrics computed with the same definitions as the automated path.
+**Structured hand coding of transitions and fantastical events.** Code
+transitions, scene changes, and events against a built-in frame-accurate video
+player, using your own category systems, and get metrics computed with the
+same definitions as the automated path.
 
-Then **validate one against the other**: grade the automated detection against your own coding (precision/recall/F1, Cohen's κ, inter-rater reliability) so you know how far to trust it. See [Manual coding & validation](#manual-coding--validation).
-
-CMAT does **not** issue a verdict on appropriateness. Every composite score shows its component parts, and every design decision in the scoring model is adjustable.
+Then compare the two: validate automated detection against hand coding with
+precision/recall/F1, Cohen's κ, and inter-rater reliability as appropriate.
+See [Automated measurement and human validation](#automated-measurement-and-human-validation).
 
 > **Part of the Open Children's Media Index** — an ongoing effort to build a publicly accessible database of formal-feature measurements for children's television.
 
@@ -151,17 +192,22 @@ is an automated judgment.
 
 ## What it measures
 
-### Sensory load metrics
+### Formal media-feature measures
 
 | Metric | What it captures |
 |--------|-----------------|
-| **Scene pacing** | How fast the camera cuts. Faster cutting triggers more frequent orienting responses and higher cognitive load. |
-| **Motion** | Average frame-to-frame movement. High motion is a pre-attentive attention magnet. |
-| **Color saturation** | How vivid and pure the colors are. Higher in animation; lower in live-action. |
-| **Color contrast** | Spatial spread of brightness within a frame. Captures dark/light extremes that drive visual intensity. |
-| **Flashing** | Rapid luminance changes per minute. Relevant to photosensitivity and overstimulation. |
-| **Audio loudness** | Average RMS volume and dynamic range. Loud, consistent audio drives arousal independently of visuals. |
-| **Sensory load score** | A transparent weighted composite of all the above. Always shows its component parts. |
+| **Scene pacing** | Editing and shot-transition frequency and timing. |
+| **Motion** | Average frame-to-frame visual movement, used as a quantitative measure of visual dynamism. |
+| **Color saturation** | The vividness and purity of colours in the image. |
+| **Color contrast** | The spatial spread of brightness within a frame. |
+| **Flashing** | Rapid whole-frame luminance changes per minute. This is a comparative measurement, not a photosensitivity safety assessment. |
+| **Audio intensity** | Average RMS audio intensity and dynamic range. |
+
+### Optional researcher-defined composite
+
+| Measure | What it captures |
+|--------|-----------------|
+| **Sensory-load composite** | A transparent, weighted summary of selected formal media-feature measures. It is configured by the researcher, always displays its component parts, and is not a validated construct or a verdict. |
 
 ### Language metrics *(optional — requires subtitle files or Whisper AI)*
 
@@ -174,11 +220,13 @@ is an automated judgment.
 | **Age of Acquisition** | Mean age at which vocabulary words are typically learned, from Kuperman et al. norms. |
 | **Lexical diversity (MTLD)** | Measure of Textual Lexical Diversity — how widely the dialogue draws on the available vocabulary, robust to text length. |
 
-The **measurement set** is grounded in the Huston & Wright formal features framework and Lang's Limited Capacity Model (LC4MP); Lillard & Peterson (2011) is among the correlational findings usually cited.
-
-Those frameworks motivate *which* properties are worth measuring. They do not specify how to combine them into one number, and nothing else does either: the composite's weights and normalization ceilings are a configurable scaling convention, not derived from theory and not validated. Component measures are reported separately everywhere for that reason. See [CEILINGS.md](CEILINGS.md).
-
-> **Honest limitation:** This tool measures the stimulus, not the viewer. It cannot account for a child's age, temperament, or sensory-processing profile. Output is a profile to inform judgment, not a rating or verdict. All findings are correlational.
+The **measurement set** draws on the Huston & Wright formal-features framework
+and Lang's Limited Capacity Model (LC4MP). Those frameworks motivate *which*
+properties may be useful to measure; they do not establish causal effects or
+specify how to combine the properties into one number. The composite's weights
+and normalization ceilings are a configurable scaling convention, not derived
+from theory and not validated. Component measures are reported separately for
+that reason. See [CEILINGS.md](CEILINGS.md).
 
 ---
 
@@ -376,9 +424,13 @@ study protocol.
 
 ---
 
-## Manual coding & validation
+## Automated measurement and human validation
 
-Automated detection is only trustworthy if you know how accurate it is. CMAT includes a full **human-coding and validation workbench** so researchers can measure the tool against their own hand-coded ground truth — and code the things a pixel measure cannot see.
+Automated measurement should be validated for the measure, method, corpus, and
+research use at hand. CMAT includes a **human-coding and validation workbench**
+for comparing automated results with hand-coded ground truth—and for coding
+phenomena a pixel measure cannot represent. Hand coding is also a measurement
+method in its own right, not merely a check on automation.
 
 ### Built-in coding editor with an embedded player
 
@@ -406,7 +458,10 @@ Open a coding sheet from the **Validation** tab and you get a form-style editor 
 - **Cohen's κ** for the within-scene classifier and **two-coder inter-rater reliability** for event coding.
 - Every run writes a **provenance manifest** (parameters, date, tool version) and appears in a **Trials registry** — a browsable audit trail of every sampling + coding study.
 
-> This makes CMAT, to our knowledge, the only open, integrated tool that both extracts formal media features automatically *and* validates that extraction against human coding — reporting its own accuracy rather than asking you to trust it.
+CMAT is designed to integrate automated formal-feature extraction, structured
+human coding, and corpus-specific validation in the same research workflow.
+Its validation records make the basis and limits of an automated result
+available for inspection rather than treating the output as self-validating.
 
 ---
 
@@ -415,20 +470,26 @@ Open a coding sheet from the **Validation** tab and you get a form-style editor 
 | Preset | Best for |
 |--------|---------|
 | General / All Ages | Cross-genre comparison baseline |
-| Toddler (0–2) | Tight ceilings; flashing weighted higher for safety |
-| Preschool (2–5) | Calibrated to Lillard & Peterson (2011) age range |
-| Early Childhood (5–8) | Wider tolerances than preschool |
-| Tween (8–12) | Near-adult tolerances |
+| Toddler (0–2) | Starting configuration for studies of this population |
+| Preschool (2–5) | Starting configuration for studies of this population |
+| Early Childhood (5–8) | Starting configuration for studies of this population |
+| Tween (8–12) | Starting configuration for studies of this population |
 | Animated / Cartoon | Saturation weighted higher for cartoon-vs-cartoon comparison |
 | Live-Action / YouTube | Contrast weighted higher; saturation near-zeroed |
 
 Custom presets can be created and saved. Built-in presets cannot be deleted.
+Age-named presets are reference configurations for study design; they are not
+recommendations, appropriateness ratings, or safety thresholds.
 
 ---
 
-## Research grounding
+## Research grounding and interpretation
 
-The conceptual framework comes from media research on **formal features** — the perceptually salient, content-independent structural attributes of video (cuts, motion, pace, sound). These features capture attention through the **orienting response**: an automatic, reflexive reallocation of attention toward novel or changing stimuli.
+The conceptual framework comes from media research on **formal features** — the
+perceptually salient, content-independent structural attributes of video (cuts,
+motion, pace, sound). This literature discusses such features in relation to
+the **orienting response**: an automatic, reflexive reallocation of attention
+toward novel or changing stimuli.
 
 Key references:
 - Huston & Wright — formal features framework
@@ -440,7 +501,10 @@ Key references:
 - Kuperman et al. (2012) — Age of Acquisition norms
 - Brysbaert et al. (2014) — Concreteness norms
 
-All findings are correlational. CMAT describes the stimulus; it does not predict outcomes for any individual child.
+The cited literature helps frame research questions and interpretation; it does
+not establish a causal meaning for each CMAT measure. Findings involving media
+features and child outcomes should be described as correlational. CMAT
+describes the stimulus; it does not predict outcomes for an individual child.
 
 ---
 

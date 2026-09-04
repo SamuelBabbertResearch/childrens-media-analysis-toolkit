@@ -1,0 +1,6 @@
+# Pinned build runtime. Qt 6.11.2 imported from source but produced a Windows
+# one-folder bundle whose QtWidgets DLL failed to load; 6.8.3 is qualified by
+# the packaged launch test in tests/test_study_runner_ui.py.
+PySide6==6.8.3
+PyInstaller>=6,<7
+pytest>=7.4
