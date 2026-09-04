@@ -190,7 +190,7 @@ class AutomatedTab(QWidget):
 
     library_changed = Signal()
 
-    COLS = ("Episode", "Result", "Cuts/min", "Sensory load")
+    COLS = ("Episode", "Result", "Cuts/min", "FFC")
 
     def __init__(self, window) -> None:
         super().__init__()

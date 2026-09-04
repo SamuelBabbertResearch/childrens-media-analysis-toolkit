@@ -7,7 +7,7 @@ Source priority:
   3. faster-whisper auto-transcription (offline, ~2-5 min/episode on CPU)
   4. unavailable                    (no CC + transcription disabled or not installed)
 
-Speech metrics are NOT included in the sensory-load composite because they are
+Speech metrics are NOT included in the Formal-Feature Composite because they are
 absent for many episodes. Including them would make scores incomparable across
 episodes with and without CC files.
 """

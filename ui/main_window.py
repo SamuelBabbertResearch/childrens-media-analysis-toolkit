@@ -1569,7 +1569,7 @@ class MainWindow(QMainWindow):
         self._btn_chart.setProperty("primary", "true")
         self._btn_chart.setEnabled(False)
         self._btn_chart.setToolTip(
-            "Show how each episode's sensory load is made up.")
+            "Show the component contributions to each episode's FFC.")
         self._btn_chart.clicked.connect(self._open_chart)
         self._chart_source = None
         right.add_header_widget(self._btn_chart)

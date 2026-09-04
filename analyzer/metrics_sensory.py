@@ -1,5 +1,5 @@
 """
-Sensory load composite score.
+Formal-Feature Composite (FFC) score.
 
 Normalizes each sub-metric against fixed, documented reference ranges so
 scores are comparable across separate runs (not per-corpus normalization).

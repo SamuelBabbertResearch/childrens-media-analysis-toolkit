@@ -80,7 +80,7 @@ EPISODE_COLUMNS = (
      lambda v: f"{v:.2f}" if v is not None else "—"),
     ("Audio RMS", "audio_rms_mean",
      lambda v: f"{v:.4f}" if v is not None else "—"),
-    ("Sensory load", "sensory_load_score",
+    ("FFC", "sensory_load_score",
      lambda v: f"{v:.3f}" if v is not None else "—"),
     ("Analyzed", "analyzed_at", lambda v: str(v)[:10] if v else "—"),
 )
@@ -88,7 +88,7 @@ EPISODE_COLUMNS = (
 SHOW_COLUMNS = (
     ("Show", "show_name", None),
     ("Episodes", "episode_count", lambda v: str(v or 0)),
-    ("Mean load", "avg_load", lambda v: f"{v:.3f}" if v is not None else "—"),
+    ("Mean FFC", "avg_load", lambda v: f"{v:.3f}" if v is not None else "—"),
     ("Mean cuts/min", "avg_cuts_per_min",
      lambda v: f"{v:.1f}" if v is not None else "—"),
     ("Mean motion", "avg_motion", lambda v: f"{v:.4f}" if v is not None else "—"),

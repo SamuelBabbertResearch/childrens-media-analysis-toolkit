@@ -551,7 +551,7 @@ def mixed_scales(recipe: Recipe) -> list[str]:
     return raw if len(weighted) > len(raw) or len(raw) > 1 else []
 
 
-SHIPPED_COMPOSITE_NAME = "Sensory load (as shipped)"
+SHIPPED_COMPOSITE_NAME = f"{C.FORMAL_FEATURE_COMPOSITE_SHORT_NAME} (as shipped)"
 
 # The shipped composite is GENERATED on every call rather than read from disk,
 # so without this its id would be a fresh uuid each time. That is invisible
@@ -568,7 +568,7 @@ SHIPPED_COMPOSITE_ID = "r_shipped_composite"
 
 
 def shipped_composite(config: dict[str, Any]) -> Recipe:
-    """The existing sensory-load composite, expressed in the measurement model.
+    """The existing Formal-Feature Composite, expressed in the measurement model.
 
     **Expressing it is not changing it.** This recipe must reproduce
     `metrics_sensory.compute_sensory_load` exactly, for every episode, and

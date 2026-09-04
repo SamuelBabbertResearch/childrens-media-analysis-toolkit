@@ -125,6 +125,201 @@ weights excluded) into each result, so staleness is detectable rather than
 assumed. Results predating fingerprinting are grandfathered rather than
 invalidating an existing corpus.
 
+**A third axis is partly built: the recipe** — which construct a set of
+measures is taken to operationalize, by which methods, with what
+transformations and weighting. Scoring and measurement are settings the
+application holds; a recipe is a saved, versioned, citable scientific decision.
+
+**Settled 2026-08-16:** a recipe **pins** its measurement parameters rather
+than referencing the ones in force, and **presets stay scoring-only** so the
+two systems do not both claim to say how a measurement was made. The accepted
+cost of pinning is that a threshold can live in two places, so a recipe has to
+state when its pinned value differs from the live Measurement settings. Full
+reasoning in `DECISIONS.md`; the model's layer below recipes is §3a.
+
+### 3a. The measurement model — `analyzer/constructs.py`
+
+Built 2026-08-16. The layer above measurement settings and below recipes: it
+records **what a number is taken to be a measure OF**, which nothing in the
+codebase expressed before (see §8.1a, the gap this closes).
+
+```
+Construct  Pacing            theoretical; not a value in the file
+  Aspect   Visual pacing     a facet, where one keeps measures honest
+   Measure Hard cuts / min   an observable quantity, with a unit
+    Method ContentDetector @ 27  ·  TransNetV2 @ 0.5  ·  Hand coding
+```
+
+Three properties that are structural rather than conventions to remember:
+
+- **Methods are generated from `analyzer/measurements.py`, never listed.** One
+  `Method` per `ToolSpec`, with its status read from that `ToolSpec`. Adding a
+  detector to the registry makes it an available method with no edit to
+  `constructs.py`; regrading one there changes the unvalidated flag here.
+- **Resolution refuses rather than guesses.** `resolve(measure, method,
+  episode)` returns a real number or one of seven refusals naming its reason —
+  the method was not run; a *different* tool produced the cached number; the
+  cache cannot say *which* tool produced it (the eleven pre-fingerprint results
+  in this working copy); an optional dependency is absent; the hand-coding
+  sheet has no recorded coded window; the field is legitimately absent.
+- **No aggregate exists.** `resolve_measure()` returns one row per method and
+  offers nothing that combines them, because an average over two detectors is
+  not a measurement of either. `comparable()` refuses two measures that are
+  different quantities, reading `validation.ENGINE_COMPARABLE_FIELDS` for the
+  engine-versus-hand-coding half rather than re-deriving it.
+
+Hand coding is a method alongside the detectors, carrying its own status word
+(`HUMAN_CODED_STATUS`) outside the registry's validated/experimental/
+unvalidated vocabulary — those grade a tool *against* hand coding, and reusing
+one for hand coding itself would render as "worse than validated".
+
+**Scope:** seven constructs — Pacing, Speech, Colour, Motion, Luminance
+change, Loudness, and **Sensory load**, which has no measures of its own
+because it is operationalized by a *recipe* drawing on the others. Sixteen
+measures.
+
+Some measures gate on an availability flag (`AutomatedSource.available_path`):
+`audio.rms_mean` counts only when `audio.available` is true, and the speech
+measures only when `speech.available` is. The 0.0 sitting in those blocks
+otherwise is a schema default, and reporting it would make a silent episode and
+an unmeasured one the same measurement.
+
+### 3b. Recipes — `analyzer/recipes.py`
+
+Built 2026-08-16. The third settings axis itself: a saved, versioned, citable
+operationalization of one construct. A `Recipe` holds `MeasureBinding`s, each
+naming a measure, a method, its **pinned parameters**, a transform and
+reference range, a weight, and a missing-data policy.
+
+**Pinning is the defining property, and it is enforced.** `evaluate()` compares
+a binding's pinned parameters against the parameters that actually produced the
+cached number and refuses that part when they differ — the number is real, but
+it is not what the recipe operationalizes. `divergences()` reports where a
+recipe's pins differ from the live Measurement settings, which is the agreed
+cost of pinning made visible rather than left to be noticed. A divergence is
+not an error: it means the recipe still describes what it always described.
+
+**Versioning is content-addressed.** `content_hash()` covers the construct and
+the bindings and deliberately excludes name, notes, id and history, so
+**renaming is not a new version** by arithmetic rather than by convention.
+`bump_version()` requires a *reason* — what changed is derivable, why it
+changed is not — and returns None when nothing about the operationalization
+moved. `citation()` is the friendly version plus the hash.
+
+**Evaluation reports what produced the score.** Every part appears including
+the refused ones; the weights carried are the **effective** ones after any
+redistribution, and `breakdown_total()` rounds to the same precision as
+`score`, so the breakdown reconciles where it is actually read.
+
+Storage is `<root>/.analysis/recipes/`, following `pipeline_graph.py` — atomic
+write, re-homing on save, move-not-copy, fresh ids on duplicate. Export carries
+human-readable descriptions alongside the keys; import returns named gaps and
+**never substitutes a default** for a method this install lacks.
+
+**The shipped composite is expressed as a locked recipe.**
+`recipes.shipped_composite(config)` builds "Sensory load (as shipped)" from
+`config.json`'s weights and normalization ranges — read, never restated — and
+**reproduces `metrics_sensory.compute_sensory_load` exactly**, including its
+4-decimal rounding, its clamp, and its redistribution of audio's weight on a
+silent episode. Verified against all 14 cached episodes in the working copy
+and against `effective_weights()` for the no-audio case.
+
+Two things this does and does not mean. It makes the composite an inspectable
+claim instead of an algorithm, and it gives it a content hash — so the
+2026-08-14 ceiling retune, which moved every score in the project silently,
+would today be a visible version change. It derives **nothing**: the weights,
+ceilings and additive form remain underived (§8.1a), and the recipe's own notes
+and its construct's grounding say so wherever it travels. It ships `locked`,
+because the published index is built on it; duplicating it is the route to
+exploring alternatives.
+
+**The editor is `ui/recipes.py`**, reached from File → Recipes…. Three
+things about it are structural rather than cosmetic:
+
+- **There is no summary view.** Every binding shows its method, its pinned
+  parameter values, its transform, its reference range, its weight and its
+  missing-data policy, on the screen that names the recipe. A recipe is
+  inspectable or it is not a recipe.
+- **Pinned parameters are read-only text with an explicit Re-pin button**, not
+  editable fields. Editing a pinned value in place would quietly make the
+  recipe describe something no cached result was produced under; re-pinning is
+  an act with a name, and it is the honest answer to a divergence.
+- **Save is disabled until a reason is given** whenever the operationalization
+  changed, and the disabled Save says which. That is `bump_version`'s rule,
+  and the screen does not get to skip it.
+
+Evaluation over a scope runs on a worker thread — 358 ms over this library's
+137 episodes, growing with the corpus.
+
+### 3c. The Constructs tab — `ui/constructs_tab.py`
+
+Built 2026-08-16. The **measurement view** of `MEASUREMENT_MODEL.md` §2, sitting
+beside Pipeline because the two are peers: Pipeline answers *"what are the
+stages of my study?"*, Constructs answers *"how did I operationalize what I
+wanted to study?"*.
+
+It draws a recipe as the graph it already is, in three columns — the target
+construct, the constructs contributing to it, and the measures standing in for
+those.
+
+**Authoring, added 2026-08-16.** An **Edit** toggle turns panning into
+box-dragging and reveals a palette. In Edit a researcher binds shipped measures
+to the recipe, sets each one's method and weight, removes one, and saves —
+through `recipes.save_recipe`, via `bump_version`, which will not record a
+version without a reason, so Save stays disabled until one is given. The
+palette offers **measures and nothing else**: that is what keeps the canvas
+typed, and it is why a composite cannot contain a composite without any check
+existing to prevent it. There is no control anywhere here that defines a
+measure — a measure must resolve to a real number from real data, and
+`ui/construct_editor.py` is where the free-form half (constructs and aspects)
+is written.
+
+**A layout is not part of the operationalization.** Node positions live in
+`<recipe id>.view.json` beside the recipe (`recipes.save_view` / `load_view` /
+`delete_view`), never inside `content_hash()`, written on a drop and not on a
+click, deleted with the recipe. So moving a box never creates a version or asks
+for a reason — and the **locked composite can be arranged and its arrangement
+kept**, which is the case the sidecar was chosen for: it is the diagram most
+likely to become a methods figure, and `save_recipe` refuses to write it.
+
+```
+Sensory load ─── Pacing ─────── Hard cuts / min   ContentDetector @27
+ (construct)  ─── Colour ─────── Saturation       HSV mean
+                            └── Contrast         HSV mean
+              ─── Motion ─────── Motion           Frame differencing
+              ─── Luminance ──── Flashing         Luminance delta  (unvalidated)
+              ─── Loudness ───── Audio loudness   FFmpeg RMS
+```
+
+**The construct column is DERIVED.** A recipe stores bindings to measures and
+holds no construct-to-construct edge; a construct block's weight is the sum of
+its own measures' weights, which is legitimate because contributions to a
+composite are all fractions of one score. It is a summary of stored facts, not
+a stored fact, and nothing writes it back. A block appears only where the
+construct differs from the recipe's own, so a single-construct recipe stays two
+columns rather than growing a self-edge.
+
+Three properties are decisions rather than styling:
+
+- **No arrowheads, anywhere.** An arrow between two boxes reads as causation,
+  and `CLAUDE.md` §2.2 is absolute that nothing here is causal — nothing flows
+  along these connectors. This is also the artefact most likely to be shown in
+  a talk detached from its caption.
+- **Wire thickness is the CONTRIBUTION SHARE** once contributions are computed
+  — `weight × normalised value ÷ score`, averaged over the scope's scored
+  episodes as a ratio of means. Not the declared weight, and not the
+  redistributed "effective" weight either, which is identical to the declared
+  one whenever nothing is missing. This is what makes §8.1a visible: on this
+  library colour contrast declares 0.10 and contributes 21%, while motion
+  declares 0.25 and contributes 18% — contrast's wire is the thicker one. The
+  header always names which quantity is on the wires.
+- **Refusals keep their box**, dashed and grey with the reason, rather than
+  vanishing from the diagram.
+
+**Not built:** staleness (§4.5 of `MEASUREMENT_MODEL.md`) and method
+comparison. Authoring constructs on the canvas is a separate decision — the
+palette rule that would have to come with it is in `TODO.md`.
+
 ## 4. Data flow
 
 ```
@@ -160,6 +355,9 @@ protecting.
 analyzer/   engine + data model      (no GUI imports — enforced by test)
   scope.py    the research context — which episodes are current, and the only
               reader of a draw's selected.csv
+  study_clips.py  measures every contiguous window of a folder; writes the pool
+  clip_query.py   reads that pool back and answers questions of it; measures
+              nothing, and states every query in one line
 cli.py      thin layer over analyzer
 gui*.py     Tk front-end             (THE CURRENT SOFTWARE)
 ui/         Qt front-end             (in progress — not yet the product)
@@ -197,12 +395,23 @@ at `stage_key`. Neither hardcodes the other.
 ## 7. Threading
 
 Analysis runs on a worker thread with a progress callback; the interface never
-freezes. `ui/automated.py` holds the only worker.
+freezes. There are two worker sites, and both are front-end code:
 
-Cancellation is not a flag on the engine: `analyze_show_batch` wraps each
-episode in `except Exception`, so an ordinary exception raised from the
-progress callback would be swallowed and recorded as a *failed* episode. The
-cancel signal therefore derives from `BaseException`.
+| Where | Workers |
+|---|---|
+| `ui/automated.py` | `AnalysisWorker` (the engine over a queue), `TranscribeWorker` |
+| `ui/clip_finder.py` | `PoolWorker` (the candidate measurement pass), `ExportWorker` (ffmpeg render plus re-measure) |
+
+**Cancellation is not a flag on the engine, and the cancel signal must derive
+from `BaseException`.** Both long passes wrap each episode in
+`except Exception` — `analyze_show_batch` records the episode as *failed*, and
+`run_candidate_pool` does that **and writes it to the fingerprinted episode
+cache**, where every later resumed run believes it. An ordinary exception
+raised from a progress callback is therefore not a cancellation; it is a
+silently poisoned result. `ui/clip_finder._Cancelled` was written as an
+`Exception` first and reproduced exactly this, caught while documenting this
+section rather than by a test. `tests/test_ui_clip_finder.py` now asserts the
+base class.
 
 ## 8. The metrics, exactly
 
@@ -228,6 +437,26 @@ constant loudness score identically on audio, because only `rms_mean` counts.
 Say "sensory load" when you mean the composite and name the metric otherwise.
 
 ### 8.1a What the composite's shape is NOT justified by — an open gap
+
+> **Being addressed (from 2026-08-16).** The "nothing maps a specific metric to
+> a specific construct" finding below is the gap the measurement-model phase
+> exists to close — see `MEASUREMENT_MODEL.md`. Nothing in this section has
+> changed yet, and none of it is fixed by naming a construct: mapping a metric
+> to a construct makes the operationalization explicit and inspectable; it does
+> not retroactively derive a weight or a ceiling.
+>
+>
+> **The mapping now exists (2026-08-16).** `analyzer/constructs.py` (§3a) maps
+> each of the composite's six inputs to a construct, and
+> `recipes.shipped_composite()` (§3b) expresses the whole composite —
+> reproducing today's numbers exactly, on all 14 cached episodes.
+>
+> **ALL THREE ITEMS BELOW REMAIN TRUE AND UNCHANGED.** Expressing an
+> operationalization is not deriving one. The recipe records *that* pacing is
+> weighted 0.25 against a ceiling of 45; nothing anywhere records *why*, and
+> the recipe's own notes say so. What changed is that the choice is now
+> inspectable and versioned, so a future change to it cannot happen silently —
+> not that any of it became justified.
 
 Three choices are load-bearing and **have no recorded rationale anywhere**.
 They are listed here so nobody mistakes silence for justification, and because
@@ -632,12 +861,17 @@ format presets exist because saturation systematically favours animation — see
 
 ## 11. Test suite
 
-234 collected: 221 passed, 13 skipped. What each file protects:
+581 collected: 568 passed, 13 skipped (2026-08-16). What each file protects:
 
 | File | Guards |
 |---|---|
 | `test_engine_isolation.py` | **the engine imports no GUI framework** — the invariant everything rests on |
 | `test_measurements.py` | the registry, fingerprinting, staleness detection |
+| `test_ui_constructs_tab.py` | the Constructs diagram, read off the scene: one node per binding, no arrowheads anywhere, wire thickness following the contribution share rather than the declared weight, refusals keeping their box, and computed numbers not surviving a recipe or scope change |
+| `test_ui_recipes.py` | the Recipes dialog, asserted on what it produces: every pinned parameter on screen, the locked composite explaining itself rather than only greying out, Save refusing a changed recipe until a reason is given, refusals grouped rather than repeated |
+| `test_shipped_composite.py` | that the composite-as-a-recipe reproduces `compute_sensory_load` exactly, across the reference ranges and on a silent episode; that its weights and ceilings come from `config.json`; that it is locked and says its defaults are underived |
+| `test_recipes.py` | recipes: the written file carries every parameter; a recipe reopened elsewhere resolves to the same numbers; renaming is not a new version; a pinned parameter that does not match the cached measurement is refused; an import reports gaps instead of substituting |
+| `test_constructs.py` | the measurement model: every measure resolves to a real number; methods are **generated from the registry**, not listed; hand coding is not labelled unvalidated; a sheet with no recorded window refuses every span-dependent value; no aggregate across methods exists |
 | `test_metrics.py` | the metric functions |
 | `test_pipeline.py`, `test_pipeline_graph.py` | derived status; the editable document, undo, cycle refusal |
 | `test_batch.py` | whole-show runs |
@@ -650,6 +884,14 @@ The Tk tests `importorskip("tkinter")`, which is where most of the 13 skips
 come from.
 
 ## 12. Data conventions
+
+**Written CSVs carry a byte-order mark.** `study_clips._write_csv` writes
+`utf-8-sig`, so `candidates.csv` and its siblings begin with `EF BB BF`.
+Anything reading them must open with `encoding="utf-8-sig"`; plain `utf-8`
+leaves the mark on the **first column's header only**, so exactly one column —
+usually the identifier — silently disappears from every row while the rest of
+the file reads perfectly. `_write_json` does not add a mark, so JSON siblings
+are plain `utf-8`. See `LEARNINGS.md`.
 
 **What counts as an episode.** `show_index.VIDEO_EXTENSIONS` —
 `.mp4 .mkv .avi .mov .wmv .m4v` — is the single definition, matched on the
@@ -691,3 +933,18 @@ Both are working as written. The consequence is that selecting `Little Bear` in
 the Library reports that it groups shows rather than episodes, while the Index
 correctly shows it as a single show — and a cross-season aggregate exists in
 the Tk build's **Full Series Aggregate**, not in the Qt Library.
+# Participant Study Runner boundary
+
+`study_runner_qt.py` is a second product entry point, packaged by
+`study_runner.spec` as `CMAT Study Runner.exe`. Its dependency direction is
+one-way and deliberately narrow:
+
+```text
+frozen study package -> study_runner.core -> study_runner.window
+```
+
+The runner must not import `analyzer` or CMAT's researcher UI. Its core uses
+only the Python standard library; Qt Multimedia is the sole playback/UI layer.
+The package carries exact clip checksums and explicit order permutations, and
+the runner emits append-only response rows plus atomic session checkpoints.
+CMAT may later *export* this package format, but the runner only consumes it.

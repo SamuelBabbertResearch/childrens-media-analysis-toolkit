@@ -27,6 +27,7 @@ Retrieval table of contents. Load what the task needs; do not load everything.
 | [ARCHITECTURE.md](ARCHITECTURE.md) | the pipeline model, authoritative vs derived state, data flow, metric definitions, data conventions |
 | [CEILINGS.md](CEILINGS.md) | what the normalization ceilings are, how the current values were set, and **when to revisit them** — read before quoting a composite score |
 | [STACK.md](STACK.md) | frameworks, libraries, platform constraints, Qt facts that are not guessable |
+| [MEASUREMENT_MODEL.md](MEASUREMENT_MODEL.md) | **the current phase** — constructs, measures, methods, recipes, versions, staleness. Partly built: **read the status line on a capability before assuming it is built.** §4.1–§4.3 built (`analyzer/constructs.py`, `analyzer/recipes.py`, the shipped composite); §4.4 and §4.7 partly; §4.5, §4.6 and §4.8–§4.10 not. The screens are `ui/recipes.py`, `ui/construct_editor.py` and the Constructs tab, which draws a recipe **and authors it** |
 | [ROADMAP.md](ROADMAP.md) | positioning, priorities, and what is deliberately not being built |
 | [README.md](README.md) | public-facing description |
 | [design/README.md](design/README.md) | specifications and strategy notes — the pipeline north-star spec, migration strategy, UX audit, positioning. **Inputs, not authority**; never adopt a label, metric or number from them |
@@ -47,6 +48,13 @@ Retrieval table of contents. Load what the task needs; do not load everything.
 | [validation/VALIDATION_LOG.md](validation/VALIDATION_LOG.md) | **the research diary** — dated coding sessions, result corrections, codebook changes |
 | [validation/CODEBOOK.md](validation/CODEBOOK.md) | transition hand-coding definitions, including the `other` subtypes |
 | [validation/EVENT_CODEBOOK.md](validation/EVENT_CODEBOOK.md) | fantastical-event hand-coding definitions |
+| [STUDY_AIMS_AND_STIMULUS_CRITERIA.md](STUDY_AIMS_AND_STIMULUS_CRITERIA.md) | aims, Option 3.5 stimulus structure, feature criteria, and limits on interpretation for the current pacing study |
+| [STUDY_HANDOVER.md](STUDY_HANDOVER.md) | current study decisions, latest CMAT run state, commands, unresolved choices, and prioritized next steps for a new chat |
+| [STUDY_ADULT_ONLY_REDESIGN_DECISION_2026-08-31.md](STUDY_ADULT_ONLY_REDESIGN_DECISION_2026-08-31.md) | why the study changed to adults only and stopped asking adults to predict children's responses |
+| [STUDY_PROCEDURE_ADULT_ONLY.md](STUDY_PROCEDURE_ADULT_ONLY.md) | active adult-only procedure, one perceived-pacing rating per clip, randomized clip order, and minimum response-data structure |
+| [STUDY_PROCEDURE_ADULT_AND_CHILD_PHASES.md](STUDY_PROCEDURE_ADULT_AND_CHILD_PHASES.md) | superseded adult-prediction and child-participant procedure, retained as history only |
+| [STUDY_RATING_SCALE_DESIGN.md](STUDY_RATING_SCALE_DESIGN.md) | the adult participant 1-5 pace scale: the labelled ramp, design rationale, alternatives rejected, and what still needs piloting |
+| [STUDY_CLIP_SELECTION.md](STUDY_CLIP_SELECTION.md) | technical CMAT workflow for measuring, matching, reviewing, exporting, and documenting the study clips — by command or through the Clip Finder, which write the same run folder |
 | `validation/*.csv`, `*_manifest_*.json` | hand coding and trial manifests — authoritative data a person typed |
 | `docs/wiki` | long-form documentation — **gitignored**, managed separately |
 
@@ -63,6 +71,9 @@ Retrieval table of contents. Load what the task needs; do not load everything.
 | Question | Document |
 |---|---|
 | What does this metric mean? | `ARCHITECTURE.md` §8 |
+| What construct is it a measure of, and by what method? | `analyzer/constructs.py` — seven constructs, sixteen measures, methods generated from the registry. A researcher's own constructs merge into the same lookup; `MEASUREMENT_MODEL.md` §4.1 |
+| How do I define a construct of my own, and operationalize it? | **Constructs tab → Constructs…** to define it, then **Edit** on that tab to bind shipped measures to it. Measures are not user-definable, by rule; `ui/construct_editor.py`, `ui/constructs_tab.py` |
+| How was this operationalized, and can I cite it? | `analyzer/recipes.py` — a recipe pins its parameters and is cited as version + content hash; `MEASUREMENT_MODEL.md` §4.2 |
 | **Can I trust this number?** | `ARCHITECTURE.md` §9 — status per tool, and the F1 qualifiers |
 | What is the default for this setting? | `ARCHITECTURE.md` §10 |
 | What do the tests protect? | `ARCHITECTURE.md` §11 |

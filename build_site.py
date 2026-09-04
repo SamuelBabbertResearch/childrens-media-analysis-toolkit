@@ -38,7 +38,7 @@ DOMAIN   = "www.OpenChildrensMediaIndex.org"
 # Set to "" when using a custom domain (OpenChildrensMediaIndex.org).
 BASE_PATH = ""
 
-# Shows whose sensory load std dev exceeds this are flagged with † in the table.
+# Shows whose FFC standard deviation exceeds this are flagged with † in the table.
 VARIANCE_FLAG_THRESHOLD = 0.08
 
 # Human-coded metrics (fantastical events) published via `code_events.py publish`.
@@ -547,20 +547,20 @@ window.PRESET_DATA = {preset_js};
   <p class="tbl-note">Adjust weights (0–1). Scores update instantly in your browser. Normalization ranges are locked to the General / All Ages preset when in custom mode.</p>
   {metric_sliders}
 </div>
-<p class="tbl-note">Avg load scores on a 0–1 scale. <span class="badge badge-lo">green</span> &lt; 0.33 &nbsp; <span class="badge badge-md">yellow</span> 0.33–0.40 &nbsp; <span class="badge badge-hi">red</span> &gt; 0.40. Thresholds are descriptive, not normative recommendations.</p>
+<p class="tbl-note">Average FFC scores are configurable 0–1 composites. The displayed bands are descriptive reference bands, not normative recommendations or viewer-effect thresholds.</p>
 <table>
 <thead><tr>{th}</tr></thead>
 <tbody>{children_rows}</tbody>
 </table>
-<p class="tbl-note var-note">† High within-show variability (sensory load std dev &gt; {VARIANCE_FLAG_THRESHOLD}). Aggregate reflects the sampled episodes; individual episodes may differ meaningfully. See the show page for the full distribution.</p>
+<p class="tbl-note var-note">† High within-show variability (FFC standard deviation &gt; {VARIANCE_FLAG_THRESHOLD}). Aggregate reflects the sampled episodes; individual episodes may differ meaningfully. See the show page for the full distribution.</p>
 
 <h2>Comparison baselines</h2>
 <p class="tbl-note">Included for cross-genre reference only. These titles are not children's programming and are not scored against child-audience presets.</p>
 <table>
-<thead><tr><th>Title</th><th>Genre</th><th>Platform</th><th class=num>Episodes analyzed</th><th class=num>Avg load</th><th class=num>Cuts/min</th><th class=num>Saturation</th><th class=num>Motion</th><th class=num>Flash/min</th></tr></thead>
+<thead><tr><th>Title</th><th>Genre</th><th>Platform</th><th class=num>Episodes analyzed</th><th class=num>Avg FFC</th><th class=num>Cuts/min</th><th class=num>Saturation</th><th class=num>Motion</th><th class=num>Flash/min</th></tr></thead>
 <tbody>{baseline_rows}</tbody>
 </table>
-<p class="tbl-note var-note">† High within-show variability (sensory load std dev &gt; {VARIANCE_FLAG_THRESHOLD}).</p>
+<p class="tbl-note var-note">† High within-show variability (FFC standard deviation &gt; {VARIANCE_FLAG_THRESHOLD}).</p>
 
 {_build_events_home_table(children)}
 
@@ -630,11 +630,11 @@ def _build_show_page(entry: dict, agg: dict | None, episodes: list[dict], lang: 
         agg_html = (
             f"<h2>Aggregate metrics</h2>"
             f"<p>Based on {agg['episode_count']} episode(s). "
-            f"Sensory load: {_badge(score)}</p>"
+            f"FFC: {_badge(score)}</p>"
             "<table><thead><tr><th>Metric</th>"
             "<th class=num>Mean</th><th class=num>Median</th><th class=num>Std dev</th>"
             "</tr></thead><tbody>"
-            + _row("Sensory load score",    "sensory_load_score")
+            + _row("Formal-Feature Composite (FFC)", "sensory_load_score")
             + _row("Cuts per minute",       "cuts_per_min", 1)
             + _row("Color saturation",      "color_saturation_mean")
             + _row("Color contrast",        "color_contrast_mean")
@@ -784,7 +784,7 @@ _METHODOLOGY = """<h1>Methodology</h1>
 <p>The following parameters are held constant across all shows to ensure cross-show comparability:</p>
 <table class=meta><tbody>
 <tr><td>Frame sample rate</td><td>2 fps</td></tr>
-<tr><td>Sensory load preset</td><td>General / All Ages</td></tr>
+<tr><td>FFC configuration</td><td>General / All Ages</td></tr>
 <tr><td>Flashing threshold</td><td>0.1 (luminance delta, 0–1 scale)</td></tr>
 <tr><td>Episode sample seed</td><td>42</td></tr>
 </tbody></table>
@@ -819,12 +819,12 @@ scale and are not comparable with these.</p>
 <tr><td>Motion</td><td>Normalized mean absolute frame difference between consecutive samples</td><td>0–1 (approx)</td></tr>
 <tr><td>Flashing</td><td>Whole-frame mean luminance change events exceeding threshold between sampled frames</td><td>events / min</td></tr>
 <tr><td>Audio loudness</td><td>FFmpeg RMS loudness across audio track</td><td>0–1 (normalized)</td></tr>
-<tr><td>Sensory load score</td><td>Weighted composite of normalized sub-metrics using fixed reference ranges</td><td>0–1</td></tr>
+<tr><td>Formal-Feature Composite (FFC)</td><td>Configurable composite of observable audio-visual production and editing features</td><td>0–1</td></tr>
 </tbody>
 </table>
 
-<h2>Sensory load composite</h2>
-<p>The sensory load score is a weighted sum of normalized sub-metrics. Normalization uses fixed reference ranges — not per-corpus normalization — so scores remain comparable across separate analysis runs and future additions to the index. The "General / All Ages" preset weights are used for all index entries. Full weight and normalization configurations are available in the <a href="https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit">CMAT repository</a>.</p>
+<h2>Formal-Feature Composite (FFC)</h2>
+<p>The FFC is a configurable weighted sum of normalized sub-metrics. Normalization uses fixed reference ranges — not per-corpus normalization — so scores remain comparable across separate analysis runs and future additions to the index. The "General / All Ages" configuration is used for all index entries. The FFC is not a validated measure of viewer sensory load, arousal, or developmental impact. Full weight and normalization configurations are available in the <a href="https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit">CMAT repository</a>.</p>
 
 <h2>Language metrics</h2>
 <p>When closed-caption or subtitle files are available for an episode, CMAT extracts three language complexity measures from the dialogue text. These numbers describe how the show uses language — not how well children will understand it. Comprehension depends on the individual child's age, vocabulary, and language experience.</p>
@@ -872,8 +872,8 @@ scale and are not comparable with these.</p>
 
 
 _TOOL = """<h1>The tool</h1>
-<p class="lead">The Open Children's Media Index is built with the <strong>Children's Media Analysis Toolkit (CMAT)</strong>, an open-source desktop application for analyzing the sensory load of video content.</p>
-<p>CMAT is a Windows desktop application that analyzes MP4 episodes of television shows and produces a sensory-load profile for each episode and a cumulative profile for an entire show. It measures formal and structural features of video — pacing, color, motion, audio — and does not issue a verdict on appropriateness. Every composite score shows its component parts.</p>
+<p class="lead">The Open Children's Media Index is built with the <strong>Children's Media Analysis Toolkit (CMAT)</strong>, an open-source desktop application for analyzing formal features of video content.</p>
+<p>CMAT is a Windows desktop application that analyzes MP4 episodes of television shows and produces a formal-feature profile for each episode and a cumulative profile for an entire show. It measures formal and structural features of video — pacing, color, motion, audio — and does not issue a verdict on appropriateness. Its optional Formal-Feature Composite (FFC) displays its component parts and is not a viewer-effect measure.</p>
 <p>Source code, installation instructions, and full documentation:<br>
 <a href="https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit">github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit</a></p>
 
@@ -1346,7 +1346,7 @@ def _clear_site(path: Path) -> None:
 
 
 def _build_for_parents(shows_data: list[tuple]) -> str:
-    """Build the For Parents page — calmest episodes ranked by sensory load score."""
+    """Build the FFC-ordered episode table for the public site."""
 
     # Collect every episode from children's shows only
     rows: list[dict] = []
@@ -1371,7 +1371,7 @@ def _build_for_parents(shows_data: list[tuple]) -> str:
             })
 
     rows.sort(key=lambda r: r["score"])
-    top = rows[:50]  # show top 50 calmest
+    top = rows[:50]  # show the 50 lowest FFC scores
 
     if not top:
         table = "<p>No episode data available yet.</p>"
@@ -1396,16 +1396,16 @@ def _build_for_parents(shows_data: list[tuple]) -> str:
             '<th style="width:2.5em">#</th>'
             '<th data-col="show">Show</th>'
             '<th data-col="title">Episode</th>'
-            '<th data-col="score">Sensory Load</th>'
+            '<th data-col="score">FFC</th>'
             '</tr></thead>'
         )
         tbody = "\n".join(_row(i + 1, r) for i, r in enumerate(top))
         table = f'<table id="calm-table" class="idx-table">{thead}<tbody>{tbody}</tbody></table>'
 
     return f"""
-<h1>For Parents — Calmest Episodes</h1>
+<h1>For Parents — Episodes by FFC</h1>
 <p style="max-width:680px;line-height:1.6">
-  The table below ranks the <strong>50 lowest-sensory-load episodes</strong> observed across
+  The table below lists the <strong>50 episodes with the lowest FFC scores</strong> observed across
   all children's shows in the dataset, scored under the
   <em>General&nbsp;/&nbsp;All&nbsp;Ages</em> preset. Lower scores reflect slower pacing,
   less motion, lower color saturation, fewer flashing events, and quieter audio.
@@ -1414,9 +1414,9 @@ def _build_for_parents(shows_data: list[tuple]) -> str:
 </p>
 <p style="font-size:0.85em;color:#555;max-width:680px">
   <strong>Score key:</strong>
-  <span class="badge badge-lo">0.00–0.32</span> lower load &nbsp;
-  <span class="badge badge-md">0.33–0.39</span> moderate &nbsp;
-  <span class="badge badge-hi">0.40+</span> higher load
+  <span class="badge badge-lo">0.00–0.32</span> lower FFC &nbsp;
+  <span class="badge badge-md">0.33–0.39</span> middle FFC &nbsp;
+  <span class="badge badge-hi">0.40+</span> higher FFC
 </p>
 {table}
 <p style="margin-top:2rem;font-size:0.82em;color:#666;max-width:640px">

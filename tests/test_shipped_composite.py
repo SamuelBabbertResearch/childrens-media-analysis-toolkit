@@ -1,5 +1,5 @@
 """
-The shipped sensory-load composite, expressed as a recipe.
+The shipped Formal-Feature Composite, expressed as a recipe.
 
 `DECISIONS.md`: **expressing it is not changing it.** The public index is built
 on this composite, so the binding requirement is that

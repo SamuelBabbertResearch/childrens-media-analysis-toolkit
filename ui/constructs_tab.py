@@ -14,7 +14,7 @@ belonging to five different constructs, each with a weight; that is a diagram
 stored as a form. Nothing here is a new data model — `analyzer/recipes.py` and
 `analyzer/constructs.py` own everything this screen reads and writes.
 
-    Sensory load ─── Pacing ─────── Hard cuts / min   ContentDetector @27
+    FFC ──────────── Pacing ─────── Hard cuts / min   ContentDetector @27
      (construct)  ─── Colour ─────── Saturation       HSV mean
                                  └── Contrast         HSV mean
                   ─── Motion ─────── Motion           Frame differencing
@@ -542,7 +542,7 @@ class DiagramView(QGraphicsView):
 
         THE CONSTRUCT COLUMN IS DERIVED, and it is worth being explicit about
         what that does and does not claim. A recipe stores bindings to
-        MEASURES; it has no construct-to-construct edge. The `Sensory load ←
+        MEASURES; it has no construct-to-construct edge. The `FFC ←
         Colour` edge here is assembled from the fact that colour saturation and
         colour contrast both belong to Colour, and its weight is their sum.
         That sum is a real quantity — contributions to a composite are all

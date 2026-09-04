@@ -146,12 +146,12 @@ def episode_html(result, percentile: dict | None = None,
         parts.append(f'<p class="warn">Analysis failed: {_e(result.error)}</p>')
         return _document("".join(parts))
 
-    # --- sensory load -------------------------------------------------------
+    # --- Formal-Feature Composite ------------------------------------------
     sl = m.sensory_load
-    parts.append('<p class="section-title">Sensory load</p>')
+    parts.append('<p class="section-title">Formal-Feature Composite (FFC)</p>')
     parts.append(f'<p><span class="score">{sl.score:.3f}</span>'
-                 f'<span class="scorenote">&nbsp;&nbsp;0 = low stimulation, '
-                 f'1 = high</span></p>')
+                 f'<span class="scorenote">&nbsp;&nbsp;configurable 0–1 composite; '
+                 f'not a viewer-effect measure</span></p>')
     if not sl.audio_available:
         parts.append('<p class="dim">Visual only — no audio track.</p>')
 
@@ -351,7 +351,7 @@ def _document(body: str) -> str:
 # ShowAggregate actually carries, so a metric added to the aggregate shows up
 # here by being added to this one tuple.
 AGGREGATE_ROWS = (
-    ("Sensory load", "sensory_load_score", 3),
+    ("FFC", "sensory_load_score", 3),
     ("Cuts / min", "cuts_per_min", 2),
     ("Shot length mean (s)", "shot_length_mean_sec", 2),
     ("Colour saturation", "color_saturation_mean", 3),
@@ -367,7 +367,7 @@ EPISODE_ROWS = (
     ("Mot", lambda m: m.motion.mean, 4),
     ("Flash", lambda m: m.flashing.luminance_delta_events_per_min, 2),
     ("Audio", lambda m: m.audio.rms_mean if m.audio.available else None, 4),
-    ("Load", lambda m: m.sensory_load.score, 3),
+    ("FFC", lambda m: m.sensory_load.score, 3),
 )
 
 
@@ -461,7 +461,7 @@ def show_html(aggregate, results, show_name: str = "") -> str:
 # the same fields the episode report shows, so a comparison cannot quietly
 # cover a different set of metrics from the report it is compared against.
 COMPARE_EPISODE_ROWS = (
-    ("Sensory load", lambda m: m.sensory_load.score, 3),
+    ("FFC", lambda m: m.sensory_load.score, 3),
     ("Cuts / min", lambda m: m.scene_pacing.cuts_per_min, 2),
     ("Shot length mean (s)", lambda m: m.shot_length.mean_sec, 2),
     ("Colour saturation", lambda m: m.color_saturation.mean, 3),
@@ -534,7 +534,7 @@ def compare_html(left, right, left_name: str = "", right_name: str = "",
             parts.append(
                 '<p class="warn">One of these has no audio track. Missing '
                 'audio redistributes its weight across the visual metrics, so '
-                'the two sensory-load scores are not composed the same way '
+                'the two FFC scores are not composed the same way '
                 'and the difference above is not like for like.</p>')
 
     parts.append(

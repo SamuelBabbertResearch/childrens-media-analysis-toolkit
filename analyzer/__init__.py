@@ -1,1 +1,1 @@
-"""Sensory-load analysis engine — no GUI imports allowed in this package."""
+"""Formal-feature analysis engine — no GUI imports allowed in this package."""

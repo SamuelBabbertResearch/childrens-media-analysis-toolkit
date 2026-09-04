@@ -5,9 +5,9 @@ matplotlib on the Qt canvas, as CLAUDE.md's stack table specifies. Kept in its
 own module so the import stays lazy: matplotlib costs about a second to load,
 and the Library should not pay it to show a table.
 
-WHAT IS PLOTTED, AND WHY IT IS NOT A COMPOSITE
+WHAT IS PLOTTED, AND WHY THE FFC IS NOT A VIEWER-EFFECT MEASURE
 
-The bars are the six sensory-load COMPONENTS, stacked by their contribution —
+The bars are the six FFC COMPONENTS, stacked by their contribution —
 normalised value times weight — so the bar's height is the composite and its
 segments are what produced it. A bar of the composite alone would show the
 number the report already gives in bigger type, and would hide the fact that
@@ -43,7 +43,7 @@ BAND_COLORS = ("#4e79a7", "#76b7b2", "#8cd17d", "#f1ce63", "#e15759",
 
 
 class ChartDialog(QDialog):
-    """Per-episode sensory-load composition for one show."""
+    """Per-episode Formal-Feature Composite composition for one show."""
 
     def __init__(self, show_name: str, results, config: dict,
                  parent=None) -> None:
@@ -52,7 +52,7 @@ class ChartDialog(QDialog):
         self.resize(880, 520)
 
         body = ModalDialogFrame.install(
-            self, f"Sensory load by component — {show_name}",
+            self, f"Formal-Feature Composite (FFC) — {show_name}",
             buttons=("min", "max", "close"))
 
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
@@ -86,7 +86,7 @@ class ChartDialog(QDialog):
                      linewidth=0.5)
             bottoms = [b + v for b, v in zip(bottoms, values)]
 
-        axes.set_ylabel("Sensory load  (0 = low stimulation, 1 = high)",
+        axes.set_ylabel("FFC score (configurable 0–1 composite)",
                         fontsize=9)
         axes.set_ylim(0, max(1.0, max(bottoms) * 1.15 if bottoms else 1.0))
         axes.tick_params(axis="x", labelrotation=30, labelsize=8)

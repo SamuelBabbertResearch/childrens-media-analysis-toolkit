@@ -76,7 +76,8 @@ divides by *dialogue time, not runtime* — it is how fast characters speak when
 they speak, not how talkative an episode is. Alone it invites the wrong
 reading.
 
-**Say "sensory load" only for the composite.** Six numbers feed it —
+**Call the composite the "Formal-Feature Composite (FFC)".** Six numbers feed
+it —
 `cuts_per_min`, saturation mean, contrast mean, motion mean, flashing rate,
 audio RMS mean. Shot length, rhythm variability, motion peak, dynamic range,
 speech and hand-coded events are measured and reported but **not scored**.
@@ -121,6 +122,33 @@ before formal citation.
    Two sources of truth is how two different blues both came to mean
    "selected".
 
+### 2.5 Measurement is operationalized, never assumed
+
+A construct is not a value in an MP4 file. `cuts_per_min` is *one*
+operationalization of pacing, produced by one method at one threshold — so
+CMAT never implies *"transitions = algorithm X"*, only *"transitions were
+operationalized using method X with parameters Y"*. Rules that follow;
+`MEASUREMENT_MODEL.md` is the full plan and the current status of each part.
+
+- **Never hard-code one "correct" measurement for a construct.** Where several
+  defensible methods exist, offer the choice; a default is not privileged by
+  being the default.
+- **Automated measurement is not more valid than hand coding**, and hand coding
+  is not merely a step towards validating automation. Both are methods.
+- **Never average across methods.** Two detectors summed into one figure is not
+  a measurement of either — that mistake reached the public site once already
+  (`LEARNINGS.md`). Report per method.
+- **Never compare quantities that are not the same quantity.**
+  `validation.manual_pacing_metrics()` already documents which hand-coded
+  fields mirror the engine and which have no automated counterpart. Read that
+  distinction; do not re-derive it.
+- **A recipe is inspectable or it is not a recipe.** No hidden parameters, no
+  name standing in for settings the researcher cannot read.
+- **Old results never silently look current.** An upstream change marks
+  dependent outputs stale in the stored data, not only on screen.
+- **Versioning lives in the data model.** A version that exists only in the
+  interface is a label, and nothing downstream can depend on it.
+
 ## 3. Terminology
 
 The pipeline stages are the vocabulary of the whole product. Use these words in
@@ -133,6 +161,26 @@ code, interface strings, and documents; do not invent synonyms.
 | **Measurement** | producing numbers — automated coding *or* hand coding |
 | **Validation** | comparing the tool against a human coder |
 | **Results** | aggregates and exports |
+
+**The stage names describe the workflow. A second, finer vocabulary describes
+the operationalization** — how a construct became a number. Both are in use and
+they are not competing; see `MEASUREMENT_MODEL.md` §2.
+
+| Term | Means | Example |
+|---|---|---|
+| **Construct** | the theoretical thing being studied — not observable, not in the file | Pacing |
+| **Aspect** | a facet of a construct, where one is needed to keep measures honest | Visual pacing |
+| **Measure** | an observable quantity offered as an operationalization of a construct | Hard cuts per minute |
+| **Method** | a concrete implementation producing that measure, with its parameters | ContentDetector at 27; hand coding |
+| **Recipe** | a saved, versioned operationalization: measures, methods, parameters, transformations, weighting, missing-data behaviour | "Pacing — conservative" |
+
+**"Measurement" the stage is not "a measure".** The stage is where numbers get
+produced by any means; a *measure* is one named quantity, and a *method* is one
+way of producing it. When one of the precise words fits, use it.
+
+**A recipe is not a preset.** A preset bundles settings; a recipe is a claim
+about how a construct was operationalized, and stays inspectable to the
+parameter.
 
 Two names, and they are not interchangeable:
 

@@ -7,7 +7,7 @@ Stages (reported via progress_cb):
   0.55–0.88  frame sampling (color / motion / flashing)
   0.88–0.93  audio extraction & loudness (FFmpeg)
   0.93–0.97  speech metrics (CC file parse or Whisper — fast when CC exists)
-  0.97–1.00  sensory-load composite + return
+  0.97–1.00  Formal-Feature Composite + return
 """
 
 from __future__ import annotations

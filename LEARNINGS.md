@@ -494,11 +494,12 @@ globally unique episode identifier — only `db_show_key`-plus-stem is, which
 is exactly why the index and cache already key on the compound form
 (`LEARNINGS.md` § *the season-overwrite* entries, `analyzer/show_index.py`).
 Coverage counting never picked up that convention.
-**Not fixed.** This predates the Validation merge — a single sample coded
-straight from `sample_coverage` has the identical weakness if two of its
-episodes happen to share a stem — so it is not this session's regression to
-silently patch in passing. Logged as its own `TODO.md` item instead: rekey
-`coverage_for_stems` by show + stem.
+**Fixed later.** `coverage_for_episodes` now carries full episode paths and the
+library root, deriving the same `db_show_key`-plus-stem identity as the cache
+and index. For a colliding stem, coding is accepted only from the matching show
+subfolder. An old top-level sheet is ambiguous and counts for neither episode,
+instead of being reused as evidence for both. Unique stems keep the permissive
+legacy lookup, so existing projects do not need a filing migration.
 **Avoid.** A bare filename stem is not a safe unique key anywhere in this
 codebase; this is at least the third module (index, cache, now coverage) that
 assumed it was one before finding out the collision the hard way. Any new
@@ -618,6 +619,483 @@ failures* below, "a comment in the same function warned against exactly
 this").
 
 ## Reporting and correctness
+
+### A coded segment divided by the whole runtime
+**What.** Building the measurement model (`analyzer/constructs.py`,
+2026-08-16), the first run over this working copy's real data resolved
+Curious George S01 E01's hand-coded pacing as **0.084 hard cuts/min** against
+a detected **17.785**, and a **mean shot length of 473 seconds** against a
+detected 3.366. The sheet is four rows covering the first ten seconds of a
+23.7-minute episode.
+**Why.** `manual_pacing_metrics()` takes `duration_sec` and an optional
+window, and uses the window as the denominator when given one. Hand coding
+here is *segment* coding — the two validated episodes are the first ~5 minutes
+of each — so without a window the whole runtime becomes the denominator and
+the rate collapses by whatever fraction of the episode was actually watched.
+Shot-length statistics are corrupted the same way and worse: the function
+bounds the first and last shot by the span edges, so an unwindowed sheet
+stretches its final shot to the end of the episode.
+**The part worth keeping.** I had written the guard for exactly this and the
+guard did not fire, because I made it conditional on the duration being
+*unknown* — `if needs_window and window is None and duration_sec <= 0`.
+Knowing the duration feels like knowing enough. It is not: the duration tells
+you how long the episode is, and the question is how much of it was coded.
+Those are different facts and only one of them was on disk. The condition is
+now simply `window is None`.
+**How it was found.** Not by a test — the tests I had written at that point
+passed. By running the model over the real library and reading the numbers
+next to the engine's numbers for the same episode, which is this file's
+standing instruction and which took about ninety seconds to do.
+**Scope in this working copy.** Three of five transition-coding sheets have no
+recorded window: Curious George S01 E01, Little Bear 1x02, SpongeBob S01E01A.
+The two that do — Charlie Brown and Little Bear 1x01 — are the two the
+published accuracy figures come from, so **nothing published is affected**.
+**Avoid.** When a computation needs the extent of what was *observed*, do not
+accept the extent of what *exists* as a stand-in, however available it is. And
+when writing a guard against a known trap, check what the guard actually
+requires to be true — a guard with an extra condition on it is a guard that
+does not fire, and it reads as protection at the call site.
+*Test:* `tests/test_constructs.py
+::test_a_sheet_with_no_recorded_window_refuses_every_span_dependent_value`,
+which sets a known duration precisely so the duration cannot rescue it.
+
+### A guard was wrong in both directions and nobody could tell
+**What.** `test_no_screen_drops_its_worker_reference_in_a_slot` protects
+against the fatal pattern in *Dropping a QThread reference inside its own
+signal handler* below. It matched the literal line `self._worker = None`
+anywhere in `ui/*.py`. Adding the Constructs tab tripped it — on the
+initialiser in `__init__`, which is completely safe.
+**Why it was wrong the OTHER way too, which matters more.** Every existing
+screen passes it only because they happen to write
+`self._worker: SomeWorker | None = None` with a type annotation, and the
+annotated form does not match the string. So the guard would have waved
+through the genuinely fatal `self._worker: SomeWorker | None = None` *inside a
+slot* — the exact thing it exists to catch. It failed safe code and passed
+dangerous code, and both directions were invisible because it had never had to
+fire.
+**Fix.** Parse instead of matching text: walk the AST for an assignment of
+None to a worker-shaped attribute in any method that is not `__init__`,
+annotated or not. Confirmed by re-introducing the annotated free-in-a-slot and
+watching the new guard catch what the old one had not.
+**Avoid.** A guard that has never fired is untested code with unusual
+authority. When one finally does fire, check whether it is right before making
+the code fit it — and check the case it is *supposed* to catch still fails,
+not only that your own case now passes. A text match over source is the
+weakest possible form of this and should be an AST walk wherever the thing
+being matched has more than one spelling. Same family as *A source-text test
+passed while the import it asserted on was broken*.
+
+### One recipe's computed numbers were drawn under another recipe's name
+**What.** The Constructs tab computes mean contributions across the scope and
+keys them by measure. Selecting a different recipe redrew the canvas but kept
+those numbers, and two recipes routinely share a measure — so switching from
+the shipped composite to a hand-coding pacing recipe put **15.3763 cuts/min**,
+the composite's ContentDetector mean, on a card whose method line read
+**"Hand coding"**.
+**Why.** The chooser was wired straight to `_redraw`, which rebuilds the scene
+from whatever `self._parts` currently holds. Nothing tied the computed values
+to the recipe they were computed for.
+**Why it is worse than it looks.** The number was real, the card was real, and
+the attribution was false — an automated detector's output presented as a
+human coder's. That is the precise failure the measurement model exists to
+prevent, reappearing in the first screen that draws the model.
+**Fix.** The chooser goes through `_recipe_changed`, which clears computed
+contributions first. A scope change does the same, for the same reason: they
+were means over a different set of episodes.
+**Avoid.** Derived display state keyed by something COARSER than the thing it
+was derived from (measure key, when it was computed per recipe) will attach
+itself to the wrong parent the moment that parent changes. Key it by what
+produced it, or clear it when that changes.
+
+### A dirty check ran one edit behind, so the rule the screen enforced could be skipped
+**What.** The Recipes dialog disables Save until a reason is given, whenever
+the operationalization changed — the screen's half of `bump_version`'s rule
+that a version needs a reason. Driving it headlessly: change a weight, and the
+status line said **"Nothing about the operationalization has changed"** and
+**Save was enabled**. Give an unrelated keystroke afterwards and it corrected
+itself.
+**Why.** `_sync_buttons` builds a throwaway copy of the recipe and fills it
+from the form, then compares its content hash against the baseline. Filling it
+called `BindingBox.apply_to_binding()`, which wrote into `self.binding` — the
+LIVE recipe's binding object — and never touched the copy it had been handed.
+So the copy always described the state before the current edit: the check was
+one edit behind, and the first edit after selecting a recipe was always
+reported as no change at all. The version rule could be walked straight past.
+**Why it was invisible.** Every control worked, the label was a plausible
+sentence, and the *second* edit made it correct — so casual use looks fine and
+the failure only shows on the first change after selection. The engine-side
+rule was never wrong; only the screen's reading of it.
+**Fix.** `BindingBox.values()` returns a dict and mutates nothing;
+`_read_form_into(recipe)` matches bindings by measure key and writes only into
+the recipe it was given, so it is correct for the live object and a copy alike.
+**Avoid.** A method named `apply_to_X` that reads a widget and writes to a
+fixed destination cannot be reused against a different destination, and the
+caller that passes one has no way to find out — it silently gets the old
+values. When a dirty check needs "what would this be if applied", the reader
+must return values, not perform the application. Also: *a check whose answer is
+correct one event later is indistinguishable from a working check in casual
+use.* Drive the first interaction after a selection, not the third.
+*Test:* `tests/test_ui_recipes.py
+::test_changing_a_weight_demands_a_reason_before_save`, confirmed by
+reintroducing the mutation and watching it fail.
+
+### A composite with every weight still at zero scored 0.0
+**What.** A brand-new recipe created from a construct has every weight at 0.0
+until the researcher sets them. Evaluating one returned **score 0.0, status
+complete** — a real number in the composite's own 0–1 range, sitting in the
+results table next to genuine scores, reading as "measured, and very low".
+**Why.** `Σ(weight × value)` over all-zero weights is 0.0, and nothing
+distinguished that from a legitimately low score. The scale was 0.0 too, which
+was the only clue, and it was not one anybody would read.
+**Fix.** `recipes.evaluate` refuses when the total weight of the resolving
+parts is zero, and says why: "every weight in this recipe is zero, so there is
+nothing to combine … set the weights first".
+**Avoid.** This is the same family as `code_events.py publish` writing 0.0
+events/min for an uncoded episode, and as the audio and speech blocks whose
+schema-default 0.0 now gates on an `available` flag — **an arithmetic identity
+that lands inside the valid range of the thing being reported.** Whenever a
+sum, a rate or a mean can be produced from nothing at all, check whether its
+empty answer is distinguishable from a real one. If it is not, refuse.
+*Test:* `tests/test_ui_recipes.py
+::test_a_recipe_with_no_weights_set_refuses_rather_than_scoring_zero`.
+
+### Attribution read off a rescored copy described today's settings, not the measurement's
+**What.** Building recipes (2026-08-16), a recipe pinned to ContentDetector at
+threshold 27 **refused its own episode** — one whose cache was measured at
+exactly 27 — as soon as the live Measurement settings were changed to 33. The
+refusal message said the result "was measured at 33.0". It had not been.
+**Why.** `constructs._resolve_automated` read the tool attribution off the
+result returned by `cache.load_scored`. That result is not the cached one: it
+is rebuilt by `metrics_sensory.rescore_episode`, which constructs a fresh
+`EpisodeResult` with `config=cfg` — **the config it was rescored WITH**. So the
+"config that produced these numbers" field held the config in force *now*.
+Using it for attribution reported current settings as the settings that
+measured the episode.
+**Why it was invisible.** It is correct whenever the live config and the
+cache's config agree, which is the normal state and every state the tests had.
+It is wrong exactly when they differ — which is the only situation in which
+anyone asks what a number was measured with, and the entire reason pinning was
+chosen over referencing. A defect that hides in the case you never ask about
+and appears in the case the feature exists for.
+**Fix.** Two reads, with the split documented at the call site: VALUES from
+`load_scored` (still the one sanctioned reader, because the composite is a
+derivation), ATTRIBUTION from `load_cached` (the raw file, because only it
+carries the config that actually ran).
+**Avoid.** When a function returns a *derived* copy of a record, check which
+of that record's fields describe the original and which describe the
+derivation. `rescore_episode`'s job is to recompute a composite; carrying the
+new config forward is right for its purpose and wrong for anyone reading
+provenance off the result. A field named `config` on a returned object does not
+say *whose* config it is, and this codebase already has a rule for that shape —
+`LEARNINGS.md` § *The estimand lived in a field name, and the field name was
+wrong*.
+*Test:* `tests/test_constructs.py
+::test_attribution_describes_the_cache_not_the_settings_in_force`, which
+deliberately sets a live threshold different from the cached one.
+
+### `new_recipe` accepted a method key that does not exist, and only an export noticed
+**What.** Building the construct store (2026-08-16), a test bound
+`hard_cuts_per_min` to a method called `"content"` — a guess at the key, which
+is really `auto:transitions:pyscenedetect_content`. `new_recipe` accepted it,
+`save_recipe` wrote it, and the recipe file on disk looked entirely normal. The
+only thing that ever complained was `import_recipe`, and only because the test
+happened to round-trip through an export.
+**Why.** `new_recipe`'s docstring says "nothing is invented: a measure with no
+method is left out rather than bound to a placeholder" — and that is true of
+the path it was written for, where the caller passes `measures=None` and the
+methods are looked up. The *explicit pairs* path trusted its caller completely.
+Both readings are locally correct, which is why nobody noticed the asymmetry.
+**Why it matters more now than it did.** Until this phase, the only callers
+were `shipped_composite` (which gets its method from `selected_method`, so it
+is always real) and the recipe editor's New button (which uses the
+`measures=None` path). Canvas authoring is about to make the explicit path the
+main one, driven by user choices — so the permissive path was about to become
+the common path.
+**What it produces.** A binding that can never resolve: a recipe with a
+plausible name, a version, a content hash and a citation, that refuses on every
+episode with a reason naming a method nobody recognises. That is
+`LEARNINGS.md` shape 2 — a control whose data path is empty — arriving through
+the data model rather than through a dropdown.
+**Fix.** `new_recipe` validates both paths and raises, naming the available
+methods. Deliberately **not** applied to `Recipe.from_dict`: a recipe imported
+from an install that has a detector this one lacks must stay readable with its
+binding intact, which is `import_recipe`'s entire contract. Refusing to
+*author* an unresolvable binding and refusing to *read* one are different
+questions, and conflating them would have broken the import gap.
+**Avoid.** When one function offers two ways in — a looked-up path and a
+caller-supplied path — check whether a guarantee stated in the docstring holds
+on both. This one held on the path it was written for and was silent on the
+other.
+*Tests:* `tests/test_construct_store.py
+::test_authoring_a_binding_to_an_unknown_measure_is_refused`,
+`::test_authoring_a_binding_to_an_unknown_method_is_refused`,
+`::test_a_prebuilt_binding_is_checked_too`, and
+`::test_reading_an_unresolvable_recipe_is_still_allowed` for the half that must
+stay permissive.
+
+### Two weights, entered for two measures, both written onto the first one
+**What.** Building canvas authoring (2026-08-16). The Edit panel's bound-measures
+list is refilled after every edit — add, remove, method change, weight change.
+`QListWidget.clear()` drops the current row to **−1**, and the refill restored
+the selection with `min(max(currentRow(), 0), n - 1)`, which turns −1 into 0. So
+after each edit the selection silently snapped back to the first binding. Adding
+`hard_cuts_per_min` at 0.6 and then `words_per_minute` at 0.4 wrote 0.6 and then
+0.4 **both onto hard cuts**, leaving words per minute at weight 0.
+**Why it was invisible.** Nothing on screen was wrong. The list showed both
+measures with their real weights, the canvas drew both boxes, the wires took
+their thicknesses from the same objects, and Save reported a new version with a
+correct derived change list. The only artefact that disagreed was the recipe
+file, and only because it was read.
+**What it produces.** A composite whose declared weighting is not the weighting
+the researcher entered — the exact quantity `ARCHITECTURE.md` §8.1a is about,
+wrong in the stored operationalization, under a name, a version and a content
+hash that all look authoritative.
+**Fix.** The selection is carried by **measure key**, not by row, and the caller
+that adds a binding names the measure it wants selected.
+**Avoid.** When a list is rebuilt after every edit, restoring "the same row" is
+not restoring the same thing — rows are positions and the contents moved. Carry
+the identity, not the index. And the general form: **a control that edits
+whichever item is selected needs a test that edits two of them**, because every
+single-item test passes whether the selection is right or not.
+*Test:* `tests/test_ui_constructs_tab.py
+::test_a_weight_lands_on_the_measure_that_was_selected`, which enters two
+weights and then reads the written recipe.
+
+### `save_recipe`'s lock guard missed the one recipe it exists for
+**What.** `save_recipe` refused a locked recipe only when it already had a file
+on disk. The shipped composite is **generated** from the config rather than
+loaded, so its `path` is None — and the first save of it was accepted, writing
+`Sensory load _as shipped__r_shipped_composite.json` into the library.
+**Why.** The rule was written as "refuses to *overwrite* a locked recipe", and
+overwriting is what the code checked. For every recipe that comes off disk the
+two readings agree. They diverge only for a recipe that never came off disk,
+which is exactly the locked one.
+**What it produces.** A stored copy of a recipe whose whole value is that it
+follows the Scoring settings in force. It would stop following them: the
+2026-08-14 ceiling retune moved every composite score in the project, and this
+file would have gone on describing the old ones under the same name and the
+same citation.
+**Fix.** Refused on the lock alone; `import_recipe` clears `locked`, since a
+lock is a claim about this install and an imported recipe must be saveable.
+**Avoid.** When a guard's stated rule and its condition are different sentences,
+find the case where they disagree — there is usually exactly one, and it is
+usually the case the guard was written for. Same shape as
+*Attribution read off a rescored copy* above: correct in every state the tests
+had, wrong in the only state anyone asks about.
+*Test:* `tests/test_shipped_composite.py
+::test_the_shipped_composite_cannot_be_written_to_the_library_at_all`, which
+now asserts the opposite of what it asserted before.
+
+### A click wrote a layout file into a real research library
+**What.** Node positions persist on mouse release. `mouseReleaseEvent` fires on
+a plain click as well as on a drag, so merely selecting a box wrote a sidecar —
+full of the **automatic** positions, recording no decision anyone had made. One
+appeared in the real `Shows/.analysis/recipes/` during the session that built
+this and had to be removed by hand.
+**Why.** "Persist on drop" and "persist on release" read as the same
+instruction. They are not: a release without movement is not a drop.
+**Fix.** The press position is recorded and compared on release; no movement,
+no write.
+**Avoid.** `CLAUDE.md` §6 says never write into the working copy's data from a
+test. This was not a test — it was ordinary code with a root pointing at real
+research data, which is the more likely way that rule gets broken. Any new
+writer of a file under `<root>/.analysis/` deserves the question *what is the
+smallest gesture that fires this*, asked before it ships.
+*Test:* `tests/test_ui_constructs_tab.py
+::test_clicking_a_box_without_moving_it_writes_nothing`.
+
+### `list_recipes` would have adopted the layout sidecars as recipes
+**What.** Caught before it shipped, while adding the sidecar. `list_recipes`
+globs `*.json` in the recipes folder, and `<recipe id>.view.json` matches.
+**Why it would not have raised.** `Recipe.from_dict` is deliberately permissive
+— it has to be, so a recipe naming a detector this install lacks stays readable
+— so a sidecar would not fail to parse. It would parse into an *Untitled
+recipe* over no construct with no bindings, and appear in the Recipes list and
+the Constructs chooser as a real one.
+**Fix.** Skipped by name, with the reason at the call site.
+**Avoid.** When a permissive reader and a glob meet, the glob is doing the
+validation. Adding any second file type to a directory something enumerates
+means auditing the enumerator — the writer-side of `LEARNINGS.md` shape 6, one
+directory over.
+*Test:* `tests/test_ui_constructs_tab.py
+::test_a_sidecar_is_never_read_back_as_a_recipe`.
+
+### A weighted sum of a fraction and a rate, offered as a default
+**What.** Found by looking at the Edit panel in the real application
+(2026-08-16). A measure bound from the canvas palette got
+`MeasureBinding`'s default transform — `none` — which feeds the **raw** value
+into the composite. Cuts per minute runs around 15; colour saturation runs
+around 0.46. Two measures added with equal weights therefore produced a score
+almost entirely determined by whichever had the larger units, while both
+weights on screen read as equal.
+**Why it was invisible.** Every measure in the shipped composite is min-max
+scaled, so nothing on the existing canvas ever showed an unscaled binding —
+and the measure card only prints a "scaled over…" line when a transform IS
+set, so an unscaled one showed nothing at all rather than showing a warning.
+The panel did not display the transform, because transforms are edited on
+File → Recipes…; "edited elsewhere" had quietly become "not shown here".
+**Fix.** `recipes.new_binding()` applies the configured reference range where
+the configuration has one, and BOTH creation routes go through it so a measure
+cannot be scaled or raw depending on which screen bound it. Where no range is
+configured — ten of the sixteen measures — the transform stays `none` and the
+panel says so in those words, because inventing a ceiling is a scoring
+decision made on the researcher's behalf and hidden in a default, which is
+what `ARCHITECTURE.md` §8.1a is a record of. `recipes.mixed_scales()` reports
+a recipe that weights a raw measure against a scaled one.
+**Avoid.** A dataclass default is a decision. `transform = TRANSFORM_NONE` is
+the right default for the FIELD and the wrong one for a composite, and the
+gap between those two statements is where this lived. When a screen delegates
+a parameter to another screen, it still has to display it — otherwise
+delegation is indistinguishable from omission.
+*Tests:* `tests/test_ui_constructs_tab.py
+::test_a_bound_measure_is_scaled_when_a_reference_range_exists`,
+`::test_a_measure_with_no_configured_range_says_so_instead_of_inventing_one`,
+`::test_summing_a_raw_measure_against_a_scaled_one_is_reported`.
+
+### A panel with a maximum width its own contents could not fit in
+**What.** Reported from the real application with a screenshot: the Edit
+panel's dropdown arrows, its Add button and its Save button were all drawn off
+the right-hand edge of the window. The panel had `setMaximumWidth(340)`; its
+`minimumSizeHint` was 372, and the reason field rendered 640 wide. Qt honoured
+the maximum and let the children overflow.
+**Why.** A `QComboBox` sizes itself to its widest entry. "PySceneDetect —
+ContentDetector — validated" and "Pacing — All transitions per minute" are
+long enough that two of them alone exceeded the cap.
+**Fix.** A `QSplitter` instead of a fixed cap, so the panel takes the width its
+controls need and the researcher can give it more; the contents in a
+`QScrollArea`; and the combos made shrinkable
+(`AdjustToMinimumContentsLengthWithIcon`) so the closed control can be narrow
+while the popup still shows every item in full.
+**Avoid.** `maximumWidth` does not make contents fit — it makes them
+overflow. Compare `minimumSizeHint()` against any maximum you set. And note
+what caught this: **no test could**, because every control existed, was
+enabled, was correctly wired and had the right value. It was found by looking
+at the screen, which is the one check this file cannot replace.
+*Test:* `tests/test_ui_constructs_tab.py
+::test_no_control_in_the_edit_panel_is_drawn_outside_it`, which asserts on
+geometry — every control's right edge inside the viewport, and no horizontal
+scrollbar needed.
+
+### One word, two quantities, on two screens open at once
+**What.** Reported from the real application within minutes of first use
+(2026-08-16). The Constructs picker said Pacing had **"8 measures of its own"**
+while the Constructs canvas beside it showed **"1 measure"**. Both numbers were
+correct. The picker lists the CATALOGUE — every measure the model defines for
+that construct — and the canvas counts BINDINGS in the recipe on screen. Pacing
+defines eight measures across three aspects; the shipped composite binds one of
+them.
+**Why.** Both labels were written from inside their own screen, where the word
+was unambiguous. Neither said which quantity it was, because in isolation
+neither had to. Put side by side they read as a contradiction, and the first
+thing a reader does with a contradiction is doubt the numbers.
+**Fix.** The picker says "8 measures **available to bind**", the canvas says
+"1 measure **in this recipe**", and the Recipes New menu says "available". The
+canvas's caption moved into `ConstructItem.caption()` so a test reads what the
+screen draws instead of restating it.
+**Avoid.** Two screens can be individually correct and jointly wrong, and no
+test of either one catches it. When the same noun counts different things in
+different places, put the qualifier in the label rather than in the reader's
+head — and note that this was found by LOOKING AT IT, which is the check the
+whole of this file otherwise cannot substitute for.
+*Test:* `tests/test_ui_construct_editor.py
+::test_the_picker_counts_the_catalogue_and_the_canvas_counts_the_bindings`,
+which asserts both numbers and both qualifiers at once.
+
+### `new_recipe` accepted a construct key that does not exist either
+**What.** The sequel to the entry above about method keys, found the same way —
+by a test of mine passing the wrong thing. `new_recipe("...", None, ...)` built
+a recipe over the construct `'None'`, and `save_recipe` wrote it: an ordinary
+name, version 1, a content hash, a citation, and no definition anywhere behind
+it.
+**Why.** The method-key fix hardened the bindings and left the construct
+argument trusted, because at the time the only callers passed a key they had
+just read from the registry. Canvas authoring makes the construct key come from
+a researcher's own library, which is precisely where a stale or deleted key
+comes from.
+**Fix.** `new_recipe` raises on an unknown construct, naming what to do about
+it. Deliberately **not** applied to `Recipe.from_dict` — a recipe whose
+construct came from another library must stay readable, and
+`construct_divergence` reports it as `missing`. Refusing to *author* an
+unresolvable reference and refusing to *read* one remain different questions.
+**Avoid.** When a defect is fixed in one argument of a constructor, check the
+constructor's other arguments for the same trust. This is `LEARNINGS.md` shape
+5 — the same one-line mistake, one parameter over — and the first fix is what
+made the second one visible.
+*Test:* `tests/test_ui_construct_editor.py
+::test_a_recipe_cannot_be_authored_over_a_construct_that_does_not_exist`.
+
+### The pipeline panel named a show the pipeline draws nothing from
+**What.** Reported from the real application (2026-08-16). The "Arthur
+Language" pipeline showed **Arthur** on all four node boxes and, directly
+underneath, **"Data source: Peep and the Big Wide World (need to manually trim
+out bumpers)/Season 1"** — a completely different show, contributing no
+episodes to the pipeline.
+**Why.** `MainWindow._refresh_canvas` resolved the document's data source with
+`self._derived.get(doc.source_key)`. Since per-node sample binding shipped, a
+Sampling node carries its own `sample_key` and the document's key is only a
+**fallback** for nodes that have none — which is how every node correctly read
+Arthur. The document panel never asked that question. It read the stale
+document-level key and presented it as the answer. `LEARNINGS.md` shape 1: the
+display and the calculation disagreed.
+**The part worth noticing.** The three lines immediately above the defect
+already knew per-node bindings exist — `has_any_link` checks
+`n.config.get("sample_key")` precisely because "a canvas can have Sampling
+nodes linked to a sample without the document itself ever being linked". The
+code used that knowledge to decide whether to load derived status, then threw
+it away one line later when deciding what to display. Half-applied knowledge
+in adjacent lines, not missing knowledge.
+**Why it survived.** `_doc_sample_pipelines` — the ONE implementation of "which
+samples does this document draw on", deliberately shared by the scope chooser
+and pipeline selection so they could not answer differently — already existed
+and was correct. The document panel simply never called it, so it was a third
+answer to a question that had been consolidated to one. Consolidating readers
+does not help a reader nobody noticed.
+**Fix.** `_refresh_canvas` resolves through `_doc_sample_pipelines`. The panel
+now has **three** states rather than two: a resolved source (named), a key that
+is set but matches nothing (named, said to resolve to nothing, with the Link
+button offered), and nothing at all. Collapsing the middle state into "not
+linked" would have hidden a stale key; presenting it as the data source is the
+original defect.
+**A second, smaller one fixed alongside.** `Inspector.show_node(None)` — the
+deselect path — called `show_doc(self._doc)` with no label, so clicking a node
+and clicking away replaced the sample's readable name with its raw folder key.
+The panel now remembers what it resolved.
+**Avoid.** When a fallback becomes a fallback — when some other binding starts
+taking precedence — grep every reader of the field that got demoted.
+`doc.source_key` stopped being the answer and became the last resort, and the
+readers were not re-audited. This is the reader-side twin of shape 6, which is
+about auditing a key's *writers*.
+*Tests:* `tests/test_scope.py
+::test_the_doc_panel_names_the_nodes_sample_not_a_stale_document_key`
+(the reported document reproduced),
+`::test_a_document_key_that_resolves_to_nothing_says_so_rather_than_naming_it`,
+`::test_the_document_key_is_still_the_fallback_when_no_node_is_bound` (the
+behaviour the fix must not break), and
+`::test_deselecting_a_node_restores_the_resolved_source_not_the_raw_key`. The
+first and last were confirmed by reverting the fix and watching them fail.
+
+### A stored hand-coded figure was two definitions old
+**What.** Recomputing Charlie Brown's hand-coded pacing with today's code and
+comparing against the values persisted on 2026-08-03 gave `mean_shot_sec`
+**8.824** where the file said **7.048**, and `shot_length_cv` **1.27** where
+the file said **0.791**. Rates and counts were identical.
+**Why.** Not drift, and not an error in either number: the persisted file
+predates the comparability fix in `validation/VALIDATION_LOG.md` item 4, which
+changed hand-coded shot durations from interior gaps only (32 shots between 33
+cuts) to shots bounded by the coded window edges (34 shots across 0–300 s), so
+that the figure mirrors `compute_cut_metrics()` and is comparable with the
+engine. Interior-only measurement biases the mean downward by dropping the two
+window-edge shots.
+**What it settles for the model.** `constructs.py` **recomputes** hand-coded
+metrics from the sheet and reads the persisted file only for the *window* — an
+input, not a derivation. This is the same rule `load_scored()` enforces for the
+composite, applied on the hand-coding side: a stored derived value is a cache
+of a derivation, and reading it as fact is how four readers gave four answers
+for one episode.
+**Avoid.** A persisted metrics file is dated evidence of what a definition
+*used to be*. When the definition has moved, the file does not say so — it
+just keeps returning a plausible older number. Recompute derivations; store
+and read only the inputs.
 
 ### Unanalysed episodes were reported as failures
 **What.** The first show-aggregate report read "1 of 6 measured; 5 failed" for a
@@ -1187,6 +1665,71 @@ at any value — which reads as a hung run.
 
 ### `setStretchLastSection` is on by default
 It parks a trailing column's figures an inch from their heading.
+
+### `pointSizeF()` is -1 when a stylesheet set the size in px
+Deriving a bigger or smaller font by arithmetic on it then silently produces a
+tiny one — no error, just unreadable text on a screen a participant is using.
+Branch on `pixelSize() > 0` (`study_runner/scale.py`'s `_relative_font`).
+
+### A cancel that derives from `Exception` is not a cancel, it is a bad result
+`ARCHITECTURE.md` §7 already recorded this for the analysis worker: the engine
+wraps each episode in `except Exception`, so an ordinary exception raised from
+a progress callback is caught and recorded as a *failed* episode rather than
+stopping the run. The Clip Finder's `PoolWorker` was written with
+`class _Cancelled(Exception)` anyway, and `run_candidate_pool` makes it worse
+than the original — it caches the failure under the episode's fingerprint, so
+every later resumed run reads the cache, believes the episode failed, and never
+measures it again. Stopping a measurement would have silently removed episodes
+from the pool, permanently, with no error anywhere.
+
+Found while updating §7 to mention the new workers — i.e. by *reading the
+document that already said it*, not by a test and not by using the feature.
+That is the whole argument for keeping ARCHITECTURE.md current: the rule was
+written down, and writing the second worker still reproduced the first worker's
+bug because nothing in the new file pointed at it. The docstring on
+`_Cancelled` now does, and `tests/test_ui_clip_finder.py` asserts the base
+class.
+
+**The general shape:** when a rule exists because of how a *callee* handles
+exceptions, every new caller re-learns it. Prefer a named exception the callee
+exports over each caller inventing its own.
+
+### A fixture that does not go through the production writer proves nothing
+`analyzer/study_clips._write_csv` writes `candidates.csv` as **utf-8-sig**, so
+the file begins with a byte-order mark. The new clip-pool reader opened it as
+plain `utf-8`, which makes the first header `"﻿clip_id"` — every row loses
+its `clip_id`, and the finder's first column renders as an em dash rather than
+as anything visibly wrong.
+
+Twenty-five loader tests passed, because the fixture hand-rolled the CSV with
+`csv.DictWriter` and plain `utf-8`. The fixture and the loader agreed with each
+other and both disagreed with the artefact. It was caught only by running the
+real candidate pass over real media and looking at the rendered screen.
+
+Two rules out of it. **Write test fixtures with the production writer**, not
+with a parallel one — `_write_run` now calls `_write_csv`. And **the encoding
+is part of a file format**: a reader and a writer that disagree about a BOM
+fail silently on the first column only, which is exactly the column most likely
+to be an identifier nobody reads closely.
+
+### A PyInstaller rebuild deletes the study package it is deployed beside
+`COLLECT` clears its output directory before writing. `dist/CMAT Study Runner/`
+held the frozen `study/` clips and `participant_data/`, and the documented
+build command pointed straight at it — so a *successful* rebuild would have
+deleted the participant stimuli and any collected responses, with no error and
+no prompt. Found 2026-08-30 only because the running application had a clip
+file locked and the build failed. That is luck, not a safeguard.
+
+The shape is general: **build output directories are cleared, so nothing
+irreplaceable may live in one.** Staging build + explicit copy of the two build
+outputs, in `study_runner/README.md`.
+
+### Closing a window mid-session blocks a test on a modal
+`StudyRunnerWindow.closeEvent` asks "end this session?" when the session is
+incomplete. In a test that is a modal dialog with nobody to answer it, and the
+run hangs with no failure and no output — it looks like a slow test, not a
+stuck one. The existing runner tests never hit it because they close from the
+finished page. Reach the done page first, or do not close.
 
 ---
 

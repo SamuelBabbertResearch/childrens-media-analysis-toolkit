@@ -746,7 +746,7 @@ def save_show_eras(
     conn.commit()
 
 
-# The metrics that feed the sensory-load composite, mapped to the ceiling key
+# The metrics that feed the Formal-Feature Composite, mapped to the ceiling key
 # that scales each one. Keyed by the `normalization_reference_ranges` name so a
 # caller can look a ceiling's own distribution up directly.
 CEILING_METRIC_COLUMN = {

@@ -24,6 +24,9 @@ whenever files move, a folder changes purpose, or a system is added.
 
 | I want to… | Edit |
 |---|---|
+| change how a construct diagram is drawn | `ui/constructs_tab.py`. Geometry is imported from `ui/pipeline_view.py`, never re-typed |
+| change what a researcher can author on the canvas | `ui/constructs_tab.py`'s Edit panel. The palette offers **measures only** — that is what keeps the canvas typed and makes a nested composite impossible by construction |
+| change where node positions are stored | `recipes.save_view` / `load_view` / `delete_view` — `<recipe id>.view.json` beside the recipe. Never inside `content_hash()`, and deliberately allowed for the locked composite |
 | change how a metric is computed | the relevant `analyzer/metrics_*.py`, then `analyzer/measurements.py` |
 | add a metric | `analyzer/schema.py`, its `metrics_*` module, `analyzer/measurements.py`, `ui/report.py`, `ui/settings.py` labels |
 | change what a screen looks like | `ui/theme.py` (tokens in `ui/tokens.py`) — read `ui/DESIGN.md` §0 first |
@@ -35,6 +38,12 @@ whenever files move, a folder changes purpose, or a system is added.
 | change how episodes are grouped into eras | `analyzer/eras.py`; the editor is `ui/eras.py` |
 | change scoring (weights, ceilings) | `config.json` presets; the dialog is `ui/settings.py` |
 | change which tool measures what | `analyzer/measurements.py` registry; the dialog is `ui/measurements.py` |
+| add a SHIPPED construct, measure or aspect | `analyzer/constructs.py`. **Never add a tool/detector there** — automated methods are generated from `analyzer/measurements.py`, and a list of detectors in `constructs.py` is the defect it exists to prevent |
+| add a construct as a RESEARCHER would | not code — **Constructs tab → Constructs…**, or the Recipes New menu. Under it, `constructs.new_construct()` + `save_construct()`, stored in `<root>/.analysis/constructs/`. Measures are **not** user-definable; bind shipped ones to it in a recipe |
+| find out whether a construct was redefined under a recipe | `recipes.construct_divergence()`. `reaffirm_construct()` is the deliberate re-baseline, and is not a version bump |
+| add or change a recipe's behaviour | `analyzer/recipes.py`; the editor is `ui/recipes.py` (File → Recipes…) |
+| change the sensory-load composite | `config.json` weights and ranges — `recipes.shipped_composite()` reads them, so it follows automatically. Do **not** restate a weight or ceiling in `recipes.py` |
+| change where recipes are stored | `recipes.recipes_dir()` — mirrors `pipeline_graph.pipelines_dir()`; `save_recipe` re-homes for the same reason `save_doc` does |
 | change the analysis report | `ui/report.py` — no Qt import, testable headless |
 | add a command-line entry point | `cli.py` — never duplicate engine logic in a front-end |
 
@@ -45,6 +54,8 @@ whenever files move, a folder changes purpose, or a system is added.
 | `engine.py` | per-episode analysis; dispatches to the selected tool per measurement |
 | `batch.py` | whole-show runs with a progress callback |
 | `measurements.py` | registry: which tool produces each measurement, with what parameters, and whether it is validated. Fingerprints settings so stale cache is detectable |
+| `recipes.py` | recipes: saved, versioned, citable operationalizations. Pins its parameters and enforces the pin; content-addressed versions; save/load/duplicate/export/import; evaluation with effective weights |
+| `constructs.py` | the measurement model: constructs, aspects, measures, and resolution of a measure to a real number or a refusal. Methods are **generated** from `measurements.py`, never listed. Also the **library store** for a researcher's own constructs — `get_construct` merges shipped and library ones inside the one call, so no caller threads a root through |
 | `metrics_cuts.py` | shot boundaries, dissolves, cut classification |
 | `metrics_frames.py` | colour, motion, flashing (shared frame pass) |
 | `metrics_audio.py` | RMS loudness, dynamic range (via FFmpeg) |
@@ -55,6 +66,10 @@ whenever files move, a folder changes purpose, or a system is added.
 | `show_index.py` | folder discovery (one level of category nesting) |
 | `schema.py` | `EpisodeResult`, `ShowAggregate`, `MetricStats` |
 | `sampler.py`, `trials.py` | reproducible episode sampling; the run registry |
+| `selection.py` | writes a narrowed sample as the same `selected.csv` + `manifest.json` pair a draw writes, so it needs no new discovery code |
+| `study_clips.py` | measures every contiguous window of a folder once per feature and proposes Option 3.5 matched pairs; writes `candidates.csv` and a manifest |
+| `clip_query.py` | the *reading* half of a candidate pool — load a run, filter it by attribute, state the query in one line, label a found set for export. Measures nothing |
+| `youtube_fetch.py` | live channel/playlist listing via `yt-dlp` into real `Episode` objects (absorbed the deleted `sample_youtube.py`) |
 | `eras.py` | named date ranges -> `Episode.extra['era']`, so a long run can be stratified by production period |
 | `validation.py`, `event_coding.py` | tool-vs-human scoring, Cohen's kappa, inter-coder agreement |
 | `pipeline.py` | **derived** workflow status from what is on disk |
@@ -89,9 +104,13 @@ whenever files move, a folder changes purpose, or a system is added.
 | `handcoding.py`, `player.py` | the Human coding tab — Code, Validate tool, Agreement; VLC embedded in Qt. `VideoSurface` paints itself: it declares `WA_OpaquePaintEvent`, so it owes a `paintEvent` in every state — see `ui/DESIGN.md` §0.4 |
 | `language.py` | the Language tab — Speech (from cache) and Vocabulary (spaCy on a worker thread) |
 | `sampler.py` | the Episode Sampler dialog; explanations come from `analyzer.sampler.TOOLTIPS` |
+| `clip_finder.py` | the Clip Finder — Selection at window scale. Opened from a Selection node; measures a pool on a worker thread, filters it, exports chosen windows. Ranks nothing |
 | `trials_tab.py` | the Trials registry |
 | `settings.py` | Presets & Weights — **scoring settings only** |
 | `measurements.py` | **Measurement settings** — which tool, which parameters. The other axis: these make cached results stale |
+| `constructs_tab.py` | **Constructs** — a recipe drawn as a graph, and authored. Wire thickness is the contribution share, not the declared weight. **Edit** turns panning into box-dragging and reveals the measure palette; a changed operationalization needs a reason, box positions never do |
+| `construct_editor.py` | defining a construct — `ConstructEditor` for one, `ConstructPicker` for the library's. Opened from the Constructs tab and from the Recipes New menu; **no control here defines a measure**, and that is a rule |
+| `recipes.py` | **Recipes** — the third axis. Shows every pinned parameter, reports divergence from the live settings, versions with a reason, applies a recipe to the current scope on a worker thread |
 | `optional_tools.py` | optional-dependency registry with an install log |
 | `metadata_import.py` | Wikipedia / TVMaze episode metadata import; fuzzy matches are flagged and unchecked-by-choice |
 | `compare.py` | two episodes or two shows side by side; rendering is `report.compare_html` |
@@ -127,7 +146,6 @@ What each script is for:
 | `build_site.py` | builds the **Open Children's Media Index** from the corpus |
 | `validate_cuts.py` | transition validation against hand coding |
 | `code_events.py` | fantastical-event coding: rates, agreement, publish |
-| `sample_youtube.py` | YouTube sampling list by upload-date spread — **list only, no downloads** |
 | `patch_speech_cache.py` | back-fills speech metrics from caption files. Takes a library root, defaults to the remembered one, supports `--dry-run` |
 
 ## Legacy Tk front-end
@@ -150,6 +168,7 @@ wrong one — check which file you are in before changing a screen.
 | `onboarding.md` | previously-on, for the next session |
 | `TODO.md` | what is next, now |
 | `ROADMAP.md` | longer-term plan and positioning |
+| `MEASUREMENT_MODEL.md` | the current phase — the construct → measure → method → recipe model. **Part specification, part description: check each capability's status line.** §4.1–§4.3 built, §4.4 and §4.7 partly, the rest not |
 | `ARCHITECTURE.md` | how the system is put together |
 | `STACK.md` | technology reference |
 | `DECISIONS.md` | decision log |

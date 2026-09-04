@@ -108,12 +108,14 @@ not "CMAT provides X." Three tiers: Available now / In development / Long-term
 vision. This is `CLAUDE.md` §2.2's qualifier discipline extended to marketing
 copy, not a new rule.
 
-**README structure**, when it's next revised (`TODO.md` item 5 — the Tk→Qt
-rewrite is the trigger): what CMAT is → hero pipeline screenshot → why it
-exists → the five-stage pipeline → provenance ("where did this number come
-from?") → constructs/measures/methods → automated + human validation →
-research use cases → current capabilities → in development → long-term vision
-→ install → docs → contributing → citation → license.
+**README structure:** lead with what CMAT is, the formal media features it can
+measure, its integrated workflow, and its stimulus-only / corpus-specific
+validation limits. Then explain the five-stage pipeline, provenance ("where did
+this number come from?"), constructs/measures/methods, automated measurement
+and human validation, research use cases, current capabilities, installation,
+documentation, contribution, citation, and licence. Treat a sensory-load
+composite as an optional researcher-defined operationalization after the
+individual measures and their research context—not as CMAT's identity.
 
 Not carried forward from the source documents: the SEO keyword lists and
 suggested `/sampling`, `/human-coding` etc. documentation-site page structure.
@@ -122,13 +124,52 @@ built.
 
 ---
 
+## Priority 0 — The measurement model (current phase)
+
+**Agreed 2026-08-16 and now the top development priority.** The full plan,
+build order, invariants and open decisions are in
+[`MEASUREMENT_MODEL.md`](MEASUREMENT_MODEL.md); this section says only what it
+is and why it displaces the priorities below.
+
+The pipeline exists and is intuitive enough. What CMAT still cannot express is
+the step *before* measurement: **what the researcher thinks they are measuring,
+and why these particular numbers stand in for it.** `ARCHITECTURE.md` §8.1a
+named the gap before this phase was planned — nothing maps a specific metric to
+a specific construct — and it is the same gap that makes the composite's
+defaults undefendable rather than merely undocumented.
+
+Nine capabilities, in this order:
+
+1. the data model — constructs, measures, methods, recipes, versions
+2. recipe save / load
+3. one or two worked measurement examples (pacing first, then speech)
+4. version tracking
+5. dependency invalidation and stale detection
+6. method comparison
+7. import / export of measurement specifications
+8. reproducibility reports
+9. methods-section generation, then citation support
+
+**Scope discipline while this is being built:** no expansion into unrelated
+product areas, and no jumping to the exports at the end before the model
+underneath them is sound. An export of a wrong model is a faster way to publish
+a wrong claim, not a feature.
+
+**This absorbs Priority 1c below.** "Composite definition as data" is the same
+idea reached from the settings side rather than the science side; its
+guardrails carry over unchanged and are restated in `MEASUREMENT_MODEL.md` §5
+and §6.
+
+---
+
 ## Priority 1 — Make composites genuinely customizable
 
 **Status: 1a and 1b are built** (`analyzer/measurements.py` registry, engine
 dispatch, and the Measurement Settings editor, with cache fingerprinting so a
-settings change marks affected episodes stale). **1c is not.**
+settings change marks affected episodes stale). **1c is not, and is now part of
+Priority 0** — see `MEASUREMENT_MODEL.md`.
 
-**This is the top development priority.** Today users can adjust *weights* and
+Today users can adjust *weights* and
 normalization ranges per preset. That is the shallowest of the three axes that
 actually matter, and it is not enough for the tool to be usable by other labs
 running their own designs.
@@ -167,6 +208,11 @@ what is missing is letting a composite *declare which tool produced each
 component*, and recording that in the result's provenance.
 
 ### 1c. Composite definition as data
+
+**Superseded by Priority 0 — a composite definition is a recipe.** Kept here
+because the guardrails below were written first and still bind; they are
+restated in `MEASUREMENT_MODEL.md` §5–§6, and the open question of whether the
+*existing* composite becomes a recipe is §7 item 2 there.
 
 Generalize a composite from a fixed metric list to a declarative spec —
 components of *(metric path, tool, parameters, normalization range, weight)* —
