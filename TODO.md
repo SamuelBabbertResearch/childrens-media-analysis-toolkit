@@ -17,7 +17,8 @@ this, and this does not licence expanding into it.
 **Terminology settled 2026-09-04.** The shipped configurable aggregate is the
 **Formal-Feature Composite (FFC)**, not a measure of viewer sensory load. Its
 legacy `sensory_load` storage keys remain compatibility identifiers only; see
-`DECISIONS.md` and `onboarding.md`.
+`DECISIONS.md` and `onboarding.md`. The CLI accepts `ffc_score` and `avg_ffc`
+as user-facing sort aliases.
 
 **Ready now, and in this order.** Each is its own session with its own
 verification against real output — do not do two at once.

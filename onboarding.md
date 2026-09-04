@@ -17,7 +17,8 @@ The configurable aggregate formerly labelled "sensory load" is now the
 audio-visual production and editing features.* The rename applies to the Qt
 and classic interfaces, charts, PDFs, the public-site generator, and README.
 The stored `sensory_load` field, configuration keys, and cache schema remain
-unchanged for compatibility with existing analyses.
+unchanged for compatibility with existing analyses. The CLI exposes the
+user-facing sort aliases `ffc_score` and `avg_ffc` for those legacy fields.
 
 The FFC is not a validated measure of viewer sensory load, arousal, or
 developmental impact. Results and exports describe it as a configurable 0–1

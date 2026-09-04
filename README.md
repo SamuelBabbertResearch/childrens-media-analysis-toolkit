@@ -564,8 +564,8 @@ python cli.py vocab files.txt                         # newline-separated list o
 python cli.py vocab "My Videos/" --norms data/norms/ --output results/
 
 # Query the index database
-python cli.py db episodes "My Videos/" --sort sensory_load_score --desc
-python cli.py db shows "My Videos/" --sort avg_load
+python cli.py db episodes "My Videos/" --sort ffc_score --desc
+python cli.py db shows "My Videos/" --sort avg_ffc
 ```
 
 ---

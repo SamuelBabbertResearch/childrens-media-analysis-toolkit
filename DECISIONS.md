@@ -232,7 +232,8 @@ with the established formal-features terminology; and retaining "sensory
 load" with a caveat — the primary label would still overclaim.
 **Compatibility.** Stored `sensory_load` fields and configuration keys remain
 unchanged so existing caches, exports, and recipes continue to load. They are
-implementation identifiers, not public terminology.
+implementation identifiers, not public terminology. The CLI maps `ffc_score`
+and `avg_ffc` to the legacy database columns for user-facing sorting.
 
 ### CMAT issues no verdict
 **Decision.** No token, badge, column, field, preset, or export reports

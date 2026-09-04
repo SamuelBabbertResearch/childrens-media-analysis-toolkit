@@ -375,7 +375,12 @@ def cmd_db(args: argparse.Namespace) -> None:
 
     _db_backfill(root)   # ensure index is up to date before querying
     conn = get_db(root)
-    sort_by = args.sort or ("analyzed_at" if args.table == "episodes" else "avg_load")
+    default_sort = "analyzed_at" if args.table == "episodes" else "avg_load"
+    sort_aliases = {
+        "episodes": {"ffc": "sensory_load_score", "ffc_score": "sensory_load_score"},
+        "shows": {"avg_ffc": "avg_load", "mean_ffc": "avg_load"},
+    }
+    sort_by = sort_aliases.get(args.table, {}).get(args.sort, args.sort) or default_sort
     ascending = not args.desc
 
     if args.table == "episodes":
@@ -384,7 +389,7 @@ def cmd_db(args: argparse.Namespace) -> None:
         if not rows:
             print("No episodes in index.  Run 'analyze' first, or choose the root folder in the GUI.")
             return
-        hdr = f"{'Show':<22} {'File':<28} {'C/min':>6} {'Sat':>5} {'Mot':>5} {'RMS':>7} {'Load':>6}  {'Date'}"
+        hdr = f"{'Show':<22} {'File':<28} {'C/min':>6} {'Sat':>5} {'Mot':>5} {'RMS':>7} {'FFC':>6}  {'Date'}"
         print(hdr)
         print("-" * len(hdr))
         for r in rows:
@@ -402,7 +407,7 @@ def cmd_db(args: argparse.Namespace) -> None:
         if not rows:
             print("No shows in index.  Run 'analyze' on a show folder first.")
             return
-        hdr = f"{'Show':<30} {'Eps':>4} {'Avg Load':>9} {'Avg C/min':>10} {'Avg Mot':>8} {'Avg Sat':>8}"
+        hdr = f"{'Show':<30} {'Eps':>4} {'Avg FFC':>9} {'Avg C/min':>10} {'Avg Mot':>8} {'Avg Sat':>8}"
         print(hdr)
         print("-" * len(hdr))
         for r in rows:
@@ -584,13 +589,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_db_ep = db_sub.add_parser("episodes", help="List all indexed episodes")
     p_db_ep.add_argument("root", help="Root folder (where .analysis/index.db lives)")
     p_db_ep.add_argument("--show",  default="", help="Filter by show name substring")
-    p_db_ep.add_argument("--sort",  default="", help="Sort column (e.g. sensory_load_score)")
+    p_db_ep.add_argument("--sort",  default="", help="Sort column (e.g. ffc_score; legacy sensory_load_score also works)")
     p_db_ep.add_argument("--desc",  action="store_true", help="Sort descending")
     p_db_ep.set_defaults(func=cmd_db)
 
     p_db_sh = db_sub.add_parser("shows", help="List all indexed shows")
     p_db_sh.add_argument("root", help="Root folder (where .analysis/index.db lives)")
-    p_db_sh.add_argument("--sort",  default="", help="Sort column (e.g. avg_load)")
+    p_db_sh.add_argument("--sort",  default="", help="Sort column (e.g. avg_ffc; legacy avg_load also works)")
     p_db_sh.add_argument("--desc",  action="store_true", help="Sort descending")
     p_db_sh.set_defaults(func=cmd_db)
 
