@@ -26,6 +26,39 @@ from .metrics_frames import compute_frame_metrics
 from .metrics_sensory import compute_sensory_load
 from .schema import EpisodeMetrics, EpisodeResult, SpeechMetrics
 from .speech import compute_speech_metrics
+from .version import CMAT_VERSION, git_commit, utc_now
+
+
+def _source_identity(video_path: Path,
+                     hash_input: bool = True) -> tuple[int, str]:
+    """(size in bytes, sha256) for the input file. Never raises.
+
+    A result is only reproducible if a reader can confirm they hold the same
+    input. A filename is not that: files get renamed, re-encoded, and trimmed,
+    and CMAT's own Clip Finder writes new MP4s from old ones. The hash is what
+    survives all of it.
+
+    Cost is small beside the analysis: `analyze_episode` already decodes every
+    frame of this file, so reading its bytes once more adds a second or two per
+    gigabyte. Returns ("" for the hash) rather than failing the run if the read
+    goes wrong — a missing hash is a gap in provenance, not a reason to lose
+    the measurement.
+    """
+    import hashlib
+    try:
+        size = video_path.stat().st_size
+    except OSError:
+        return 0, ""
+    if not hash_input:
+        return size, ""
+    try:
+        digest = hashlib.sha256()
+        with video_path.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                digest.update(chunk)
+        return size, digest.hexdigest()
+    except OSError:
+        return size, ""
 
 
 def _get_duration(video_path: Path) -> float:
@@ -70,6 +103,22 @@ def analyze_episode(
     cfg = normalize_config(config) if config else load_config()
     fingerprint = measurement_fingerprint(cfg)
     tool_summary = describe_selection(cfg)
+    # Provenance every return path carries, failures included: a failed
+    # analysis is a result a researcher may have to account for, and "which
+    # build produced this error" is the first question about it. Built once
+    # so no return path can be written without it.
+    started_at = utc_now()
+    source_bytes, source_sha256 = _source_identity(
+        video_path, hash_input=bool(cfg.get("hash_source_files", True)))
+    provenance = dict(
+        measurement_fingerprint=fingerprint,
+        measurement_tools=tool_summary,
+        analyzed_at_utc=started_at,
+        cmat_version=CMAT_VERSION,
+        git_commit=git_commit(),
+        source_bytes=source_bytes,
+        source_sha256=source_sha256,
+    )
 
     if not video_path.exists():
         return EpisodeResult(
@@ -77,8 +126,7 @@ def analyze_episode(
             status="failed",
             error=f"File not found: {video_path}",
             config=cfg,
-            measurement_fingerprint=fingerprint,
-            measurement_tools=tool_summary,
+            **provenance,
         )
 
     try:
@@ -165,8 +213,7 @@ def analyze_episode(
             status="failed",
             error=str(exc),
             config=cfg,
-            measurement_fingerprint=fingerprint,
-            measurement_tools=tool_summary,
+            **provenance,
         )
 
     if progress_cb:
@@ -186,6 +233,5 @@ def analyze_episode(
             sensory_load=sensory_metrics,
         ),
         config=cfg,
-        measurement_fingerprint=fingerprint,
-        measurement_tools=tool_summary,
+        **provenance,
     )

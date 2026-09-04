@@ -26,6 +26,7 @@ from analyzer.config_loader import _base_dir
 from analyzer.measurements import (
     EXPERIMENTAL,
     MEASUREMENTS,
+    DETERMINISTIC,
     UNVALIDATED,
     VALIDATED,
     diff_fingerprints,
@@ -38,6 +39,7 @@ from analyzer.show_index import list_episodes, list_shows, show_key
 # it means "we measured its error and published it", not "it is correct".
 _STATUS_STYLE = {
     VALIDATED:    ("validated",    "#1a6b2a", "#e8f5ea"),
+    DETERMINISTIC: ("deterministic", "#3a4a5a", "#eceff2"),
     EXPERIMENTAL: ("experimental", "#8a4b00", "#fff3e0"),
     UNVALIDATED:  ("unvalidated",  "#8a1a1a", "#fdeaea"),
 }

@@ -43,7 +43,7 @@ from PySide6.QtWidgets import (
 
 from analyzer.cache import cached_fingerprint, is_stale, load_cached
 from analyzer.measurements import (
-    MEASUREMENTS, STATUS_LABEL, VALIDATED, diff_fingerprints,
+    DETERMINISTIC, MEASUREMENTS, STATUS_LABEL, VALIDATED, diff_fingerprints,
     normalize_config, selection,
 )
 from analyzer.show_index import list_episodes, list_shows, show_key
@@ -246,7 +246,14 @@ class MeasurementsDialog(QDialog):
         tool = spec.tool(self._tools[spec.key].currentData()) \
             or spec.default_tool()
         parts = [tool.summary]
-        if tool.status != VALIDATED:
+        if tool.status == DETERMINISTIC:
+            parts.append(
+                "This tool is deterministic: it computes a signal directly and "
+                "has no detection or classification step that could be graded "
+                "against human coding. That is not a claim that the quantity "
+                "is a valid stand-in for the construct — it is the researcher "
+                "who has to argue that.")
+        elif tool.status != VALIDATED:
             parts.append(
                 f"This tool is {STATUS_LABEL.get(tool.status, tool.status)} — "
                 f"its numbers are flagged wherever they appear, in the "

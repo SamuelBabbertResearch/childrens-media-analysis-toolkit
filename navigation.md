@@ -62,6 +62,7 @@ whenever files move, a folder changes purpose, or a system is added.
 | `speech.py`, `vocab_complexity.py` | WPM and speech density; readability, tiers, AoA, MTLD |
 | `metrics_sensory.py` | the weighted composite; `effective_weights()` is what anything DISPLAYING a breakdown must use |
 | `aggregate.py` | show-level statistics (`ShowAggregate`) |
+| `version.py` | **the one place CMAT says which build made a result** — `cmat_version`, a `git_commit` that appends `-dirty` and never returns an empty string, the four library versions that can move a number, and `EXPORT_SCHEMA`. `validation._git_commit()` delegates here; nothing else may reimplement it |
 | `cache.py`, `db.py` | disk cache and SQLite index; staleness detection. **`load_scored()` is the only sanctioned way to read a cached result** — it re-derives the composite |
 | `show_index.py` | folder discovery (one level of category nesting) |
 | `schema.py` | `EpisodeResult`, `ShowAggregate`, `MetricStats` |

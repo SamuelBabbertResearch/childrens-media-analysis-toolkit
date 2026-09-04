@@ -351,8 +351,10 @@ PACING = Construct(
     key="pacing",
     name="Pacing",
     definition=(
-        "How rapidly the audiovisual stream changes — the rate at which a "
-        "viewer is required to reorient to new visual information."
+        "How rapidly the audiovisual stream changes. The theoretical interest "
+        "is in reorientation to new visual information; CMAT measures the rate "
+        "of change in the stimulus, and whether any viewer reorients is not "
+        "observed here."
     ),
     grounding=(
         "Huston & Wright's formal features treat pace as a structural property "
@@ -410,9 +412,14 @@ MOTION = Construct(
         "How much the image changes from one sampled frame to the next."
     ),
     grounding=(
-        "Motion is a pre-attentive, bottom-up attention magnet (Itti & Koch). "
-        "The measures below cannot separate object motion from camera motion "
-        "from a cut, so they measure change, not movement."
+        "Visual change is one of the formal features Huston & Wright treat as "
+        "structurally salient, and motion is one of the feature channels "
+        "computational saliency models weight (Itti & Koch). That literature "
+        "motivates MEASURING image change; it does not establish what any "
+        "particular value of the measures below does to a viewer, and neither "
+        "measure has been graded against a perceptual or behavioural "
+        "criterion. The measures also cannot separate object motion from "
+        "camera motion from a cut, so they quantify change, not movement."
     ),
 )
 
@@ -919,15 +926,20 @@ def selected_method(measure_key: str,
 
 
 def _flag_for(method: Method) -> str:
-    """The unvalidated-measure warning for a method, or '' when validated.
+    """The ungraded-measure warning for a method, or '' when none is owed.
 
     Derived from the registry's status rather than written out, so a tool
     regraded in `measurements.py` changes this string with no edit here.
     `CLAUDE.md` §2.2 requires the flag wherever the number appears.
+
+    Two statuses owe no warning and for different reasons: a VALIDATED tool has
+    been graded, a DETERMINISTIC one has no detection step to grade. Neither is
+    a claim of construct validity — that the quantity stands in well for the
+    construct is the researcher's argument to make, not the registry's.
     """
     if method.kind == HAND_CODED:
         return ""
-    if method.status == reg.VALIDATED:
+    if method.status in reg.UNFLAGGED_STATUSES:
         return ""
     label = reg.STATUS_LABEL.get(method.status, method.status)
     return f"{method.label} is {label} — never graded against hand coding"

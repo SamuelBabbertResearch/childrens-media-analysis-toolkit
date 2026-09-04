@@ -23,6 +23,7 @@ from typing import Any
 import pandas as pd
 
 from .show_index import VIDEO_EXTENSIONS
+from .version import CMAT_VERSION, git_commit
 
 __version__ = "1.0.0"
 
@@ -227,6 +228,9 @@ class StratumRecord:
 class SampleManifest:
     entry_id: str
     generated_at_utc: str
+    # The SAMPLER MODULE's version. It is not CMAT's, and it is not a commit -
+    # `cmat_git_commit` below is. Kept under its original name because
+    # manifests on disk use it.
     software_version: str
     method: str
     allocation: str | None
@@ -240,6 +244,18 @@ class SampleManifest:
     total_selected: int
     notes: list[str]
     trial_name: str | None = None   # user-given name shown in the Trials tab
+    # --- added 2026-09-04; absent from manifests written before then --------
+    cmat_version: str = ""
+    cmat_git_commit: str = ""
+    # THE CANDIDATE FRAME, per stratum. `total_available` counts it; nothing
+    # recorded WHAT it contained, so a reader could not tell whether a later
+    # redraw sampled the same population or a folder that had since gained
+    # three files. Reproducing a draw needs the frame, not only its size.
+    frame_episodes: dict = field(default_factory=dict)
+    # Episodes the scan found and the frame excluded, with the reason. Empty
+    # when nothing was excluded - never absent, so "no exclusions" and "not
+    # recorded" are distinguishable.
+    exclusions: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -247,6 +263,8 @@ class SampleManifest:
             "trial_name": self.trial_name,
             "generated_at_utc": self.generated_at_utc,
             "software_version": self.software_version,
+            "cmat_version": self.cmat_version,
+            "cmat_git_commit": self.cmat_git_commit,
             "method": self.method,
             "allocation": self.allocation,
             "stratify_by": self.stratify_by,
@@ -267,6 +285,8 @@ class SampleManifest:
             ],
             "total_available": self.total_available,
             "total_selected": self.total_selected,
+            "frame_episodes": self.frame_episodes,
+            "exclusions": self.exclusions,
             "notes": self.notes,
         }
 
@@ -621,6 +641,7 @@ def sample(
     eid = entry_id or (episodes[0].entry_id if episodes else "entry")
     notes: list[str] = []
     all_strata: list[StratumRecord] = []
+    frame_by_stratum: dict[str, list[str]] = {}
     selected_all: list[Episode] = []
     probability = method != "manual"
 
@@ -713,6 +734,8 @@ def sample(
         chosen_sorted = sorted(chosen, key=lambda e: e.sort_key(sort_col))
         selected_all.extend(chosen_sorted)
 
+        frame_by_stratum[stratum_key] = [e.label() for e in frame]
+
         all_strata.append(StratumRecord(
             stratum_key=stratum_key,
             available=len(frame),
@@ -728,6 +751,8 @@ def sample(
         entry_id=eid,
         generated_at_utc=datetime.now(timezone.utc).isoformat(),
         software_version=__version__,
+        cmat_version=CMAT_VERSION,
+        cmat_git_commit=git_commit(),
         method=method,
         allocation=allocation if stratify_by is not None else None,
         stratify_by=stratify_by,
@@ -740,10 +765,22 @@ def sample(
         },
         seed=seed if probability else None,
         probability=probability,
-        frame_definition={"sort_col": sort_col, "total_available": len(episodes)},
+        frame_definition={
+            "sort_col": sort_col,
+            "total_available": len(episodes),
+            # What a "unit" was for this draw. A frame is not reproducible
+            # from a count: two scans of one folder differ if either of these
+            # differed, and neither was recorded.
+            "video_extensions": sorted(_DEFAULT_VIDEO_EXTENSIONS),
+            "season_regex": _DEFAULT_SEASON_REGEX,
+            "episode_regex": _DEFAULT_EPISODE_REGEX,
+            "stratify_by": stratify_by,
+        },
         strata=all_strata,
         total_available=len(episodes),
         total_selected=len(selected_all),
+        frame_episodes=frame_by_stratum,
+        exclusions=[],
         notes=notes,
     )
 
