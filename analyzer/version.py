@@ -46,7 +46,7 @@ from typing import Any
 
 # Release string for the toolkit as a whole. Bump on a release; the commit
 # below is what pins an individual run.
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 
 CMAT_VERSION = __version__
 
