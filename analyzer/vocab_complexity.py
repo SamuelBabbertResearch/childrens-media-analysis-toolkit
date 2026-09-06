@@ -24,6 +24,7 @@ from __future__ import annotations
 import importlib.metadata
 import json
 import re
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -63,6 +64,25 @@ def _pkg_version(name: str) -> str:
         return importlib.metadata.version(name)
     except importlib.metadata.PackageNotFoundError:
         return "unknown"
+
+
+def _configure_nltk_data() -> None:
+    """Make CMAT's bundled CMU dictionary visible to textstat/NLTK.
+
+    Source runs keep it under ``.analysis/nltk_data``; the frozen app places
+    the same directory at PyInstaller's extraction root.  NLTK does not search
+    either location by default, so readability otherwise fails on a clean
+    research workstation despite the corpus being bundled.
+    """
+    import nltk
+
+    candidates = [
+        Path(__file__).resolve().parent.parent / ".analysis" / "nltk_data",
+        Path(getattr(sys, "_MEIPASS", "")) / "nltk_data",
+    ]
+    for candidate in candidates:
+        if candidate.is_dir() and str(candidate) not in nltk.data.path:
+            nltk.data.path.insert(0, str(candidate))
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +211,7 @@ def compute_readability(full_text: str) -> dict[str, Any]:
     These formulas were validated on written prose; treat results as a relative
     complexity index across shows, not a literal grade-level prediction.
     """
+    _configure_nltk_data()
     import textstat
 
     word_count = len(full_text.split())

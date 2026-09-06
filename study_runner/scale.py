@@ -141,6 +141,16 @@ class _Step(QAbstractButton):
     def sizeHint(self) -> QSize:
         return QSize(150, 124)
 
+    def nextCheckState(self) -> None:
+        """Leave checked state to PaceScale, which updates it on press.
+
+        QAbstractButton normally toggles itself on mouse release.  That would
+        undo the state PaceScale committed on press, briefly leaving a
+        participant's selected response unhighlighted.  The parent owns the
+        exclusive selection so keyboard and pointer input share one path.
+        """
+        return
+
     def paintEvent(self, _event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
