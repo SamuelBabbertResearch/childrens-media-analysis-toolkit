@@ -19,7 +19,8 @@ from tkinter import filedialog, messagebox, ttk
 
 from analyzer.aggregate import compute_show_aggregate, save_show_results
 from analyzer.cache import load_cached, save_cache
-from analyzer.config_loader import load_config, _base_dir
+from analyzer.config_loader import (
+    USER_PRESET_DERIVATION, load_config, _base_dir)
 from analyzer.measurements import normalize_config
 from analyzer.engine import analyze_episode
 from analyzer.speech import transcribe_only, _find_cc_file
@@ -359,11 +360,12 @@ class App(tk.Tk):
             self._toolbar_preset_cb,
             "Scoring preset — sets the reference-range ceilings used to normalize "
             "each metric before weighting.\n\n"
-            "Use Preschool or Early Childhood when your library contains only "
-            "children's content. The General / All Ages preset is calibrated for "
-            "a wide range of content (e.g., 60 cuts/min max), which can make "
-            "fast-paced animation look mild and allow high-contrast or loud "
-            "lecture content to rank unexpectedly high.\n\n"
+            "The shipped presets are ILLUSTRATIVE CONFIGURATIONS, not validated "
+            "developmental norms — an age name says which population a study is "
+            "about, not what any child can tolerate. The General / All Ages "
+            "preset uses broad ceilings, which can make fast-paced animation "
+            "look mild and allow high-contrast or loud lecture content to rank "
+            "unexpectedly high.\n\n"
             "Changing the preset rescores the current results instantly from cache. "
             "Re-analyze episodes to store updated scores in the index.",
             wraplength=320,
@@ -1344,7 +1346,7 @@ class App(tk.Tk):
         row("Episodes",    trial["n_episodes"])
         row("Window",      trial["window"])
         row("On website",  "yes" if trial["published"] else "no")
-        row("Tool version", trial["git_commit"])
+        row("CMAT commit", trial["git_commit"] or "not recorded")
         row("Folder",      trial["folder"])
 
         if trial["kind"] == "episode_sample":
@@ -3270,15 +3272,24 @@ class App(tk.Tk):
             "con":   "Color contrast mean (0-1) — spatial spread of brightness within frames.\n"
                      "High for stark dark/light content such as presentation slides or whiteboards.\n"
                      "Can push live-action/lecture scores up unexpectedly relative to animation.",
-            "mot":   "Motion mean (0-1) — average frame-to-frame movement across the episode.",
-            "flash": "Flashing events per minute — luminance changes above threshold.\nRelevant to photosensitivity and overstimulation.",
+            "mot":   "Motion mean (0-1) — mean absolute grayscale difference between\n"
+                     "CONSECUTIVE SAMPLED frames. Measures image change, not depicted\n"
+                     "movement: a cut, a camera pan and a running character all raise it.\n"
+                     "Depends on the frame sampling rate.",
+            "flash": "Whole-frame mean-luminance changes above threshold, per minute.\n"
+                     "NOT a photosensitivity safety assessment: it implements neither the\n"
+                     "area threshold nor the red-flash criterion broadcast guidance\n"
+                     "specifies, and it has never been graded against human coding.\n"
+                     "Zero does not mean safe. Comparable only across episodes measured\n"
+                     "at the same sample rate and threshold.",
             "rms":   "Audio RMS loudness mean — average volume level.\n"
                      "Spoken-word content (lectures, narration) often scores higher here\n"
                      "than music-backed animation with quieter dialogue.\n"
                      "'n/a' if no audio track detected.",
             "load":  "Formal-Feature Composite (FFC, 0–1) — configurable weighted combination of observable audio-visual production and editing features.\n"
                      "It is not a viewer-effect measure.\n\n"
-                     "Scores are calibrated to the preset active when each episode was analyzed.\n"
+                     "Scores are SCALED BY the preset active when each episode was analyzed —\n"
+                     "a preset sets denominators and weights; it calibrates nothing.\n"
                      "Cross-genre comparisons (e.g., cartoons vs. lectures) may be misleading\n"
                      "under the General preset — see Help → About metrics for details.",
             "airdate": "Original broadcast / air date (YYYY-MM-DD).\nEnter this in the Episode Metadata panel after analyzing.",
@@ -3293,7 +3304,8 @@ class App(tk.Tk):
             "eps":   "Number of analyzed episodes in the index",
             "load":  "Average Formal-Feature Composite (FFC) score across all episodes (0-1).\n"
                      "It is not a viewer-effect measure.\n\n"
-                     "Scores are calibrated to the preset used at analysis time.\n"
+                     "Scores are SCALED BY the preset used at analysis time —\n"
+                     "a preset sets denominators and weights; it calibrates nothing.\n"
                      "A lecture with high-contrast slides and loud speech can\n"
                      "score above an animated show under the General preset because\n"
                      "contrast and audio don't scale with genre expectations.\n"
@@ -4169,27 +4181,63 @@ class App(tk.Tk):
         p("This tool measures formal/structural features of video — not content.")
         br()
 
+        p("")
+        p("  Each entry below states, in this order: WHAT IS COMPUTED from the\n"
+          "  video file, and separately, WHY THE LITERATURE MOTIVATES measuring\n"
+          "  it. Those are different claims and CMAT does not merge them. The\n"
+          "  cited work motivates the choice of property; none of it validates\n"
+          "  CMAT's detector, threshold, scaling or weighting, and none of it\n"
+          "  licenses a statement about what a number means for a viewer.")
+        br()
+
         h2("SHOT LENGTH & SCENE PACING")
-        p("  Faster cutting triggers more frequent orienting responses and higher\n"
-          "  processing load (Lillard & Peterson, 2011; Lang LC4MP model).")
+        p("  Computed: shot boundaries reported by the selected detector, as a\n"
+          "  rate per minute, plus mean/median shot duration and the coefficient\n"
+          "  of variation of shot lengths. These are DETECTED BOUNDARIES, not\n"
+          "  semantic scene changes; a cut inside one continuous scene counts.")
+        p("  Studied because: pace is one of the formal features in Huston &\n"
+          "  Wright's framework, and Lang's LC4MP treats rate of change as a\n"
+          "  demand on limited processing capacity. Neither specifies a\n"
+          "  detector or a threshold, and neither makes this number a measure\n"
+          "  of anything happening in a viewer.")
         br()
 
         h2("MOTION")
-        p("  High on-screen motion is a pre-attentive attention magnet and\n"
-          "  a repeated arousal trigger (Itti & Koch, visual saliency).")
+        p("  Computed: mean absolute difference in grayscale pixel intensity\n"
+          "  between CONSECUTIVE SAMPLED frames, rescaled to 0-1. It cannot\n"
+          "  separate object motion from camera motion from a cut, and its\n"
+          "  value depends on the sampling rate - two libraries measured at\n"
+          "  different rates are not comparable.")
+        p("  Studied because: visual change is a formal feature, and motion is\n"
+          "  one channel in computational saliency models (Itti & Koch). That\n"
+          "  work models image salience; it does not establish what any value\n"
+          "  here does to any viewer.")
         br()
 
         h2("COLOR SATURATION & CONTRAST")
-        p("  High saturation draws attention bottom-up and is associated with arousal.\n"
-          "  Contrast captures the brightness spread within frames — it is high for\n"
+        p("  Computed: mean of the HSV S channel per frame (saturation) and the\n"
+          "  SPATIAL standard deviation of the V channel per frame (contrast),\n"
+          "  each averaged over sampled frames. Neither has been graded against\n"
+          "  any perceptual criterion; Huston & Wright's treatment of visual\n"
+          "  salience motivates measuring colour, and does not pick these two\n"
+          "  statistics or say what a value of either means for a viewer.\n"
+          "  Contrast is the brightness spread WITHIN frames — it is high for\n"
           "  content with stark dark/light regions (presentation slides, whiteboards,\n"
           "  whiteboard-style animation). Unlike saturation, contrast can be elevated\n"
           "  in live-action and lecture footage even when the content is calm.")
         br()
 
         h2("FLASHING")
-        p("  Rapid luminance changes are a photosensitivity concern and\n"
-          "  an overstimulation marker.")
+        p("  Computed: the count per minute of consecutive sampled frames whose\n"
+          "  WHOLE-FRAME MEAN luminance differs by more than a threshold, at a\n"
+          "  dedicated sample rate (10 fps by default).")
+        p("  NOT a photosensitivity safety assessment, and never to be read as\n"
+          "  one. It implements neither the area threshold nor the red-flash\n"
+          "  criterion that broadcast photosensitivity guidance specifies; a\n"
+          "  flash confined to part of the screen is diluted by the whole-frame\n"
+          "  mean; and the measure has never been graded against human coding.\n"
+          "  A score of zero does not indicate safety. It compares episodes\n"
+          "  measured at the same rate and threshold - nothing more.")
         br()
 
         h2("FORMAL-FEATURE COMPOSITE (FFC)")
@@ -4203,12 +4251,13 @@ class App(tk.Tk):
         tip("  Scores are only directly comparable when content was analyzed\n"
             "  under the same preset with the same reference ranges.")
         p("\n"
-          "  Each preset sets a ceiling for each metric. The General / All Ages\n"
-          "  preset uses wide ceilings calibrated for all content types — for example,\n"
-          "  60 cuts/min. Against that ceiling, even a fast children's cartoon at\n"
-          "  11 cuts/min looks like only 18% of the scale. A children's-only preset\n"
-          "  (Preschool: 15 cuts/min max) would score that same 11 cuts/min at 74%,\n"
-          "  making pacing differences between shows far more visible.\n\n"
+          f"  Each preset sets a ceiling for each metric. The General / All Ages\n"
+          f"  preset uses broad ceilings — {_general_cpm_ceiling()} cuts/min, read\n"
+          f"  from the shipped configuration rather than restated here. Against\n"
+          f"  that ceiling a cartoon at 11 cuts/min uses only part of the scale;\n"
+          f"  a configuration with a lower cuts/min ceiling scores the same 11\n"
+          f"  cuts/min far higher. The score moved because the denominator did,\n"
+          f"  and for no other reason.\n\n"
           "  Cross-genre comparison can also produce counterintuitive rankings.\n"
           "  A lecture video with high-contrast slides (bright text, dark background)\n"
           "  and louder speech audio may score above an animated children's show\n"
@@ -4217,9 +4266,14 @@ class App(tk.Tk):
           "  but may not match your intuition about the formal features that\n"
           "  contribute to the composite.")
         br()
-        tip("  Best practice: use Preschool or Early Childhood presets when your\n"
-            "  library contains only children's content. Use General only when you\n"
-            "  intentionally want to compare across all content types on a single scale.")
+        tip("  Choosing a configuration: pick ceilings that keep YOUR corpus\n"
+            "  spread across the scale rather than clamped at the top or bunched\n"
+            "  near zero — the Settings dialog shows your library's median and\n"
+            "  maximum beside each field. The age names on the shipped presets\n"
+            "  do not make them appropriate for an age group: they are\n"
+            "  illustrative configurations with no recorded derivation. Where an\n"
+            "  inferential claim depends on the composite, define and\n"
+            "  preregister a configuration for the study.")
         br()
 
         h2("IMPORTANT LIMITATIONS")
@@ -4231,6 +4285,23 @@ class App(tk.Tk):
         txt.config(state=tk.DISABLED)
         tk.Button(win, text="Close", command=win.destroy,
                   padx=20).pack(pady=8)
+
+
+def _general_cpm_ceiling() -> str:
+    """The shipped General preset's cuts/min ceiling, read rather than restated.
+
+    The About dialog quoted 60 for months after the value was retuned to 45
+    (CEILINGS.md, 2026-08-14). A figure typed into help text goes stale
+    silently, and a reader has no way to notice.
+    """
+    try:
+        from analyzer.config_loader import load_config
+        ranges = (load_config().get("presets", {})
+                  .get("General / All Ages", {})
+                  .get("normalization_reference_ranges", {}))
+        return f"{ranges['cuts_per_min']['max']:g}"
+    except Exception:
+        return "see Settings"
 
 
 class _IndexTooltip:
@@ -4419,12 +4490,18 @@ class SettingsDialog(tk.Toplevel):
         "Cuts/min max", "Saturation max", "Contrast max",
         "Motion max", "Flashing events/min max", "Audio RMS max",
     ]
+    # The clamping note. "over-threshold for this age" was the old wording and
+    # was wrong twice over: a ceiling is a denominator, not a threshold, and
+    # nothing here knows anything about an age.
     _CAVEAT = (
-        "Note on tight presets (e.g. Toddler): Low ceilings mean many shows will "
-        "exceed the maximum on one or more metrics, compressing score differences at "
-        "the top. This is intentional — the preset flags both as over-threshold for "
-        "this age rather than ranking between them. For fine-grained comparison, use "
-        "a broader preset such as General / All Ages."
+        "Note on low ceilings (e.g. the Toddler configuration): a ceiling is "
+        "the DENOMINATOR of a metric's 0-1 scale, not a limit. Episodes above "
+        "it all score exactly 1.0 on that metric and become indistinguishable "
+        "from one another — the configuration stops ranking them. That is the "
+        "trade for keeping small differences visible lower down. For "
+        "fine-grained comparison at the top, use a broader configuration such "
+        "as General / All Ages. Exceeding a ceiling means 'at or above the top "
+        "of this scale'; it never means 'too much'."
     )
 
     def __init__(self, parent: App) -> None:
@@ -4499,6 +4576,12 @@ class SettingsDialog(tk.Toplevel):
         self._btn_delete = tk.Button(top, text="Delete", command=self._delete_preset,
                                       padx=4)
         self._btn_delete.pack(side=tk.LEFT, padx=(6, 0))
+
+        from analyzer.config_loader import PRESET_BANNER
+        tk.Label(self, text=PRESET_BANNER, wraplength=440,
+                 fg="#7a4b00", bg="#fff8e6", font=("TkDefaultFont", 8, "bold"),
+                 justify="left", anchor="w", padx=6, pady=4
+                 ).pack(fill=tk.X, padx=10, pady=(0, 4))
 
         tk.Label(self, textvariable=self._desc_var, wraplength=440,
                  fg="#555555", font=("TkDefaultFont", 8),
@@ -4639,7 +4722,11 @@ class SettingsDialog(tk.Toplevel):
     def _refresh_preset_desc(self) -> None:
         name = self._preset_var.get()
         p = self._presets.get(name)
-        self._desc_var.set(p.get("description", "") if p else "")
+        note = p.get("description", "") if p else ""
+        if p and p.get("illustrative"):
+            note = (f"{note}  Derivation of these values: "
+                    f"{p.get('derivation', 'none recorded')}.")
+        self._desc_var.set(note)
         is_builtin = p.get("builtin", False) if p else True
         self._btn_delete.config(
             state=tk.DISABLED if (name == "Custom" or is_builtin) else tk.NORMAL
@@ -4784,6 +4871,8 @@ class SettingsDialog(tk.Toplevel):
             existing = json.loads(config_path.read_text(encoding="utf-8"))
             existing["presets"][name] = {
                 "description": "Custom preset",
+                "illustrative": True,
+                "derivation": USER_PRESET_DERIVATION,
                 "sensory_load_weights": new_cfg["sensory_load_weights"],
                 "normalization_reference_ranges": new_cfg["normalization_reference_ranges"],
             }

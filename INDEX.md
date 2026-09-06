@@ -74,7 +74,10 @@ Retrieval table of contents. Load what the task needs; do not load everything.
 | What construct is it a measure of, and by what method? | `analyzer/constructs.py` — seven constructs, sixteen measures, methods generated from the registry. A researcher's own constructs merge into the same lookup; `MEASUREMENT_MODEL.md` §4.1 |
 | How do I define a construct of my own, and operationalize it? | **Constructs tab → Constructs…** to define it, then **Edit** on that tab to bind shipped measures to it. Measures are not user-definable, by rule; `ui/construct_editor.py`, `ui/constructs_tab.py` |
 | How was this operationalized, and can I cite it? | `analyzer/recipes.py` — a recipe pins its parameters and is cited as version + content hash; `MEASUREMENT_MODEL.md` §4.2 |
-| **Can I trust this number?** | `ARCHITECTURE.md` §9 — status per tool, and the F1 qualifiers |
+| **Can I trust this number?** | `ARCHITECTURE.md` §9 — status per tool, and the F1 qualifiers. **Exactly one tool has been graded against human coding**; the rest are ungraded or have no detection step to grade |
+| Which build and which input produced this result? | `analyzer/version.py` — the one place CMAT says so; README — *Reproducibility and provenance* lists what every artefact records |
+| Is this sweep's best F1 a performance figure? | **No.** It is a resubstitution estimate, labelled as one in the result, the manifest and the Trials row; `LEARNINGS.md` — *A grid maximum was published as a performance figure* |
+| Are the age presets developmental norms? | **No.** They are illustrative configurations with no recorded derivation; `CEILINGS.md`, `DECISIONS.md` — *Age-named presets are presented as illustrative configurations* |
 | What is the default for this setting? | `ARCHITECTURE.md` §10 |
 | What do the tests protect? | `ARCHITECTURE.md` §11 |
 | Why is it built this way? | `DECISIONS.md` |

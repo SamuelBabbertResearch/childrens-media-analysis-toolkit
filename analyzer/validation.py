@@ -39,6 +39,7 @@ import numpy as np
 from .metrics_cuts import (_compute_frame_scores, _find_dissolves,
                            classify_cut_transitions)
 from .config_loader import _base_dir
+from .version import git_commit as version_git_commit
 
 
 TRANSITION_TYPES = {"hard_cut", "dissolve", "fade_in", "fade_out", "other"}
@@ -123,15 +124,64 @@ def parse_time_arg(value: str | float | None) -> float | None:
         return hms_to_sec(value)
 
 
+# ---------------------------------------------------------------------------
+# Selection bias in the parameter sweeps
+# ---------------------------------------------------------------------------
+# Both sweeps in this module - run_sweep (dissolve noise_floor x min_frames)
+# and grade_cut_classifier (similarity threshold) - fit a parameter ON a coded
+# sample and then report the score AT THE FITTED VALUE ON THAT SAME SAMPLE.
+# That is a resubstitution estimate. Taking the maximum over a grid also takes
+# the maximum of the grid's noise, so it is optimistically biased by
+# construction, and the bias grows with the size of the grid and shrinks with
+# the size of the coded sample. CMAT's coded sample is two episodes' opening
+# five minutes, so the bias here is not a technicality.
+#
+# CMAT does not hold out data for you: the coded sample is too small to split
+# and still say anything. What it can do - what it now does - is refuse to let
+# the number leave without the word on it. Every sweep result, its manifest,
+# and every screen that displays one carries SELECTION_ESTIMATE and
+# RESUBSTITUTION_WARNING, so a figure copied into a paper cannot arrive there
+# looking like an unbiased estimate of the detector's performance.
+SELECTION_ESTIMATE = "resubstitution"
+
+RESUBSTITUTION_WARNING = (
+    "OPTIMISTICALLY BIASED - NOT AN ESTIMATE OF PERFORMANCE. This parameter "
+    "was chosen by maximising the score over a grid on this coded sample, and "
+    "the score reported beside it was computed on that same sample. It is a "
+    "resubstitution estimate: it tells you how well the best-fitting "
+    "configuration fits the data it was fitted to, which is always better than "
+    "how that configuration will do on data it has not seen. Do not report it "
+    "as the detector's accuracy. To obtain a figure you can report, adopt the "
+    "parameter here and then grade it on episodes that took no part in this "
+    "sweep."
+)
+
+
+def selection_provenance() -> dict:
+    """The bias disclosure that travels with every tuned parameter.
+
+    One dict, written into every sweep manifest and returned from every sweep,
+    so a consumer cannot get the number without the caveat and the two cannot
+    drift apart.
+    """
+    return {
+        "selection_estimate": SELECTION_ESTIMATE,
+        "tuned_and_scored_on_same_data": True,
+        "held_out_data": False,
+        "warning": RESUBSTITUTION_WARNING,
+    }
+
+
 def _git_commit() -> str:
-    try:
-        out = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, cwd=_base_dir(), timeout=5,
-        )
-        return out.stdout.strip() or "unknown"
-    except Exception:
-        return "unknown"
+    """Delegates to `analyzer.version`, which is the one implementation.
+
+    This used to be a second copy that returned a bare hash and "unknown" on
+    failure - so a manifest could not distinguish "not a checkout" from "the
+    tree was clean", and a dirty working copy was recorded as though the
+    committed code had produced the result. Kept as a name because seven call
+    sites in this module use it.
+    """
+    return version_git_commit()
 
 
 # ── Manual-coding CSV ─────────────────────────────────────────────────────────
@@ -995,6 +1045,8 @@ def run_sweep(
                 "diss_F1": diss["F1"], "all_F1": all_row["F1"],
             })
 
+    # NOT "the best configuration" - the configuration that fits THIS sample
+    # best. See RESUBSTITUTION_WARNING above.
     best = max(grid_rows, key=lambda r: r["diss_F1"])
 
     stem = video_path.stem
@@ -1010,10 +1062,16 @@ def run_sweep(
             "detector": detector, "threshold": threshold,
             "tolerance_sec": tolerance, "floors": floors, "frames": frames,
             "window": [window[0], window[1]] if window else None,
+            "grid_size": len(grid_rows),
+            "best_noise_floor": best["noise_floor"],
+            "best_min_frames": best["min_frames"],
+            "best_diss_F1_resubstitution": best["diss_F1"],
+            **selection_provenance(),
         }, indent=2), encoding="utf-8")
 
     return {"grid_rows": grid_rows, "best": best, "csv_path": out,
-            "floors": floors, "frames": frames, "window": window}
+            "floors": floors, "frames": frames, "window": window,
+            **selection_provenance()}
 
 
 # ── Cut classification (within-scene vs scene-change) ────────────────────────
@@ -1195,6 +1253,10 @@ def grade_cut_classifier(
                            "n": len(lp)})
 
     # Undefined kappa (None) must not win the sweep — sort it below any real value.
+    #
+    # The winner is the threshold that fits THIS episode's labels best, and the
+    # kappa beside it was computed on those same labels. It is a
+    # resubstitution estimate and is labelled as one everywhere it travels.
     best = max(sweep_rows,
                key=lambda r: (r["kappa"] if r["kappa"] is not None else -2.0,
                               r["accuracy"])) \
@@ -1226,8 +1288,10 @@ def grade_cut_classifier(
         "offset_sec": offset_sec,
         "window": [window[0], window[1]] if window else None,
         "n_human_labeled": n_labeled_total, "n_matched": len(pairs),
+        "n_thresholds_searched": len(sweep_rows),
         "best_threshold": best["threshold"], "best_kappa": best["kappa"],
         "best_accuracy": best["accuracy"], "confusion_at_best": confusion,
+        **selection_provenance(),
     }, indent=2), encoding="utf-8")
 
     return {
@@ -1235,6 +1299,8 @@ def grade_cut_classifier(
         "confusion": confusion, "csv_path": out,
         "n_human_labeled": n_labeled_total, "n_matched": len(pairs),
         "n_unmatched": len(labeled) - len(pairs), "window": window,
+        "n_thresholds_searched": len(sweep_rows),
+        **selection_provenance(),
     }
 
 

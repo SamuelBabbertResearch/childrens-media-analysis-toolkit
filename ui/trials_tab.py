@@ -184,7 +184,9 @@ class TrialsTab(QWidget):
                            ("Detail", "detail"), ("Window", "window"),
                            ("Episodes", "n_episodes"),
                            ("Sampling", "sampling"),
-                           ("Code version", "git_commit")):
+                           ("Selection", "selection_estimate"),
+                           ("CMAT commit", "git_commit"),
+                           ("Sampler module", "software_version")):
             value = trial.get(key)
             if value not in (None, "", []):
                 rows.append((label, str(value)))

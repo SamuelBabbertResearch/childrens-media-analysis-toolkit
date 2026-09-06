@@ -2,11 +2,12 @@
 Validation provenance — the single source of truth for CMAT's self-reported
 accuracy, shown on every results view, export, and the public site.
 
-This is the claim NVivo and every other coding tool structurally cannot make:
 CMAT states how far to trust its own automated detection, measured against
-blind human coding. The statement is honest per-metric — validated,
-experimental, unvalidated, or "deterministic (no detection step to validate)"
-— never a single blanket F1.
+blind human coding. The statement is per-metric — validated, experimental,
+unvalidated, or "deterministic (no detection step to validate)" — never a
+single blanket F1. No claim is made here about what other software does or
+does not report; that would need a documented comparison this repository does
+not contain.
 
 KEEP THIS IN STEP WITH THE REGISTRY. `analyzer/measurements.py` holds each
 tool's validation status and is the authority; `METRIC_STATUS` below is the
@@ -161,7 +162,12 @@ METRIC_STATUS: dict[str, dict[str, str]] = {
         "label": "Color, motion, audio",
         "status": "deterministic",
         "note": "direct signal measurements — no detection/classification step "
-                "to validate. Motion is deterministic with the shipped "
+                "to validate. This is NOT a claim of construct validity: that "
+                "mean HSV saturation, within-frame luminance spread, "
+                "frame-difference magnitude and linear RMS amplitude are good "
+                "stands-in for the constructs a study is about is the "
+                "researcher's argument, and no part of it has been tested "
+                "here. Motion is deterministic with the shipped "
                 "frame-differencing tool; the optional Farneback optical-flow "
                 "tool is unvalidated",
     },

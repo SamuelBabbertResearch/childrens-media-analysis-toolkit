@@ -122,31 +122,35 @@ def compute_sensory_load(
 
 
 def rescore_episode(result: EpisodeResult, cfg: dict[str, Any]) -> EpisodeResult:
-    """Return a copy of result with sensory_load recomputed against a new config.
+    """Return a copy of result with the composite recomputed against a new config.
 
-    Raw metrics are unchanged — only the composite is recalculated.
-    Useful for instant re-scoring when the user edits weights or reference ranges.
+    Raw metrics are unchanged — only the composite is recalculated. This is
+    what makes "Apply & Re-score" instant: weights and normalization ceilings
+    are scoring settings, so no episode needs re-analysing.
+
+    REBUILT WITH `replace`, NOT BY LISTING FIELDS. It used to construct a fresh
+    EpisodeResult naming each field it wanted to keep, which silently dropped
+    every field added afterwards. By 2026-09-04 that was `measurement_fingerprint`
+    and `measurement_tools` — and this function is reached through
+    `analyzer.cache.load_scored()`, THE ONE WAY TO READ A CACHED RESULT. So
+    every screen and every export that read a cached episode got a result with
+    no fingerprint (nothing to say whether two rows were even measured the same
+    way) and an empty tools map (so the report's "not graded against hand
+    coding" warning was skipped while the flashing number stayed on screen).
+    The provenance fields added on 2026-09-04 would have been the next
+    casualties. `replace` keeps everything by construction, so a field added
+    tomorrow survives with no edit here.
     """
+    from dataclasses import replace
+
     if result.status != "ok":
         return result
     m = result.metrics
     new_sensory = compute_sensory_load(
         m.scene_pacing, m.color_saturation, m.motion, m.flashing, m.audio, cfg,
     )
-    return EpisodeResult(
-        file=result.file,
-        status=result.status,
-        duration_sec=result.duration_sec,
-        metrics=EpisodeMetrics(
-            shot_length=m.shot_length,
-            scene_pacing=m.scene_pacing,
-            color_saturation=m.color_saturation,
-            motion=m.motion,
-            flashing=m.flashing,
-            audio=m.audio,
-            speech=m.speech,
-            sensory_load=new_sensory,
-        ),
+    return replace(
+        result,
+        metrics=replace(m, sensory_load=new_sensory),
         config=cfg,
-        error=result.error,
     )

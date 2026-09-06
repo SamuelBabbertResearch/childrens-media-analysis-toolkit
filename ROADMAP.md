@@ -18,8 +18,10 @@ scoring system. Two co-equal halves:
    arguing about.
 
 The composite score is a *lens the user configures*, not a claim CMAT makes.
-CMAT's job is to make measurement transparent, customizable, and validated —
-not to declare what "sensory load" is.
+CMAT's job is to make measurement transparent, customizable, and **gradeable**
+— not to declare what "sensory load" is, and not to assert that anything in it
+has been validated. Exactly one tool in the registry has been graded against
+human coding; the rest are ungraded or have no detection step to grade.
 
 ---
 
@@ -65,8 +67,10 @@ contained fix, not a decade of catch-up.
 2. **REFI-QDA import/export.** The QDA world's interchange standard. Turns the
    competitor into a distribution channel: code the measurement layer in CMAT,
    hand off to QualCoder/NVivo/ATLAS.ti for thematic work. "Use both" is a
-   stronger story than "pick one", and CMAT is the only side that can produce
-   the automated measures.
+   stronger story than "pick one", and the automated measures are the side
+   CMAT contributes to that pairing. (This is a positioning note, not a
+   surveyed claim about what other software can do — no such comparison has
+   been carried out, and none is made in any public-facing text.)
 3. **Keep widening the moat** — validation, sampling, provenance, norms
    (Priorities 2 and 4 below).
 

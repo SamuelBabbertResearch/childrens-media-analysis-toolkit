@@ -27,6 +27,8 @@ from PySide6.QtWidgets import (
     QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget,
 )
 
+from analyzer.config_loader import (
+    PRESET_BANNER as _PRESET_BANNER, USER_PRESET_DERIVATION)
 from ui.modal import ConfirmDialog, ModalDialogFrame
 from ui.tokens import color
 
@@ -51,14 +53,22 @@ CEILING_LABEL = {
 
 WHISPER_MODELS = ("tiny", "base", "small", "medium", "large")
 
+# Read from the engine, never restated. `gui.py` is the Tk front-end and must
+# not import a Qt module to get a string, so the one wording lives in
+# `analyzer/config_loader.py`, which imports no framework (CLAUDE.md §2.4).
+# Re-exported here under the name this module already published.
+PRESET_BANNER = _PRESET_BANNER
+
 CEILING_NOTE = (
     "A ceiling sets the top of a metric's 0–1 scale — it is a denominator, "
     "not a threshold or a limit. Set it against the figures on the right, "
     "which are what this library actually produces.\n"
     "• Too LOW and episodes above it all score exactly 1.0, so the most "
-    "intense ones become indistinguishable. That is intentional in the tight "
-    "age presets, which flag rather than rank; use a broader preset for "
-    "fine-grained comparison.\n"
+    "intense ones become indistinguishable — the configuration stops ranking "
+    "them. That is the trade a low ceiling makes for keeping small "
+    "differences visible lower down; it does not mean those episodes are over "
+    "anything. Use a broader configuration for fine-grained comparison at the "
+    "top.\n"
     "• Too HIGH and the metric barely moves, so it contributes far less than "
     "its weight suggests. Motion's ceiling was 1.0 against a real range of "
     "~0.09, so a 25% weight delivered ~7% of the score.\n"
@@ -112,6 +122,11 @@ class SettingsDialog(QDialog):
         body = ModalDialogFrame.install(self, "Settings — Presets & Weights")
 
         # -- preset bar ---------------------------------------------------
+        banner = QLabel(PRESET_BANNER)
+        banner.setWordWrap(True)
+        banner.setProperty("callout", "warn")   # styled in ui/theme.py
+        body.addWidget(banner)
+
         bar = QWidget()
         br = QHBoxLayout(bar)
         br.setContentsMargins(0, 0, 0, 0)
@@ -257,7 +272,11 @@ class SettingsDialog(QDialog):
         if not preset:
             return
         self._fill_from(preset)
-        self._preset_note.setText(preset.get("description", ""))
+        note = preset.get("description", "")
+        if preset.get("illustrative"):
+            note = (f"{note}  Derivation of these values: "
+                    f"{preset.get('derivation', 'none recorded')}.")
+        self._preset_note.setText(note)
         # A built-in preset is part of the shared config and cannot be removed.
         self._delete.setEnabled(not preset.get("builtin", False))
 
@@ -297,6 +316,8 @@ class SettingsDialog(QDialog):
         if values is None:
             return
         self.config.setdefault("presets", {})[name.strip()] = {
+            "illustrative": True,
+            "derivation": USER_PRESET_DERIVATION,
             "builtin": False,
             "description": "Saved from the current values.",
             "sensory_load_weights": values["sensory_load_weights"],

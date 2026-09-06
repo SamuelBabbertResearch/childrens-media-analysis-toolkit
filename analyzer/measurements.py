@@ -47,15 +47,49 @@ from typing import Any
 # --- status flags -----------------------------------------------------------
 # Surfaced in the editor and in result provenance. The roadmap guardrail is
 # that unvalidated components must be visibly flagged wherever they are used.
-VALIDATED = "validated"        # measured against hand coding, error published
-EXPERIMENTAL = "experimental"  # implemented, measured, known to perform poorly
-UNVALIDATED = "unvalidated"    # implemented, never graded against ground truth
+#
+# VALIDATED MEANS ONE THING ONLY: this tool was graded against human coding and
+# the error is published. It is NOT a synonym for "trustworthy" or "nothing to
+# worry about". Until 2026-09-04 it was used for both senses at once, so
+# `describe_selection()` wrote "Frame differencing [validated]" into every
+# cached result, every CSV/JSON export and every report — for a tool that has
+# never been compared with any criterion, because there is no detection step in
+# it to compare. A methods reviewer reading `[validated]` beside a motion figure
+# would draw a conclusion the repository holds no evidence for. DETERMINISTIC
+# exists so the honest answer ("there is no detection step to validate") can be
+# stated instead of borrowing the word for a claim nobody made.
+VALIDATED = "validated"        # graded against human coding, error published
+EXPERIMENTAL = "experimental"  # implemented, graded, known to perform poorly
+UNVALIDATED = "unvalidated"    # implemented, never graded against human coding
+DETERMINISTIC = "deterministic"  # a direct signal computation; no detection or
+                                 # classification step exists to grade. Says
+                                 # nothing about construct validity — whether
+                                 # the quantity is the right stand-in for the
+                                 # construct is a separate, open question.
 
+# Prose, for a sentence. Read it, never restate it.
 STATUS_LABEL = {
+    VALIDATED: "validated against human coding",
+    EXPERIMENTAL: "experimental",
+    UNVALIDATED: "unvalidated",
+    DETERMINISTIC: "deterministic — no detection step to validate",
+}
+
+# The short form that goes in brackets after a tool name in provenance output,
+# e.g. "Frame differencing [deterministic]". Kept separate from STATUS_LABEL so
+# a bracket tag stays greppable and a sentence stays readable; every consumer
+# that used to write `[{STATUS_LABEL[...]}]` reads this instead.
+STATUS_TAG = {
     VALIDATED: "validated",
     EXPERIMENTAL: "experimental",
     UNVALIDATED: "unvalidated",
+    DETERMINISTIC: "deterministic",
 }
+
+# Statuses that carry no "never graded against hand coding" warning. Graded
+# tools have been graded; deterministic ones have nothing to grade. Everything
+# else is flagged wherever its numbers appear (CLAUDE.md §2.2).
+UNFLAGGED_STATUSES = frozenset({VALIDATED, DETERMINISTIC})
 
 
 @dataclass(frozen=True)
@@ -166,7 +200,7 @@ TRANSITIONS = MeasurementSpec(
                         "Content-change score a frame must exceed to count as a cut. "
                         "LOWER finds more cuts (more false alarms on pans and zooms); "
                         "HIGHER finds fewer (more misses on low-contrast cuts). "
-                        "27.0 is the PySceneDetect default and CMAT's validated value."
+                        "27.0 is the PySceneDetect library default. It was NOT chosen by tuning: it is the value CMAT's published grading happens to have been run at, so changing it puts you outside that evidence."
                     ),
                 ),
             ],
@@ -356,7 +390,7 @@ SAMPLING = MeasurementSpec(
             key="uniform",
             name="Uniform sampling",
             summary="Decode every Nth frame at a fixed rate across the episode.",
-            status=VALIDATED,
+            status=DETERMINISTIC,
             params=[
                 ParamSpec(
                     key="sample_fps", label="Sample rate", kind="float",
@@ -380,8 +414,15 @@ MOTION = MeasurementSpec(
     key="motion",
     name="Motion",
     description=(
-        "How much the image changes between sampled frames. A pre-attentive "
-        "bottom-up attention magnet (Itti & Koch)."
+        "Mean absolute difference in pixel intensity between consecutive "
+        "SAMPLED frames, averaged over the episode and expressed on a 0–1 "
+        "scale. It is a measure of frame-to-frame image change, not of "
+        "depicted movement, and its value depends on the sampling rate set "
+        "under Frame sampling. Visual change is one of the formal features "
+        "the Huston & Wright framework identifies and one of the features "
+        "computational saliency models weight (Itti & Koch); that literature "
+        "motivates measuring it and says nothing about what this particular "
+        "quantity does to a viewer."
     ),
     feeds="motion",
     tools=[
@@ -390,9 +431,9 @@ MOTION = MeasurementSpec(
             name="Frame differencing",
             summary=(
                 "Mean absolute grayscale difference between consecutive sampled "
-                "frames. Fast; the default."
+                "frames, rescaled from 0–255 to 0–1. Fast; the default."
             ),
-            status=VALIDATED,
+            status=DETERMINISTIC,
             notes=(
                 "Cannot distinguish object motion from camera motion from a cut. "
                 "Values depend on the sampling rate set under Frame sampling."
@@ -420,8 +461,13 @@ FLASHING = MeasurementSpec(
     key="flashing",
     name="Flashing",
     description=(
-        "Abrupt luminance changes between frames. The metric with the clearest "
-        "safety rationale (photosensitive-epilepsy guidance)."
+        "Count per minute of consecutive sampled frames whose WHOLE-FRAME mean "
+        "luminance differs by more than a threshold. NOT a photosensitivity "
+        "safety assessment and never to be presented as one: it implements "
+        "neither the area threshold nor the red-flash criterion that broadcast "
+        "photosensitivity guidance specifies, and it has never been graded. It "
+        "compares episodes measured at the same sample rate and threshold — "
+        "nothing more."
     ),
     feeds="flashing",
     tools=[
@@ -479,8 +525,13 @@ COLOR = MeasurementSpec(
         ToolSpec(
             key="hsv_mean",
             name="HSV mean",
-            summary="Mean S channel and standard deviation of the V channel.",
-            status=VALIDATED,
+            summary=(
+                "Per frame: mean of the HSV S channel (0–1) and the spatial "
+                "standard deviation of the V channel (0–1); both averaged "
+                "across sampled frames. 'Contrast' here is within-frame "
+                "luminance spread, not a perceptual contrast metric."
+            ),
+            status=DETERMINISTIC,
             notes=(
                 "Uses the frame sampling rate set under Frame sampling. Saturation "
                 "is unreliable on blown-out live-action production styles — the "
@@ -499,8 +550,12 @@ AUDIO = MeasurementSpec(
         ToolSpec(
             key="ffmpeg_rms",
             name="FFmpeg RMS",
-            summary="Windowed RMS loudness, peak, and peak-to-mean dynamic range.",
-            status=VALIDATED,
+            summary=(
+                "Mean, peak and peak-to-mean range of per-second RMS amplitude, "
+                "computed on the track downmixed to mono and resampled to "
+                "8 kHz. Linear amplitude, not perceptual loudness."
+            ),
+            status=DETERMINISTIC,
             notes=(
                 "Linear RMS, not a perceptual loudness standard (not LUFS/EBU R128). "
                 "When no audio track or no FFmpeg is present, the audio weight is "
@@ -531,7 +586,15 @@ SPEECH = MeasurementSpec(
                 "Parse .srt/.vtt sitting next to the video. Instant, exact, and "
                 "skips the episode entirely when no caption file exists."
             ),
-            status=VALIDATED,
+            status=DETERMINISTIC,
+            notes=(
+                "Word counts are exactly what the caption file contains, so "
+                "the measure inherits whatever the captioner did: forced "
+                "narrative captions, omitted song lyrics, and bracketed sound "
+                "descriptions all change the count. Deterministic given a "
+                "caption file; never compared against a transcript coded for "
+                "this purpose."
+            ),
         ),
         ToolSpec(
             key="captions_then_whisper",
@@ -601,7 +664,7 @@ def ungraded_measurements(cfg: dict[str, Any] | None = None
                 continue
         else:
             tool = measurement.default_tool()
-        if tool.status == VALIDATED:
+        if tool.status in UNFLAGGED_STATUSES:
             continue
         out.append((
             measurement.name,
@@ -786,7 +849,7 @@ def describe_selection(cfg: dict[str, Any]) -> dict[str, str]:
         if m.can_disable and not enabled:
             out[m.key] = "disabled"
         else:
-            out[m.key] = f"{tool.name} [{STATUS_LABEL.get(tool.status, tool.status)}]"
+            out[m.key] = f"{tool.name} [{STATUS_TAG.get(tool.status, tool.status)}]"
     return out
 
 

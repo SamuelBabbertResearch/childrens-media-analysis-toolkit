@@ -132,7 +132,16 @@ def _discover_sample_trials(search_dirs: list[Path]) -> list[dict[str, Any]]:
                 "episode": data.get("entry_id", "?"),
                 "kind": "episode_sample",
                 "date": date_str,
-                "git_commit": data.get("software_version", ""),
+                # A sampler manifest's `software_version` is the SAMPLER
+                # MODULE's version string ("1.0.0"), not a commit. Feeding it
+                # to a field named git_commit made the Trials tab display
+                # "Code version: 1.0.0" for every sample ever drawn - a
+                # replication researcher reading that row would take it for
+                # the commit that produced the draw. Read the real one when
+                # the manifest carries it (draws made from 2026-09-04) and
+                # say so plainly when it does not.
+                "git_commit": data.get("cmat_git_commit", ""),
+                "software_version": data.get("software_version", ""),
                 "n_episodes": data.get("total_selected", 0),
                 "sampling": sampling,
                 "window": "—",
@@ -186,6 +195,7 @@ def discover_trials(
             "episode": stem,
             "date": data.get("date", ""),
             "git_commit": data.get("git_commit", ""),
+            "selection_estimate": data.get("selection_estimate", ""),
             "n_episodes": 1,
             "manifest_path": mf,
             "folder": mf.parent,
@@ -223,7 +233,10 @@ def discover_trials(
             trials.append({**base,
                 "kind": "dissolve_sweep",
                 "window": _fmt_window(data.get("window")),
-                "result": _sweep_result(mf),
+                # "best" is the grid maximum ON the sample it was fitted to.
+                # The word has to travel with the number or the registry reads
+                # like a table of detector accuracies, which it is not.
+                "result": f"{_sweep_result(mf)} (resubstitution)",
                 "detail": (f"floors {data.get('floors','?')} × "
                            f"frames {data.get('frames','?')}"),
             })
@@ -232,7 +245,8 @@ def discover_trials(
                 "kind": "classifier_grading",
                 "window": _fmt_window(data.get("window")),
                 "result": (f"κ {data.get('best_kappa','?')} "
-                           f"@ thr {data.get('best_threshold','?')}"),
+                           f"@ thr {data.get('best_threshold','?')} "
+                           f"(resubstitution)"),
                 "detail": (f"{data.get('n_matched','?')} labeled cuts matched "
                            f"(acc {data.get('best_accuracy','?')})"),
             })

@@ -22,6 +22,11 @@ ffprobe.exe
 # Analysis cache and database (user's personal data, not part of the app)
 .analysis/
 
+# Downloaded model caches (Whisper/HuggingFace weights). Machine-local, large,
+# and regenerable — and untracked-but-unignored is how a `git add -A` commits
+# a model bundle by accident.
+.cache/
+
 # Video files
 *.mp4
 *.avi

@@ -70,6 +70,42 @@ looked complete.
 key, not just its readers — see *The fix for one season-collapsing defect
 became the cause of the next*, below.
 
+**7. One word carried two meanings, and the weaker one travelled.**
+Added 2026-09-04, from a research-credibility audit. `VALIDATED` in
+`analyzer/measurements.py` meant "graded against human coding" for
+`pyscenedetect_content` and "deterministic, nothing to grade" for motion,
+colour, audio, frame sampling and caption parsing. Both readings are
+defensible in isolation; the registry held one word for both.
+`describe_selection()` writes that word into `measurement_tools` on every
+cached result, so every CSV, JSON export and PDF report said
+`Frame differencing [validated]` for a tool never compared against any
+criterion. Nothing was inconsistent internally — the code did exactly what
+the constant said. The defect was that the constant said two things.
+*Test:* for every word in an output that a reader will treat as evidence, ask
+what the repository holds that supports it. If the answer differs between two
+uses of the same word, the word is wrong in one of them, and the export is
+where it does the damage.
+
+**8. A dataclass was rebuilt by naming its fields, so later fields vanished.**
+Added 2026-09-04. `rescore_episode` constructed a fresh `EpisodeResult` listing
+each field it wanted to keep. It was correct when written. Then
+`measurement_fingerprint` and `measurement_tools` were added to the dataclass
+and not to that constructor — and `rescore_episode` is what
+`analyzer.cache.load_scored()` calls, THE ONE WAY TO READ A CACHED RESULT. So
+every screen and every export that read a cached episode got a result with no
+fingerprint (nothing left to say whether two rows were even measured the same
+way) and an empty tools map (so the report's "not graded against hand coding"
+warning was skipped while the flashing number stayed on screen). An existing
+test had even *noticed* the empty tools map and attributed it to old cache
+files rather than to this function.
+
+This is shape 5 with a delay fuse: the mistake is not repeated across sites,
+it is repeated across *time*, every time someone adds a field. `replace()`
+keeps everything by construction.
+*Test:* a function that rebuilds a dataclass must use `dataclasses.replace`,
+or a test must compare against `dataclasses.fields()` rather than a
+hand-written list — the enumeration is the thing that failed.
+
 ### Why they survived
 
 - **Verification stopped at "it ran".** Rendering, passing tests and a
@@ -1821,3 +1857,162 @@ someone states otherwise — the expert cannot audit a number they never chose,
 and the assistant will not remember choosing it.
 **Related.** Same family as the misnamed F1 and the flashing claim: a
 description and a number drifting apart, each looking fine alone.
+
+---
+
+## The word "validated" was doing two jobs, and the export took the wrong one
+
+**2026-09-04, from a research-credibility audit.**
+
+**What went wrong.** `analyzer/measurements.py` had three statuses:
+`VALIDATED`, `EXPERIMENTAL`, `UNVALIDATED`. Five tools carried `VALIDATED`
+because there was no word for the true state: *deterministic, no detection
+step to grade*. `analyzer/provenance.py` had that word all along —
+`METRIC_STATUS` describes colour, motion and audio as "deterministic — no
+detection/classification step to validate" — but the registry, which is the
+authority, could not say it.
+
+**Why it mattered more than an internal inconsistency.**
+`describe_selection()` turns each status into a bracket tag and stores it on
+every analysed episode as `measurement_tools`. That map goes into the JSON
+export, the CSV provenance, the PDF report and the episode view. So the
+sentence `Frame differencing [validated]` reached readers for a tool that has
+never been compared against any criterion, and there is no criterion it could
+be compared against. A methods reviewer would read it as evidence.
+
+**Why the existing tests did not catch it.** `test_provenance.py` pinned the
+registry and the prose *together*, and its one relevant test skipped anything
+marked `VALIDATED` on the reasoning that a validated tool needs no warning.
+The test therefore agreed with the defect: it protected consistency between
+two files that were consistently wrong. Consistency is not correctness, and a
+test that checks two sources agree cannot tell you they agree on a falsehood.
+
+**Avoid.** Add `DETERMINISTIC`; keep `VALIDATED` for tools with a published
+grading (exactly one, `pyscenedetect_content`); and test the claim against the
+evidence, not against another restatement of the claim.
+`tests/test_research_claims.py::test_validated_means_graded_against_human_coding_and_nothing_else`
+asserts the graded set is exactly that one tool, so promoting a second is a
+deliberate act with a log entry behind it.
+
+**The general form.** Before shipping a word that a reader will treat as
+evidence, ask what in the repository supports it. Where the same word is used
+for two different states, it is wrong in one of them — and the output is
+where it does the harm, because a caveat in the documentation does not travel
+with a CSV.
+
+---
+
+## A grid maximum was published as a performance figure
+
+**2026-09-04, from the same audit.**
+
+**What went wrong.** `run_sweep` and `grade_cut_classifier` each fit a
+parameter by taking the maximum over a grid ON a coded sample, then reported
+the score AT that parameter ON that same sample. Neither said so. The Trials
+registry printed "best diss F1 0.471" and "κ 0.71 @ thr 0.55" in the same
+table as genuinely held-out comparison figures, with nothing to distinguish
+them, and the README claimed the sweep came "with train/test discipline built
+into the workflow" — which no code implements. There is no split, no
+holdout, and no leakage check anywhere in `analyzer/validation.py`.
+
+**Why it is not a small overstatement.** Taking the maximum over a grid takes
+the maximum of the grid's noise too, so the bias is guaranteed, not
+occasional; it grows with the size of the grid and shrinks with the size of
+the sample. CMAT's coded sample is two episodes' opening five minutes. This is
+the regime where the bias is largest.
+
+**What the advice in the interface could not do.** The Tk sweep window already
+said "Sweep only on TUNING episodes". Good advice, and it does not travel: it
+is not on the number, not in the manifest, not in the registry row, and not in
+anything a researcher copies into a paper six months later.
+
+**Avoid.** Put the disclosure on the artefact.
+`analyzer.validation.selection_provenance()` returns
+`selection_estimate: "resubstitution"`, `tuned_and_scored_on_same_data: true`,
+`held_out_data: false` and the warning text; both sweeps attach it to their
+return value *and* their on-disk manifest, and the registry row carries the
+word. A holdout split was considered and rejected — the coded sample is too
+small to split and still say anything, so the honest fix is the label, not two
+unusable halves. `STUDY_CLIP_SELECTION.md` §"Two-wave cut-calibration
+workflow" is what the discipline looks like when it is done properly, and it
+is a study protocol, not a feature of the tool.
+
+**The general form.** When a number is produced by choosing the best of
+several, the selection is part of the measurement and belongs in the record
+next to it.
+
+---
+
+## A rescored episode lost the provenance that said whether it was comparable
+
+See shape 8 above. The short version: `rescore_episode` rebuilt
+`EpisodeResult` by naming fields, so `measurement_fingerprint` and
+`measurement_tools` — added later — were dropped on every read through
+`load_scored()`. An existing test noticed the symptom ("11 of 13 cached
+episodes here carry no `measurement_tools`") and blamed the cache files. It
+was this function. Fixed with `dataclasses.replace`, and
+`tests/test_research_claims.py::test_rescoring_a_cached_episode_does_not_erase_its_provenance`
+now iterates `dataclasses.fields()` instead of a hand-written list, so the
+next field added is covered without an edit.
+
+---
+
+## Age names made a scaling decision look like a developmental finding
+
+**2026-09-04, from the same audit.**
+
+**What went wrong.** `Preschool (2-5)`'s description read "**Calibrated** for
+preschoolers — the age range in Lillard & Peterson (2011)". The ceilings are
+AI-generated defaults never traced to a source (`ARCHITECTURE.md` §8.1a); that
+paper compared two programmes on children's immediate executive function and
+reports no formal-feature thresholds. `Toddler (0-2)` promised "tight ceilings
+for infants and toddlers"; `Early Childhood` "wider tolerances"; `Tween`
+"approaching adult tolerance". `CEILINGS.md` justified the ladder "because a
+few cuts per minute is a meaningful difference at that age" — unsourced.
+
+**Why it survived a previous correction.** `DECISIONS.md` had already
+withdrawn a false provenance claim about these presets on 2026-08-14, and
+recorded that the only literature reference is the age band, not the values.
+The correction went into `DECISIONS.md`. The *description strings a researcher
+actually reads* were not changed, and neither was `CEILINGS.md`. A correction
+filed in the decision log and not in the artefact is a correction the user
+never sees.
+
+**Avoid.** The values, keys and weights are unchanged (nothing re-scores);
+what changed is every description, a machine-readable
+`"illustrative": true` / `"derivation": "none recorded"` pair on each preset so
+the caveat travels into any config they are saved to, and a standing banner
+above the chooser in **both** front-ends — imported from
+`ui.settings.PRESET_BANNER` rather than typed twice.
+
+**The general form.** When a claim is withdrawn, grep for every place it is
+stated, not just the place it was recorded. `LEARNINGS.md` shape 3 is the same
+lesson from the other direction.
+
+---
+
+## Failure became data: a decode error exported as a plausible zero
+
+**2026-09-04, from the same audit.**
+
+**What went wrong.** Every metric on `EpisodeResult` defaults to `0.0`. A
+failed analysis returned a result with `status="failed"` and every one of
+those defaults intact, and `results_to_dataframe` exported them as numbers. So
+a file that would not decode produced `cuts_per_min = 0.0`, `motion_mean =
+0.0`, `sensory_load_score = 0.0` — indistinguishable from a slow, dark, quiet
+programme, and poolable into a mean without anything looking wrong. Audio was
+already handled correctly (`None` when unavailable), which is what makes the
+rest a straightforward oversight rather than a design position.
+
+**Also.** Speech was measured, cached and charted, and was not in the CSV at
+all. A researcher exporting "the data" got no words-per-minute column.
+
+**Avoid.** Four states, distinguishable in the export: measured value; measured
+zero (a real `0.0`); unavailable, with `audio_unavailable_reason` separating
+"no audio track" from "FFmpeg not found" from "extraction failed"; and failed,
+with empty metrics and an `error`. The provenance sidecar states the rule so
+the CSV is readable without this file.
+
+**The general form.** A default value is a lie the moment it reaches an
+output. `0.0` is the most dangerous default a measurement can have, because it
+is inside the plausible range.

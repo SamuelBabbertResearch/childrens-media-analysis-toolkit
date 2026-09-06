@@ -480,6 +480,8 @@ class MainWindow(QMainWindow):
         """The result plus the provenance block, in one file."""
         import json
         from analyzer.provenance import validation_dict
+        from analyzer.version import (
+            EXPORT_SCHEMA, software_provenance, utc_now)
         results = self._export_results()
         if not results:
             return
@@ -488,7 +490,12 @@ class MainWindow(QMainWindow):
             f"{self._export_stem()}_analysis.json", "JSON (*.json)")
         if not path:
             return
-        payload = {"validation_provenance": validation_dict()}
+        payload = {
+            "export_schema": EXPORT_SCHEMA,
+            "exported_at_utc": utc_now(),
+            "software": software_provenance(),
+            "validation_provenance": validation_dict(),
+        }
         if self._export_episode is not None:
             payload["episode"] = self._export_episode.to_dict()
         else:
@@ -512,6 +519,8 @@ class MainWindow(QMainWindow):
         """
         from analyzer.aggregate import results_to_dataframe
         from analyzer.provenance import validation_statement
+        from analyzer.version import (
+            EXPORT_SCHEMA, software_provenance, utc_now)
         results = self._export_results()
         if not results:
             return
@@ -523,7 +532,32 @@ class MainWindow(QMainWindow):
         try:
             results_to_dataframe(results).to_csv(path, index=False)
             sidecar = Path(path).with_name(Path(path).stem + "_PROVENANCE.txt")
-            sidecar.write_text(validation_statement(), encoding="utf-8")
+            software = software_provenance()
+            libs = "  ".join(f"{k} {v}"
+                             for k, v in software["libraries"].items())
+            sidecar.write_text(
+                f"CMAT {software['cmat_version']}  "
+                f"commit {software['git_commit']}\n"
+                f"{libs}\n"
+                f"exported {utc_now()}  (export schema {EXPORT_SCHEMA})\n"
+                f"\n"
+                f"{validation_statement()}\n"
+                f"\n"
+                f"EMPTY CELLS. An empty metric cell is not a zero. A row whose "
+                f"`status` is not `ok` has empty metrics and an `error`; a row "
+                f"with `audio_available` False has empty audio columns and "
+                f"`audio_unavailable_reason` saying why; a row with "
+                f"`speech_available` False has empty speech columns. A 0.0 in "
+                f"this file is a measured zero.\n"
+                f"\n"
+                f"COMPARABILITY. Two rows are comparable only if their "
+                f"`measurement_fingerprint` matches: it hashes the detector, "
+                f"thresholds and sample rates that produced the raw numbers. "
+                f"The composite columns additionally depend on weights and "
+                f"normalization ceilings, which the fingerprint deliberately "
+                f"excludes because they are re-scorable; state those "
+                f"separately from the configuration you used.\n",
+                encoding="utf-8")
         except Exception as exc:            # noqa: BLE001 — shown, not hidden
             QMessageBox.warning(self, "Export failed", str(exc))
             return

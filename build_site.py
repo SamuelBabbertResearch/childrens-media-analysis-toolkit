@@ -806,19 +806,19 @@ metric's nominal weight is not the same as its effective contribution to the
 composite — the component figures are published for every episode so that both
 can be checked. Composite scores computed before 2026-08-14 are on an earlier
 scale and are not comparable with these.</p>
-<p>For shows with fewer than 15 episodes, all episodes are analyzed. For shows with 15–60 episodes, a spread sample of 10 is drawn. For shows with more than 60 episodes, a spread sample of 20 is drawn. "Spread" sampling selects episodes evenly distributed across the show's full run using CMAT's Episode Sampler.</p>
+<p>For shows with fewer than 15 episodes, all episodes are analyzed. For shows with 15–60 episodes, a spread sample of 10 is drawn. For shows with more than 60 episodes, a spread sample of 20 is drawn. "Spread" is CMAT's own name for a design, not a standard statistical term: the ordered run is split into <em>n</em> contiguous, near-equal chunks and one episode is drawn uniformly at random from each — <em>stratified random sampling with equal-sized positional strata, one unit per stratum</em>. Inclusion probabilities are 1/chunk-size and are <strong>not equal across the run</strong> when the episode count does not divide evenly, so any estimate assuming equal probabilities will be biased. Each draw records its seed and its full candidate frame.</p>
 <p>For long-running shows (20+ years or a significant production format change), the show is divided into named eras and each era is sampled independently.</p>
 
 <h2>Metric definitions</h2>
 <table>
 <thead><tr><th>Metric</th><th>Method</th><th>Unit</th></tr></thead>
 <tbody>
-<tr><td>Scene pacing</td><td>PySceneDetect content detection &rarr; cuts per minute</td><td>cuts / min</td></tr>
-<tr><td>Color saturation</td><td>Mean HSV S-channel across sampled frames</td><td>0–1</td></tr>
-<tr><td>Color contrast</td><td>Mean per-frame standard deviation of HSV V-channel</td><td>0–1</td></tr>
-<tr><td>Motion</td><td>Normalized mean absolute frame difference between consecutive samples</td><td>0–1 (approx)</td></tr>
-<tr><td>Flashing</td><td>Whole-frame mean luminance change events exceeding threshold between sampled frames</td><td>events / min</td></tr>
-<tr><td>Audio loudness</td><td>FFmpeg RMS loudness across audio track</td><td>0–1 (normalized)</td></tr>
+<tr><td>Shot-boundary rate<br><small>(labelled "scene pacing")</small></td><td>PySceneDetect ContentDetector at threshold 27 &rarr; boundaries per minute. <strong>Detected boundaries, not semantic scene changes</strong>: a cut inside one continuous scene counts. Frame-differencing misses gradual transitions by construction.</td><td>boundaries / min</td></tr>
+<tr><td>Color saturation</td><td>Mean HSV S-channel per frame, averaged across frames sampled at 2 fps</td><td>0–1</td></tr>
+<tr><td>Color contrast</td><td><strong>Spatial</strong> standard deviation of the HSV V-channel within each frame, averaged across sampled frames. Within-frame brightness spread, <strong>not a perceptual contrast metric</strong>.</td><td>0–1</td></tr>
+<tr><td>Motion</td><td>Mean absolute grayscale difference between <strong>consecutive sampled</strong> frames, rescaled to 0–1. Measures <strong>image change, not depicted movement</strong> — a cut, a camera pan and a running character all raise it — and depends on the 2 fps sampling rate.</td><td>0–1</td></tr>
+<tr><td>Flashing</td><td>Consecutive frames sampled at 10 fps whose <strong>whole-frame mean</strong> luminance differs by more than 0.1. <strong>Not a photosensitivity safety assessment</strong>; see below.</td><td>events / min</td></tr>
+<tr><td>Audio intensity</td><td>Mean per-second <strong>RMS amplitude</strong> on the track downmixed to mono and <strong>resampled to 8 kHz</strong>. <strong>Linear amplitude, not perceptual loudness — not LUFS, not EBU R128.</strong> Two files mastered to the same broadcast loudness can differ here.</td><td>linear 0–1</td></tr>
 <tr><td>Formal-Feature Composite (FFC)</td><td>Configurable composite of observable audio-visual production and editing features</td><td>0–1</td></tr>
 </tbody>
 </table>
@@ -859,7 +859,7 @@ scale and are not comparable with these.</p>
 <p>The flashing metric measures whole-frame mean luminance change between sampled frames at 2 fps, with a detection ceiling of 1 transition per second. The medically relevant range for photosensitive epilepsy screening is 3–50 Hz. <strong>This metric is not a photosensitive epilepsy screen.</strong> A score of zero does not indicate safety; a non-zero score indicates detectable whole-frame brightness transitions useful for relative comparison across shows.</p>
 
 <h2>Research grounding</h2>
-<p>This index measures <em>formal features</em> of video (Huston &amp; Wright framework) — content-independent structural attributes that trigger the orienting response (Lang, LC4MP).</p>
+<p>This index measures <em>formal features</em> of video — content-independent structural attributes of the presentation, such as how often the image cuts and how much it changes between frames. Huston &amp; Wright's formal-features framework and Lang's LC4MP motivate <em>measuring</em> these properties; they do not establish what any measured value does to a viewer, and nothing here observes a viewer at all. All associations reported in that literature are correlational.</p>
 <ul>
 <li>Huston &amp; Wright — formal features framework</li>
 <li>Lang — Limited Capacity Model of Mediated Message Processing (LC4MP)</li>
@@ -883,7 +883,7 @@ _TOOL = """<h1>The tool</h1>
 <li>Results are reviewed manually before publication. No data is published automatically.</li>
 <li>The site is regenerated from the reviewed cache and pushed to GitHub Pages.</li>
 </ol>
-<p>This manual review step is intentional. It ensures that no erroneously analyzed, mislabeled, or otherwise inappropriate content reaches the public index.</p>
+<p>This manual review step is intentional. It catches episodes that failed to decode, were mislabeled, or are not the programme the filename claims, before their numbers reach the public index. It is a data-quality check on the measurement, not a judgement about the programme.</p>
 
 <h2>Reproducing the analysis</h2>
 <ol>

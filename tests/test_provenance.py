@@ -13,7 +13,7 @@ explicitly as unvalidated and not a safety assessment.
 
 from __future__ import annotations
 
-from analyzer.measurements import MEASUREMENTS, VALIDATED
+from analyzer.measurements import MEASUREMENTS, UNFLAGGED_STATUSES, VALIDATED
 from analyzer.provenance import (
     METRIC_STATUS, validation_dict, validation_short, validation_statement,
 )
@@ -31,7 +31,12 @@ def test_no_unvalidated_tool_is_described_as_needing_no_validation():
         if entry["status"] == "deterministic")
     for measurement in MEASUREMENTS:
         tool = measurement.default_tool()
-        if tool.status == VALIDATED:
+        # A tool the registry itself calls DETERMINISTIC is the case this
+        # prose is describing correctly, so it is not the case this test is
+        # hunting. What must never appear under the deterministic heading is
+        # a tool the registry marks unvalidated or experimental - flashing,
+        # which is exactly the defect that produced this file.
+        if tool.status in UNFLAGGED_STATUSES:
             continue
         # The measurement's own name must not be claimed as deterministic.
         assert measurement.key.split("_")[0] not in deterministic.split(), (
