@@ -36,6 +36,23 @@ Get-ChildItem .analysis -Filter 'pytest-tmp*' -Directory -Force | ForEach-Object
 
 See `LEARNINGS.md` for why they exist and what to stop doing in tests.
 
+**The live site's numbers are stale and it has not been republished.**
+`_site/` is a clone of the Pages repo, and rebuilding it moves **every**
+published composite: the live figures predate the 2026-08-14 ceiling retune.
+Deltas run +2.7% to +19.3% for twelve shows, and Little Bear reads -56.6%.
+Component metrics are unchanged; only the 0-1 rescaling moved. The rebuild
+also drops five junk pages that are live now (`ghibili`, `jordan-peterson`,
+`my-neighbor-totoro`, `season-1`, `season-2`) and the `pipelines` page.
+**Not published — this is Samuel's call**, because it restates every number in
+a public research dataset and wants a dated note on the site saying so.
+
+**Little Bear cannot be re-derived.** It has an `aggregate.json` and
+`aggregate.csv` but no per-episode JSONs, so `build()` republishes its stored
+composite under unknown ceilings while every other show is re-scored against
+current `config.json`. Re-analysing the episodes would close it. Until then it
+is the one published figure whose provenance does not match the others, and
+that is worth a footnote before anyone quotes it.
+
 **The public Index caught up 2026-09-07.** `build_site.py` was the last place
 still showing "load" to a reader: two column headers, and a methodology
 disclaimer phrased as "not a validated measure of viewer sensory load". All

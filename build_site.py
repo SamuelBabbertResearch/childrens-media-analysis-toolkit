@@ -173,17 +173,38 @@ def slugify(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
 
 
-def _find_aggregate(show_key: str) -> dict | None:
-    """Try several paths where CMAT might have written aggregate.json."""
+def _show_analysis_dir(show_key: str) -> Path | None:
+    """The directory CMAT wrote this show's results into, or None.
+
+    ONE resolver, because a show key resolves to a directory and there is no
+    second answer to that question. There used to be three answers.
+    `_find_aggregate` searched all three layouts below; `_find_episodes`
+    searched only the first; the aggregate.csv copy in build() searched only
+    the first as well. So "Little Bear (Full Series)", which lives under
+    `Shows/<key>/.analysis/<key>/`, published a show page with an aggregate
+    and NO episode table, contributed none of its 65 episodes to the For
+    Parents ranking, silently kept its stored composite instead of the
+    re-derived one build() computes from episodes, and had its aggregate.csv
+    deleted from the published dataset because the copy looked in a directory
+    that does not exist. None of that was visible from the site: an empty
+    episode table reads as a show that has not been analysed yet.
+    """
     candidates = [
-        ROOT / ".analysis" / show_key / "aggregate.json",
-        ROOT / "Shows" / show_key / ".analysis" / show_key / "aggregate.json",
-        ROOT / "Shows" / ".analysis" / show_key / "aggregate.json",
+        ROOT / ".analysis" / show_key,
+        ROOT / "Shows" / show_key / ".analysis" / show_key,
+        ROOT / "Shows" / ".analysis" / show_key,
     ]
-    for p in candidates:
-        if p.exists():
-            return json.loads(p.read_text(encoding="utf-8"))
+    for d in candidates:
+        if (d / "aggregate.json").exists():
+            return d
     return None
+
+
+def _find_aggregate(show_key: str) -> dict | None:
+    d = _show_analysis_dir(show_key)
+    if d is None:
+        return None
+    return json.loads((d / "aggregate.json").read_text(encoding="utf-8"))
 
 
 def _rescored(ep: dict) -> dict:
@@ -212,8 +233,8 @@ def _rescored(ep: dict) -> dict:
 
 
 def _find_episodes(show_key: str) -> list[dict]:
-    d = ROOT / ".analysis" / show_key
-    if not d.exists():
+    d = _show_analysis_dir(show_key)
+    if d is None:
         return []
     results = []
     for f in sorted(d.glob("*.json")):
@@ -1531,8 +1552,9 @@ def build() -> None:
                 json.dumps(agg, indent=2), encoding="utf-8"
             )
             # Copy aggregate CSV if present
-            csv_src = ROOT / ".analysis" / entry["show_key"] / "aggregate.csv"
-            if csv_src.exists():
+            src_dir = _show_analysis_dir(entry["show_key"])
+            csv_src = (src_dir / "aggregate.csv") if src_dir else None
+            if csv_src and csv_src.exists():
                 shutil.copy(csv_src, data_dir / "aggregate.csv")
 
     # For Parents

@@ -2102,3 +2102,50 @@ known state. Everything downstream of the crash has been *unverified*, not
 to inspect what the blocker was hiding, against the artefact, before shipping
 the result. Here the crash was three weeks old and the bug it masked was
 older.
+
+---
+
+## One show key, three resolvers, and only the site could see the difference
+
+**Found 2026-09-07**, while checking why a rebuild wanted to *delete*
+`data/little-bear/aggregate.csv` from the published dataset.
+
+`build_site.py` asked "where did CMAT write this show's results?" in three
+places and got three different answers:
+
+| Reader | Layouts searched |
+|---|---|
+| `_find_aggregate()` | `.analysis/<key>/`, `Shows/<key>/.analysis/<key>/`, `Shows/.analysis/<key>/` |
+| `_find_episodes()` | `.analysis/<key>/` only |
+| the `aggregate.csv` copy in `build()` | `.analysis/<key>/` only |
+
+"Little Bear (Full Series)" lives under the *second* layout. So its show page
+published an aggregate with **no episode table**, it contributed none of its
+episodes to the For Parents ranking, `build()` skipped the `if episodes:`
+branch and published its **stored** composite rather than the one re-derived
+against current ceilings, and the CSV copy looked in a directory that does not
+exist and so removed the file from the public download page.
+
+**Nothing about that is visible from the site.** An empty episode table reads
+as a show that has not been analysed yet — which is a state the site
+legitimately has, so the page looked *right*. The only symptom that ever
+surfaced was a file deletion in the deploy repo's `git status`, three readers
+away from the cause.
+
+**Avoid.** `_show_analysis_dir(show_key)` is now the single resolver and all
+three call it. A show key resolves to a directory; there is no second answer
+to that question, so there is no second place to answer it.
+
+**The general form.** This is the mirror of the season-collapsing defect
+already in this file. That one said: audit every *writer* of a collapsing key.
+This one says the same about *readers* whose lookup is a hard-coded path
+rather than a derivation — three readers of one key drift apart silently,
+because each is locally correct and no two are ever compared. The moment a
+lookup has more than one candidate location, exactly one function may know
+the candidate list.
+
+**Still open, and it is a provenance gap, not a bug.** Little Bear has an
+`aggregate.json` and an `aggregate.csv` but no per-episode JSONs, so the site
+*cannot* re-derive its composite the way it does for every other show — it
+publishes a frozen number written under whatever ceilings were in force at the
+time. See `TODO.md`.
