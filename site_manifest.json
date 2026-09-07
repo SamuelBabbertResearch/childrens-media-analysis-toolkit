@@ -187,12 +187,6 @@
       "network": "TV Tokyo",
       "years": "1995–1996",
       "sampling": "full_series"
-    },
-    {
-      "show_key": "pipelines",
-      "display_name": "pipelines",
-      "category": "uncategorized",
-      "review_needed": true
     }
   ]
 }

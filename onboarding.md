@@ -4,9 +4,65 @@ Previously-on, for a session starting with zero memory. Read this, then
 `TODO.md`, then `DECISIONS.md` and `LEARNINGS.md`. `INDEX.md` points at
 everything else.
 
-**Last updated:** 2026-09-04 (research-credibility audit; Formal-Feature
-Composite terminology; the adult-only participant redesign, Clip Finder, and
-2026-08-29 rating-scale entries follow.)
+**Last updated:** 2026-09-07 (the public Index's terminology pass; the
+2026-09-04 research-credibility audit, Formal-Feature Composite terminology,
+the adult-only participant redesign, Clip Finder, and 2026-08-29 rating-scale
+entries follow.)
+
+---
+
+## What changed on 2026-09-07: the public Index's terminology
+
+The FFC rename was settled for the tool on 2026-09-04, but `build_site.py` had
+never been swept, so OpenChildrensMediaIndex.org was still saying "load" in
+three reader-facing places: the homepage table's `Avg load` header, the
+per-show episode table's `Load` header, and a methodology sentence that
+disclaimed being "a validated measure of viewer sensory load, arousal, or
+developmental impact". A disclaimer is still an appearance of the term — it
+names a viewer state in order to deny it, which leaves the reader thinking the
+tool is in that business. The sentence now reads that the FFC is a summary of
+the stimulus and is not a validated measure of anything happening in a viewer.
+
+The published flat file `data/index.json` renamed `sensory_load_mean` to
+`ffc_mean`. **The engine's keys were deliberately not touched**, so the
+per-show `aggregate.json` and `aggregate.csv` still carry `sensory_load_score`
+and its component columns — a rename there is a data-model change across the
+schema, `config.json`, the cache and the tests. The Download page gained a
+*Field names* section that states the mismatch outright rather than leaving a
+consumer to infer that two names mean two quantities.
+
+The site also standardised on **hand-coded** over "human-coded" for the
+fantastical-event sections, per the `CLAUDE.md` §3 terminology table, and
+dropped the framing "unlike the automated metrics above, these are human
+judgments" — hand coding is a measurement in its own right (§2.5), not the
+fallback where automation ran out.
+
+### Two defects the terminology work uncovered
+
+`python build_site.py` **had been dead since 2026-08-17** and nobody knew.
+Four ACL-locked `pytest-tmp*` directories, left inside the real `.analysis/`
+by a test (a `CLAUDE.md` §6 violation), made `_sync_manifest()` abort on
+`PermissionError` before it rendered anything. The scan now warns and skips an
+unreadable directory rather than aborting — an analysis root is real user
+data, and one unreadable entry in it is not a reason to publish nothing. **The
+four directories are still there**; removing them needs an elevated shell
+(`takeown` fails as the current user), so that is a manual step for Samuel.
+
+Unblocking the build then exposed the second defect, which had been masked by
+the first. `_sync_manifest()` treated *any* directory containing a stray
+`.json` as a show, so CMAT's own internal stores — `recipes`, `constructs`,
+`study_workflow/qualification`, the Clip Finder run folders, `pipelines` —
+were auto-added to `site_manifest.json` as "uncategorized" shows and published
+as empty rows, while `build()` printed `no aggregate found` for each. The
+manifest and the aggregate lookup disagreed about what a show is. A show is
+now a directory with an `aggregate.json` and nothing else is, which is the
+test the surrounding comment already claimed to apply and needs no blocklist
+to maintain. A stale `pipelines` entry from an earlier auto-add was removed
+from the manifest; it had been publishing `/shows/pipelines/` — an empty page
+named after a personal-data directory (`CLAUDE.md` §2.3) — on the live site.
+
+The site now builds 19 pages and 14 shows. Verified against the produced HTML
+and `data/index.json`, not against the source.
 
 ---
 

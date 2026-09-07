@@ -47,8 +47,9 @@ does not prescribe one universal construct or a single composite score. The
 optional **Formal-Feature Composite (FFC)** is a configurable composite of
 observable audio-visual production and editing features. Its component measures
 remain visible, and its weights and normalization ceilings are configurable
-rather than theory-derived or validated. It is not a validated measure of
-viewer sensory load, arousal, or developmental impact.
+rather than theory-derived or validated. It summarizes the stimulus: it is
+not a validated measure of anything happening in a viewer — not arousal, not
+attention, not developmental impact.
 
 > **Scope:** CMAT measures the stimulus, not the viewer. It cannot account for
 > a child's age, temperament, sensory-processing profile, viewing context, or
@@ -220,7 +221,7 @@ A `0.0` in a CMAT export is a measured zero.
 
 | Measure | What it captures |
 |--------|-----------------|
-| **Formal-Feature Composite (FFC)** | A configurable composite of observable audio-visual production and editing features. It always displays its component parts and is not a validated measure of viewer sensory load, arousal, or developmental impact. |
+| **Formal-Feature Composite (FFC)** | A configurable composite of observable audio-visual production and editing features. It always displays its component parts and summarizes the stimulus only — it is not a validated measure of anything happening in a viewer. |
 
 ### Language metrics *(optional — requires subtitle files or Whisper AI)*
 
@@ -249,7 +250,7 @@ that reason. See [CEILINGS.md](CEILINGS.md).
 
 <img width="960" height="443" alt="image" src="https://github.com/user-attachments/assets/bd56a61c-0817-489b-8a80-618d48652d6b" />
 <img width="739" height="503" alt="image" src="https://github.com/user-attachments/assets/91e23e9a-1a11-4df4-a5b6-c0560ef1940e" />
-<img width="1920" height="1250" alt="Sensory_load_(as_shipped)_v1" src="https://github.com/user-attachments/assets/668b51ea-bc85-4821-8c1f-92eb92b98472" />
+<img width="1920" height="1250" alt="Formal-Feature Composite, as shipped" src="https://github.com/user-attachments/assets/668b51ea-bc85-4821-8c1f-92eb92b98472" />
 
 
 

@@ -86,27 +86,54 @@ def _sync_manifest() -> None:
              "Little Bear", "My Neighbor Totoro", "Ghibili",
              "Season 1", "Season 2", "Season 3", "Season 4", "Season 5"}
 
+    # A directory this process cannot list is a directory with no episode JSON
+    # it can see, so the scan skips it and says so. It must not abort the
+    # build: an analysis root is real user data, and one unreadable entry in
+    # it is not a reason to publish nothing. A test left an ACL-locked
+    # `pytest-tmp` under .analysis/ on 2026-08-17 that made every subsequent
+    # `python build_site.py` die on PermissionError inside this scan, three
+    # weeks before anyone connected the traceback to its cause
+    # (LEARNINGS.md). Warn, skip, continue.
+    def _listdir(d: Path) -> list[Path]:
+        try:
+            return sorted(d.iterdir())
+        except OSError as exc:
+            print(f"  [warn] cannot read {d} ({exc.__class__.__name__}): skipped")
+            return []
+
+    # A show is a directory with an aggregate.json, and nothing else is.
+    #
+    # This used to accept any directory containing a stray .json, which is not
+    # the same test and let CMAT's own internal stores in: `recipes`,
+    # `constructs`, `study_workflow/qualification`, the Clip Finder's run
+    # folders and `pipelines` all live under an analysis root and all hold
+    # .json files. Each was auto-added to site_manifest.json as an
+    # "uncategorized" show, then published as an empty row, while build()
+    # printed `no aggregate found` for it — the manifest and the aggregate
+    # lookup disagreeing about what a show is. Requiring the aggregate is the
+    # test the surrounding comment already claimed to apply, and it needs no
+    # blocklist to maintain: an internal store never grows an aggregate.json.
     def _has_episode_json(d: Path) -> bool:
-        return (d / "aggregate.json").exists() or any(
-            f.is_file() and f.suffix == ".json" and f.stem != "aggregate"
-            for f in d.iterdir()
-        )
+        try:
+            return (d / "aggregate.json").exists()
+        except OSError:
+            return False
 
     def _candidate_show_dirs(ar: Path) -> list[tuple[str, Path]]:
         """Return (show_key, show_dir) pairs for every analyzed show under ar."""
         if not ar.exists():
             return []
         results = []
-        for d in sorted(ar.iterdir()):
+        for d in _listdir(ar):
             if not d.is_dir() or d.name in _SKIP:
                 continue
             if _has_episode_json(d):
-                # Only treat as a show if the parent already has an aggregate
-                # (avoids picking up season subfolders as top-level shows)
+                # The parent has the aggregate, so it is the show; its season
+                # subfolders are not separate shows.
                 results.append((d.name, d))
             else:
                 # One level of category nesting (e.g. Category/ShowName)
-                for sub in sorted(d.iterdir()):
+                for sub in _listdir(d):
                     if sub.is_dir() and sub.name not in _SKIP and _has_episode_json(sub):
                         results.append((f"{d.name}/{sub.name}", sub))
         return results
@@ -435,7 +462,7 @@ def _build_lang_table(children: list[tuple], lang_data: dict) -> str:
 
 
 def _build_events_home_table(children: list[tuple]) -> str:
-    """Homepage table of human-coded fantastical-event rates (only shows with
+    """Homepage table of hand-coded fantastical-event rates (only shows with
     published data; empty string when nothing is published yet)."""
     fe = MANUAL_CODING.get("fantastical_events", {})
     rows = ""
@@ -455,7 +482,7 @@ def _build_events_home_table(children: list[tuple]) -> str:
         )
     if not rows:
         return ""
-    return f"""<h2>Fantastical events (human-coded)</h2>
+    return f"""<h2>Fantastical events (hand-coded)</h2>
 <p class="tbl-note">Current research (see <a href="{_p("/methodology/")}#fantastical-events">Methodology</a>) points to <em>fantastical content</em> — impossible events like flying, teleporting, or transforming — as the feature most consistently associated with short-term effects on young children's executive function, more so than editing pace. Fantasy is a human judgment, so these are hand-coded by a trained coder, not computed from pixels. Only shows with published coding appear here.</p>
 <table>
 <thead><tr><th>Show</th><th class=num>Episodes coded</th><th class=num>Mean events/min</th><th class=num>Range</th><th>How episodes were chosen</th></tr></thead>
@@ -471,7 +498,7 @@ def _build_homepage(shows_data: list[tuple], lang_data: dict) -> str:
     total_shows = len(children)
 
     th = ("<th>Show</th><th>Audience</th><th>Network</th>"
-          "<th class=num>Episodes analyzed</th><th class=num>Avg load</th>"
+          "<th class=num>Episodes analyzed</th><th class=num>Avg FFC</th>"
           "<th class=num>Cuts/min</th><th class=num>Saturation</th>"
           "<th class=num>Motion</th><th class=num>Flash/min</th>")
 
@@ -693,7 +720,7 @@ def _build_show_page(entry: dict, agg: dict | None, episodes: list[dict], lang: 
         ep_html = (
             "<h2>Episodes</h2>"
             "<table><thead><tr>"
-            "<th>Episode</th><th class=num>Air date</th><th class=num>Load</th>"
+            "<th>Episode</th><th class=num>Air date</th><th class=num>FFC</th>"
             "<th class=num>Cuts/min</th><th class=num>Saturation</th>"
             "<th class=num>Motion</th><th class=num>Flash/min</th>"
             f"</tr></thead><tbody>{ep_rows}</tbody></table>"
@@ -747,14 +774,14 @@ def _build_show_page(entry: dict, agg: dict | None, episodes: list[dict], lang: 
         rng = (f" (range {_fmt(ea['min'],2)}–{_fmt(ea['max'],2)})"
                if ea["n"] > 1 else "")
         events_html = (
-            f"<h2>Fantastical events (human-coded)</h2>"
+            f"<h2>Fantastical events (hand-coded)</h2>"
             f"<p><strong>Mean {_fmt(ea['mean'],2)} fantastical events per minute</strong> "
             f"across {ea['n']} hand-coded episode(s){rng}.</p>"
             f'<p class="tbl-note"><strong>Episode selection:</strong> '
             f'{show_events.get("sampling_method","not documented")}<br>'
             f'<strong>Coding:</strong> {show_events.get("coder","")} using the '
             f'<a href="{TOOL_URL}">CMAT</a> fantastical-event codebook. '
-            f'Unlike the automated metrics above, these are human judgments — '
+            f'These are hand-coded rather than computed — '
             f'fantasy is a semantic property no pixel measure can detect. '
             f'See <a href="{_p("/methodology/")}#fantastical-events">Methodology</a> '
             f'for the event definition and coding rules.</p>'
@@ -824,7 +851,7 @@ scale and are not comparable with these.</p>
 </table>
 
 <h2>Formal-Feature Composite (FFC)</h2>
-<p>The FFC is a configurable weighted sum of normalized sub-metrics. Normalization uses fixed reference ranges — not per-corpus normalization — so scores remain comparable across separate analysis runs and future additions to the index. The "General / All Ages" configuration is used for all index entries. The FFC is not a validated measure of viewer sensory load, arousal, or developmental impact. Full weight and normalization configurations are available in the <a href="https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit">CMAT repository</a>.</p>
+<p>The FFC is a configurable weighted sum of normalized sub-metrics. Normalization uses fixed reference ranges — not per-corpus normalization — so scores remain comparable across separate analysis runs and future additions to the index. The "General / All Ages" configuration is used for all index entries. The FFC is a summary of the stimulus. It is not a validated measure of anything happening in a viewer — not arousal, not attention, not developmental impact. Full weight and normalization configurations are available in the <a href="https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit">CMAT repository</a>.</p>
 
 <h2>Language metrics</h2>
 <p>When closed-caption or subtitle files are available for an episode, CMAT extracts three language complexity measures from the dialogue text. These numbers describe how the show uses language — not how well children will understand it. Comprehension depends on the individual child's age, vocabulary, and language experience.</p>
@@ -850,9 +877,9 @@ scale and are not comparable with these.</p>
 </table>
 <p>Language metrics require a subtitle or caption file (.srt or .vtt) for each episode. Episodes without captions show "Not available" for these fields. The metrics are derived from the caption text, which may differ slightly from the audio (simplified captioning, timing gaps, etc.).</p>
 
-<h2 id="fantastical-events">Fantastical events (human-coded)</h2>
+<h2 id="fantastical-events">Fantastical events (hand-coded)</h2>
 <p>Recent research has converged on <em>fantastical content</em> — rather than editing pace alone — as the program feature most consistently associated with short-term reductions in young children's executive function after viewing (Hinten, Scarf &amp; Imuta, 2025, <em>Developmental Science</em> meta-analysis; Lillard et al., 2015). A fantastical event is a discrete impossible occurrence: a character flying unaided, teleporting, transforming, an object coming to life. Following the literature, we report <strong>fantastical events per minute</strong>.</p>
-<p>Fantasy is a semantic judgment — whether an event violates how the world works — and cannot be computed from pixels. These metrics are therefore <strong>hand-coded by a human coder</strong> using CMAT's structured event codebook: a seven-category event taxonomy (physical violations, transformations, continuity violations, impossible body events, object animacy, impossible causation, other), an explicit premise-vs-event rule (a standing impossible premise such as talking animals is not counted as events; discrete impossible occurrences are), and per-event properties (narrative relevance; repetition). The full codebook ships with the <a href="https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit">open-source toolkit</a>.</p>
+<p>Fantasy is a semantic judgment — whether an event violates how the world works — and cannot be computed from pixels. These metrics are therefore <strong>hand-coded</strong> using CMAT's structured event codebook: a seven-category event taxonomy (physical violations, transformations, continuity violations, impossible body events, object animacy, impossible causation, other), an explicit premise-vs-event rule (a standing impossible premise such as talking animals is not counted as events; discrete impossible occurrences are), and per-event properties (narrative relevance; repetition). The full codebook ships with the <a href="https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit">open-source toolkit</a>.</p>
 <p>Honest limitations: coded samples are small (per-episode windows chosen before viewing and documented alongside each show's numbers); coding is currently by a single coder (the toolkit supports two-coder inter-rater reliability, planned); the codebook is versioned and any rule change is logged. Event rates describe the <em>stimulus</em>, not any child's response, and are associated with — not proof of — effects on viewers.</p>
 
 <h2>Flashing detection note</h2>
@@ -911,6 +938,9 @@ def _build_download(shows_data: list[tuple]) -> str:
     return f"""<h1>Download data</h1>
 <p>Per-episode JSON results and show-level aggregate statistics are freely available for research use. All data is derived from CMAT analysis; see <a href="/methodology/">Methodology</a> for parameters and reproducibility details.</p>
 <p>The complete dataset as a single flat file: <a href="{_p("/data/index.json")}">index.json</a> (all shows, aggregate metrics only).</p>
+
+<h2>Field names</h2>
+<p>The composite is called the <strong>Formal-Feature Composite (FFC)</strong> throughout this site. In <code>index.json</code> it is the <code>ffc_mean</code> field; this field was previously published as <code>sensory_load_mean</code> and was renamed in September 2026, with no change to how the number is computed. The per-show <code>aggregate.json</code> and <code>aggregate.csv</code> files come straight from the analysis engine, which still uses the internal key family <code>sensory_load_score</code> / <code>sensory_load_pacing</code> / <code>sensory_load_saturation</code> and so on. Those keys hold the FFC and its normalized components under an unrenamed internal name — not a second measure, and not a claim about anything happening in a viewer. They are left as the engine writes them so that these files match what you get by reproducing the analysis locally.</p>
 
 <h2>By show</h2>
 <table>
@@ -1534,7 +1564,7 @@ def build() -> None:
             "years":                 e.get("years"),
             "audience_label":        e.get("audience_label"),
             "episode_count":         a["episode_count"] if a else None,
-            "sensory_load_mean":     _stat(a, "sensory_load_score") if a else None,
+            "ffc_mean":              _stat(a, "sensory_load_score") if a else None,
             "cuts_per_min_mean":     _stat(a, "cuts_per_min") if a else None,
             "saturation_mean":       _stat(a, "color_saturation_mean") if a else None,
             "motion_mean":           _stat(a, "motion_mean") if a else None,

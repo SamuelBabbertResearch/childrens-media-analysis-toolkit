@@ -20,6 +20,33 @@ legacy `sensory_load` storage keys remain compatibility identifiers only; see
 `DECISIONS.md` and `onboarding.md`. The CLI accepts `ffc_score` and `avg_ffc`
 as user-facing sort aliases.
 
+**Needs an elevated shell — not doable from a normal session.** Four
+ACL-locked `pytest-tmp*` directories sit inside the real `.analysis/`, left by
+a test on 2026-08-17. `build_site.py` now skips them with a warning instead of
+dying, so nothing is blocked, but they should be removed. In an **Administrator
+PowerShell**, from the project root:
+
+```
+Get-ChildItem .analysis -Filter 'pytest-tmp*' -Directory -Force | ForEach-Object {
+  takeown /F $_.FullName /R /D Y
+  icacls  $_.FullName /grant "$($env:USERNAME):(F)" /T /C
+  Remove-Item $_.FullName -Recurse -Force
+}
+```
+
+See `LEARNINGS.md` for why they exist and what to stop doing in tests.
+
+**The public Index caught up 2026-09-07.** `build_site.py` was the last place
+still showing "load" to a reader: two column headers, and a methodology
+disclaimer phrased as "not a validated measure of viewer sensory load". All
+gone; `index.json` now publishes `ffc_mean` rather than `sensory_load_mean`,
+and the Download page has a *Field names* section explaining that the per-show
+`aggregate.json` / `aggregate.csv` still carry the engine's legacy key family.
+See `DECISIONS.md`. **The engine rename is still not done and is a session of
+its own** — `analyzer/metrics_sensory.py`, the `sensory_load_*` schema keys,
+`config.json`'s `sensory_load_weights`, and every cached result under
+`.analysis/`.
+
 **Research-credibility audit completed 2026-09-04.** Statuses, sweep-bias
 labelling, preset framing, provenance, missing-data semantics and citations
 were corrected; `tests/test_research_claims.py` pins them. No measurement

@@ -2009,3 +2009,54 @@ retaining adult prediction as a proxy outcome after removing children.
 **Provenance exception.** Frozen recipe names, file paths, manifests, inventory
 rows, and citations keep the former title because changing them would break the
 historical hash chain. Active documents label those strings as legacy.
+
+### The public Index says "Formal-Feature Composite (FFC)" and nothing says "sensory load"
+
+**Decision.** Every reader-facing string on the Open Children's Media Index
+names the composite the **Formal-Feature Composite (FFC)**. The two remaining
+"load" column headers (`Avg load` on the homepage table, `Load` on the
+per-show episode table) became `Avg FFC` and `FFC`. The methodology
+disclaimer no longer disclaims "viewer sensory load" — it says the FFC is a
+summary of the stimulus and not a validated measure of anything happening in
+a viewer. The published `index.json` field `sensory_load_mean` became
+`ffc_mean`. The site also standardised on **hand-coded** rather than
+"human-coded" for the fantastical-event section, per the §3 terminology table.
+**Reason.** "Sensory load" names a viewer state. CMAT measures a stimulus and
+issues no verdict (CLAUDE.md §2.1), so a disclaimer phrased as "this is not a
+validated measure of viewer sensory load" still puts the construct in the
+reader's head and implies the tool is in that business. The composite has one
+name; using two on the same site is how a reader concludes there are two
+quantities.
+**Date.** 2026-09-07.
+**Not done.** The analysis engine's internal key family
+(`sensory_load_score`, `sensory_load_weights` in `config.json`,
+`analyzer/metrics_sensory.py`) is unchanged, so the published per-show
+`aggregate.json` and `aggregate.csv` still carry those column names. Renaming
+them is a data-model change across the engine, cache, presets and tests, and
+would break every stored result — a separate task. The Download page's new
+"Field names" section documents the mismatch and the `index.json` rename so a
+consumer is not left guessing.
+**Rejected.** Rewriting the engine's keys only at publish time — the CSV is
+copied verbatim from `.analysis/`, so the JSON and CSV in the same folder
+would have disagreed, and a researcher reproducing the analysis locally would
+have got different names again.
+
+### A show is a directory with an `aggregate.json`, and nothing else is
+
+**Decision.** `build_site.py`'s manifest auto-sync treats a directory under an
+analysis root as a show only when it contains an `aggregate.json`. A directory
+it cannot read is warned about and skipped, never fatal.
+**Reason.** The previous test — any directory containing a non-aggregate
+`.json` — matched CMAT's own internal stores (`recipes`, `constructs`,
+`study_workflow/`, Clip Finder run folders, `pipelines`), which were
+auto-added as "uncategorized" shows and published as empty rows on the public
+site. A positive test for the artefact that makes a show publishable needs no
+maintenance: an internal store never grows an aggregate. The `_SKIP` blocklist
+had eleven names and missed all of them, because a blocklist can only exclude
+what someone thought of.
+**Date.** 2026-09-07.
+**Also.** The stale `pipelines` entry was removed from `site_manifest.json`;
+it had been publishing `/shows/pipelines/` on the live site, an empty page
+named after a directory §2.3 says must never be committed.
+**Rejected.** Extending `_SKIP` with the offending names — the same defect
+returns with the next internal store.

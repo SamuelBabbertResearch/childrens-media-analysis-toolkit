@@ -2016,3 +2016,89 @@ the CSV is readable without this file.
 **The general form.** A default value is a lie the moment it reaches an
 output. `0.0` is the most dangerous default a measurement can have, because it
 is inside the plausible range.
+
+---
+
+## A test wrote into the real `.analysis/` and permanently blocked the site build
+
+**Found 2026-09-07, while sweeping "sensory load" off the public Index.**
+`python build_site.py` dies before it renders anything:
+
+```
+PermissionError: [WinError 5] Access is denied:
+  '.../.analysis/pytest-tmp'
+```
+
+`_sync_manifest()` scans every directory under `.analysis/` looking for
+analyzed shows, and `pytest-tmp` — created 2026-08-17, presumably by a test
+exercising the read-only-file handling in `_clear_site()` — has had its ACL
+stripped so hard that even `Get-Acl` on it returns *unauthorized*. It cannot be
+listed, read, or removed without taking ownership.
+
+**Why this is the interesting part.** `CLAUDE.md` §6 already says *never write
+into the working copy's data from a test*, and the reason given there is that
+`Shows/`, `validation/` and the pipeline documents are real research data. The
+damage here is not to the data. The test wrote a directory that was harmless in
+itself, then left it in a state that **disabled the publishing path entirely,
+three weeks later, for someone doing unrelated work** — and the failure surfaces
+as a `PermissionError` deep inside a manifest scan, which reads like a machine
+problem rather than a test artefact. Nothing in the traceback says "a test did
+this".
+
+**Avoid.** A test that needs a directory under a CMAT analysis root builds it
+under `tmp_path`, and points the code at that root; it never adds a sibling to
+the real one. A test that deliberately creates an unreadable or read-only path
+restores the permissions in a fixture teardown that runs on failure too, or it
+does not create the path at all.
+
+**Fixed 2026-09-07** by making the scan warn and skip an unreadable directory
+instead of aborting. The four `pytest-tmp*` directories remain — `takeown`
+fails as the current user — so they still need an elevated shell.
+
+**The general form.** The rule against tests touching real data is usually
+argued from corruption — a wrong number written where a real one belongs. This
+was the other failure mode: a test left the *environment* in a state no
+subsequent run could recover from, and the cost was paid by a later session
+that had no way to connect the symptom to the cause.
+
+---
+
+## A crash masked a silent bug for three weeks, and fixing the crash published it
+
+**Found 2026-09-07, immediately after the fix above.** The first successful
+`build_site.py` run in three weeks auto-added ten entries to
+`site_manifest.json` — `.analysis`, `recipes`, `constructs`,
+`study_workflow/qualification`, `study_clips/…`, the Clip Finder's run folders
+— and published each as an empty "uncategorized" show. None are programmes.
+They are CMAT's own internal stores, and they live under an analysis root
+because that is where CMAT keeps its working data.
+
+The cause: `_has_episode_json()` returned true for a directory containing *any*
+non-aggregate `.json`, while the comment three lines below it said *"Only treat
+as a show if the parent already has an aggregate"*. The comment described the
+right rule; the code implemented a looser one. `build()` then printed
+`no aggregate found` for every one of those entries — the manifest and the
+aggregate lookup openly disagreeing about what a show is, in the same run,
+in adjacent lines of output.
+
+**How long it had been wrong is unknowable from the symptom.** A stale
+`pipelines` entry from an earlier auto-add was already committed to
+`site_manifest.json` and was publishing `/shows/pipelines/` to the live site —
+an empty page named after a directory `CLAUDE.md` §2.3 says must never be
+committed at all. That page had been public for as long as the entry existed,
+and nothing on the site or in the build log called it anything but a show with
+no data yet.
+
+**Avoid.** When a comment states a rule, check the code beside it implements
+*that* rule — a looser predicate under a stricter comment reads as correct to
+every reviewer including the person who wrote it. And prefer a positive test
+that a valid artefact exists (`aggregate.json` is present) over a blocklist of
+names to exclude: the blocklist in `_SKIP` had eleven entries and still missed
+every one of these, because it can only exclude what someone thought of.
+
+**The general form.** A build that has been failing loudly is not a build in a
+known state. Everything downstream of the crash has been *unverified*, not
+*working*, for as long as the crash lasted — so fixing a blocker is the moment
+to inspect what the blocker was hiding, against the artefact, before shipping
+the result. Here the crash was three weeks old and the bug it masked was
+older.
