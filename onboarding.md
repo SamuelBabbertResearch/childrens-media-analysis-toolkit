@@ -58,11 +58,18 @@ manifest and the aggregate lookup disagreed about what a show is. A show is
 now a directory with an `aggregate.json` and nothing else is, which is the
 test the surrounding comment already claimed to apply and needs no blocklist
 to maintain. A stale `pipelines` entry from an earlier auto-add was removed
-from the manifest; it had been publishing `/shows/pipelines/` — an empty page
-named after a personal-data directory (`CLAUDE.md` §2.3) — on the live site.
+from the manifest — a personal-data directory name (`CLAUDE.md` §2.3) in a
+tracked file. Its page was only ever built locally and never pushed. Five junk
+pages that *were* live (`ghibili`, `jordan-peterson`, `my-neighbor-totoro`,
+`season-1`, `season-2`) were removed by the republish.
 
-The site now builds 19 pages and 14 shows. Verified against the produced HTML
-and `data/index.json`, not against the source.
+The site builds 19 pages and 14 shows, and **was published on 2026-09-07**
+(`open-childrens-media-index` `013e66d`). That republish also delivered the
+2026-08-15 ceiling retune to the public index for the first time: every
+composite moved, +2.7% to +19.3% across twelve shows and -11.0% for SpongeBob,
+with raw measurements unchanged. Little Bear's composite is withheld rather
+than restated — see `DECISIONS.md`. Verified against the produced HTML and
+`data/index.json`, not against the source.
 
 ---
 

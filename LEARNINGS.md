@@ -2081,13 +2081,14 @@ right rule; the code implemented a looser one. `build()` then printed
 aggregate lookup openly disagreeing about what a show is, in the same run,
 in adjacent lines of output.
 
-**How long it had been wrong is unknowable from the symptom.** A stale
-`pipelines` entry from an earlier auto-add was already committed to
-`site_manifest.json` and was publishing `/shows/pipelines/` to the live site —
-an empty page named after a directory `CLAUDE.md` §2.3 says must never be
-committed at all. That page had been public for as long as the entry existed,
-and nothing on the site or in the build log called it anything but a show with
-no data yet.
+**It had already shipped.** Five pages that were never programmes were
+live on OpenChildrensMediaIndex.org — `ghibili`, `jordan-peterson`,
+`my-neighbor-totoro`, `season-1`, `season-2` — and a stale `pipelines` entry
+sat in the committed `site_manifest.json`, named after a directory
+`CLAUDE.md` §2.3 says must never be committed at all. (The `pipelines` *page*
+was only ever built locally; it was never pushed to the Pages repo, so it was
+not public. The manifest entry was.) Nothing on the site or in the build log
+called any of them anything but a show with no data yet.
 
 **Avoid.** When a comment states a rule, check the code beside it implements
 *that* rule — a looser predicate under a stricter comment reads as correct to

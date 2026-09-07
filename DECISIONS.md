@@ -2055,9 +2055,11 @@ maintenance: an internal store never grows an aggregate. The `_SKIP` blocklist
 had eleven names and missed all of them, because a blocklist can only exclude
 what someone thought of.
 **Date.** 2026-09-07.
-**Also.** The stale `pipelines` entry was removed from `site_manifest.json`;
-it had been publishing `/shows/pipelines/` on the live site, an empty page
-named after a directory §2.3 says must never be committed.
+**Also.** The stale `pipelines` entry was removed from
+`site_manifest.json` — a directory §2.3 says must never be committed, sitting
+in a tracked file. Its page was only ever built locally and never pushed, so
+it was not public; five other junk pages (`ghibili`, `jordan-peterson`,
+`my-neighbor-totoro`, `season-1`, `season-2`) were live and are now gone.
 **Rejected.** Extending `_SKIP` with the offending names — the same defect
 returns with the next internal store.
 
