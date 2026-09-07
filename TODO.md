@@ -36,7 +36,19 @@ Get-ChildItem .analysis -Filter 'pytest-tmp*' -Directory -Force | ForEach-Object
 
 See `LEARNINGS.md` for why they exist and what to stop doing in tests.
 
-**The live site's numbers are stale and it has not been republished.**
+**Re-analyse Little Bear so its composite can be published again.** It has an
+`aggregate.json` and `aggregate.csv` but no per-episode JSONs, so the site
+cannot re-derive its FFC and now withholds it (`DECISIONS.md`). Running the
+episodes back through CMAT would restore it and make the index complete on one
+basis. Everything else about the show — component metrics, 62 transcripts —
+publishes normally.
+
+**Superseded 2026-09-07: the site was republished.** The note below recorded
+that the live figures predated the 2026-08-15 ceiling retune. They no longer
+do; the rebuild was published, moving every composite (+2.7% to +19.3%, and
+Little Bear withheld rather than restated). Kept for the record:
+
+**The live site's numbers were stale and it had not been republished.**
 `_site/` is a clone of the Pages repo, and rebuilding it moves **every**
 published composite: the live figures predate the 2026-08-14 ceiling retune.
 Deltas run +2.7% to +19.3% for twelve shows, and Little Bear reads -56.6%.

@@ -2060,3 +2060,28 @@ it had been publishing `/shows/pipelines/` on the live site, an empty page
 named after a directory §2.3 says must never be committed.
 **Rejected.** Extending `_SKIP` with the offending names — the same defect
 returns with the next internal store.
+
+### A composite that cannot be re-derived is withheld, not published
+
+**Decision.** When a show has no cached per-episode results, `build_site.py`
+drops its composite from the show page, the homepage table, `index.json` and
+the published `aggregate.json`, and does not publish its `aggregate.csv` (the
+CSV carries the same frozen columns). The show still appears, with its
+component metrics, a double-dagger marker and a sentence saying what was
+withheld and why. Raw component means are measurements rather than
+rescalings, so the ceiling change does not touch them.
+**Reason.** The 2026-08-15 retune moved every composite in the project.
+`build()` re-derives a show's composite from its cached episodes; a show
+without them keeps a frozen value computed under earlier ceilings. Published
+side by side, the two are indistinguishable — which is precisely the failure
+CLAUDE.md §2.5 names: *old results never silently look current*. Withholding a
+number is honest; publishing one whose ceilings are unknown, next to thirteen
+that are known, is not.
+**Date.** 2026-09-07.
+**Applies to.** "Little Bear (Full Series)" only, whose aggregate was written
+2026-07-01. The rule is in `build()`, not a per-show exception, so a future
+show in the same state is handled without anyone noticing it needs to be.
+**Rejected.** Publishing the frozen figure with a footnote — a footnote does
+not stop the number being read, sorted, downloaded and compared. Removing the
+show entirely — its component metrics and 62 language transcripts are current
+and accurate, and deleting them would lose real data to fix a rescaling.

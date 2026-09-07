@@ -354,6 +354,15 @@ def _show_language_metrics(show_key: str) -> dict | None:
     }
 
 
+# Marks a show whose composite was withheld because it could not be re-derived
+# against the current ceilings. Distinct from the variance flag (†) and from a
+# plain dash, which means "not analysed yet".
+STALE_FLAG = ('<span class="var-flag" title="Composite withheld: no cached '
+              'episodes, so it cannot be re-derived against the current '
+              'normalization ceilings. Component metrics are measurements '
+              'and are unaffected.">‡</span>')
+
+
 def _badge(score: float | None) -> str:
     if score is None:
         return "—"
@@ -438,7 +447,8 @@ def _show_row(entry: dict, agg: dict | None, is_baseline: bool = False) -> str:
         f'<td>{col2}</td>',
         f'<td>{col3}</td>',
         f'<td class="num">{ep_count}</td>',
-        f'<td class="num score-cell">{_badge(score)}</td>',
+        f'<td class="num score-cell">{_badge(score)}'
+        f'{STALE_FLAG if entry.get("_composite_withheld") else ""}</td>',
         f'<td class="num">{_fmt(_stat(agg, "cuts_per_min"), 1) if agg else "—"}</td>',
         f'<td class="num">{_fmt(_stat(agg, "color_saturation_mean")) if agg else "—"}</td>',
         f'<td class="num">{_fmt(_stat(agg, "motion_mean"), 4) if agg else "—"}</td>',
@@ -524,6 +534,16 @@ def _build_homepage(shows_data: list[tuple], lang_data: dict) -> str:
           "<th class=num>Motion</th><th class=num>Flash/min</th>")
 
     children_rows = "\n".join(_show_row(e, a) for e, a in children)
+    stale_note = ""
+    if any(e.get("_composite_withheld") for e, _ in children + baselines):
+        stale_note = (
+            '<p class="tbl-note">‡ Composite withheld. This show has no '
+            'cached per-episode results, so its FFC cannot be re-derived '
+            'against the current normalization ceilings — and a figure '
+            'frozen under earlier ceilings is not comparable with the '
+            're-derived scores beside it. The component metrics are '
+            'measurements rather than rescalings and are published as '
+            'normal.</p>')
     baseline_rows = "\n".join(_show_row(e, a, is_baseline=True) for e, a in baselines)
 
     # Embed raw show metrics for client-side recompute
@@ -601,6 +621,7 @@ window.PRESET_DATA = {preset_js};
 <tbody>{children_rows}</tbody>
 </table>
 <p class="tbl-note var-note">† High within-show variability (FFC standard deviation &gt; {VARIANCE_FLAG_THRESHOLD}). Aggregate reflects the sampled episodes; individual episodes may differ meaningfully. See the show page for the full distribution.</p>
+{stale_note}
 
 <h2>Comparison baselines</h2>
 <p class="tbl-note">Included for cross-genre reference only. These titles are not children's programming and are not scored against child-audience presets.</p>
@@ -667,6 +688,17 @@ def _build_show_page(entry: dict, agg: dict | None, episodes: list[dict], lang: 
 
     # Aggregate metrics
     agg_html = ""
+    if entry.get("_composite_withheld"):
+        agg_html = (
+            '<p class="tbl-note"><strong>Composite withheld.</strong> No '
+            'per-episode results are cached for this show, so its '
+            'Formal-Feature Composite cannot be re-derived against the '
+            'current normalization ceilings. The stored value was computed '
+            'under earlier ceilings, is not comparable with the scores '
+            'published for other shows, and is therefore not shown here and '
+            'not included in the downloadable data. The component metrics '
+            'below are measurements, not rescalings, and are unaffected. See '
+            f'<a href="{_p("/methodology/")}">Methodology</a>.</p>')
     if agg:
         def _row(label: str, key: str, dec: int = 3) -> str:
             return (f"<tr><td>{label}</td>"
@@ -675,7 +707,7 @@ def _build_show_page(entry: dict, agg: dict | None, episodes: list[dict], lang: 
                     f'<td class=num>{_fmt(_stat(agg, key, "std"), dec)}</td></tr>')
 
         score = _stat(agg, "sensory_load_score")
-        agg_html = (
+        agg_html += (
             f"<h2>Aggregate metrics</h2>"
             f"<p>Based on {agg['episode_count']} episode(s). "
             f"FFC: {_badge(score)}</p>"
@@ -949,11 +981,19 @@ def _build_download(shows_data: list[tuple]) -> str:
             continue
         slug     = slugify(entry["display_name"])
         ep_count = agg.get("episode_count", "—")
+        # Link what was actually written, not what is usually written. A
+        # show whose composite was withheld has no published CSV, and a link
+        # to a file the build did not produce is a 404 on the download page.
+        files = [f'<a href="{_p(f"/data/{slug}/aggregate.json")}">aggregate.json</a>']
+        if (SITE / "data" / slug / "aggregate.csv").exists():
+            files.append(f'<a href="{_p(f"/data/{slug}/aggregate.csv")}">aggregate.csv</a>')
+        note = ('<br><span class="tbl-note">Composite withheld — cannot be '
+                're-derived against current ceilings; component metrics '
+                'unaffected.</span>') if entry.get("_composite_withheld") else ""
         rows += (
-            f'<tr><td>{entry["display_name"]}</td>'
+            f'<tr><td>{entry["display_name"]}{note}</td>'
             f'<td class=num>{ep_count}</td>'
-            f'<td><a href="{_p(f"/data/{slug}/aggregate.json")}">aggregate.json</a>'
-            f' &nbsp; <a href="{_p(f"/data/{slug}/aggregate.csv")}">aggregate.csv</a></td></tr>'
+            f'<td>{" &nbsp; ".join(files)}</td></tr>'
         )
 
     return f"""<h1>Download data</h1>
@@ -1514,6 +1554,20 @@ def build() -> None:
             except Exception as exc:
                 print(f"  [warn] could not recompute aggregate for "
                       f"{entry['show_key']}: {exc}")
+        elif agg is not None:
+            # No cached episodes, so the composite above CANNOT be re-derived
+            # and is whatever the ceilings were when it was written. The
+            # 2026-08-15 retune moved every composite in the project, so a
+            # frozen one is not comparable with the re-derived figures beside
+            # it — and it is not distinguishable from them either, which is the
+            # part that makes publishing it wrong (CLAUDE.md §2.5: old results
+            # never silently look current). Withhold the number rather than
+            # publish one whose ceilings are unknown. The raw component means
+            # are measurements, not rescalings, so they stand.
+            if agg.pop("sensory_load_score", None) is not None:
+                entry["_composite_withheld"] = True
+                print(f"  [stale] {entry['show_key']}: no cached episodes, "
+                      f"composite withheld (cannot be re-derived)")
         shows_data.append((entry, agg))
         if agg is None:
             print(f"  [warn] no aggregate found: {entry['show_key']}")
@@ -1554,6 +1608,12 @@ def build() -> None:
             # Copy aggregate CSV if present
             src_dir = _show_analysis_dir(entry["show_key"])
             csv_src = (src_dir / "aggregate.csv") if src_dir else None
+            # A withheld composite must be withheld in every format. The CSV
+            # carries sensory_load_score and its component columns straight
+            # from the cache, so publishing it would reintroduce through the
+            # download page exactly the number the JSON dropped.
+            if entry.get("_composite_withheld"):
+                csv_src = None
             if csv_src and csv_src.exists():
                 shutil.copy(csv_src, data_dir / "aggregate.csv")
 
