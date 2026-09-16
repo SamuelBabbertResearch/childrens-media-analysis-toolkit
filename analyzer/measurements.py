@@ -131,6 +131,14 @@ class ToolSpec:
     params: list[ParamSpec] = field(default_factory=list)
     optional_tool_key: str | None = None   # -> analyzer.optional_tools registry
     notes: str = ""
+    # Observable quantities this tool can actually produce.  Used when one
+    # registry family contains tools with different estimands (the transition
+    # family contains abrupt-cut detectors and an all-boundary detector).
+    estimands: tuple[str, ...] = ()
+    # Bump whenever implementation changes can move values or required raw
+    # provenance. It is part of the cache fingerprint, so old outputs cannot
+    # silently look current after a code-level method change.
+    implementation_revision: int = 1
 
     def is_available(self) -> bool:
         """False only when the tool needs an optional dependency that is absent."""
@@ -186,9 +194,11 @@ TRANSITIONS = MeasurementSpec(
                 "detector CMAT's published accuracy figures were measured with."
             ),
             status=VALIDATED,
+            estimands=("hard_cut_boundaries",),
             notes=(
-                "Boundary-detection F1 0.75–0.91 against hand coding, depending on "
-                "production style. Misses gradual transitions (dissolves) by "
+                "Boundary-detection F1 0.75–0.91 against hand coding in a "
+                "PRELIMINARY single-coder pilot over 0–300 s and 0–320 s; "
+                "type-agnostic matching within ±2 s. Misses gradual transitions by "
                 "construction: it cannot separate two shots blending from one shot "
                 "panning."
             ),
@@ -214,6 +224,7 @@ TRANSITIONS = MeasurementSpec(
                 "camera motion."
             ),
             status=UNVALIDATED,
+            estimands=("hard_cut_boundaries",),
             notes=(
                 "Not yet graded against CMAT's hand-coded episodes. Plausibly better "
                 "on content with constant motion (the snowfall failure mode), but "
@@ -253,6 +264,7 @@ TRANSITIONS = MeasurementSpec(
                 "frame-differencing structurally cannot."
             ),
             status=EXPERIMENTAL,
+            estimands=("shot_boundaries",),
             optional_tool_key="transnetv2",
             notes=(
                 "On CMAT's coded episodes it found 8/8 dissolves (built-in pass: "
@@ -391,6 +403,7 @@ SAMPLING = MeasurementSpec(
             name="Uniform sampling",
             summary="Decode every Nth frame at a fixed rate across the episode.",
             status=DETERMINISTIC,
+            implementation_revision=2,
             params=[
                 ParamSpec(
                     key="sample_fps", label="Sample rate", kind="float",
@@ -412,7 +425,7 @@ SAMPLING = MeasurementSpec(
 
 MOTION = MeasurementSpec(
     key="motion",
-    name="Motion",
+    name="Sampled-frame grayscale change",
     description=(
         "Mean absolute difference in pixel intensity between consecutive "
         "SAMPLED frames, averaged over the episode and expressed on a 0–1 "
@@ -434,6 +447,7 @@ MOTION = MeasurementSpec(
                 "frames, rescaled from 0–255 to 0–1. Fast; the default."
             ),
             status=DETERMINISTIC,
+            implementation_revision=2,
             notes=(
                 "Cannot distinguish object motion from camera motion from a cut. "
                 "Values depend on the sampling rate set under Frame sampling."
@@ -447,6 +461,7 @@ MOTION = MeasurementSpec(
                 "than raw difference, so it separates movement from brightness change."
             ),
             status=UNVALIDATED,
+            implementation_revision=2,
             notes=(
                 "Substantially slower than frame differencing and never graded "
                 "against hand coding. Its output is normalized against an assumed "
@@ -459,7 +474,7 @@ MOTION = MeasurementSpec(
 
 FLASHING = MeasurementSpec(
     key="flashing",
-    name="Flashing",
+    name="Whole-frame luminance-change events",
     description=(
         "Count per minute of consecutive sampled frames whose WHOLE-FRAME mean "
         "luminance differs by more than a threshold. NOT a photosensitivity "
@@ -479,6 +494,7 @@ FLASHING = MeasurementSpec(
                 "threshold, reported per minute."
             ),
             status=UNVALIDATED,
+            implementation_revision=2,
             notes=(
                 "Whole-frame mean luminance, so a flash confined to part of the "
                 "screen is diluted. Broadcast photosensitivity guidance is specified "
@@ -515,9 +531,9 @@ FLASHING = MeasurementSpec(
 
 COLOR = MeasurementSpec(
     key="color",
-    name="Color saturation & contrast",
+    name="HSV saturation & value dispersion",
     description=(
-        "Mean HSV saturation and the spatial spread of luminance per frame, "
+        "Mean HSV saturation and the spatial spread of HSV value per frame, "
         "averaged over the episode."
     ),
     feeds="saturation, contrast",
@@ -528,10 +544,11 @@ COLOR = MeasurementSpec(
             summary=(
                 "Per frame: mean of the HSV S channel (0–1) and the spatial "
                 "standard deviation of the V channel (0–1); both averaged "
-                "across sampled frames. 'Contrast' here is within-frame "
-                "luminance spread, not a perceptual contrast metric."
+                "across sampled frames. HSV value is max(R,G,B), not "
+                "luminance; its spread is not a perceptual contrast metric."
             ),
             status=DETERMINISTIC,
+            implementation_revision=2,
             notes=(
                 "Uses the frame sampling rate set under Frame sampling. Saturation "
                 "is unreliable on blown-out live-action production styles — the "
@@ -543,8 +560,9 @@ COLOR = MeasurementSpec(
 
 AUDIO = MeasurementSpec(
     key="audio",
-    name="Audio loudness",
-    description="RMS loudness and dynamic range, extracted with FFmpeg.",
+    name="Audio amplitude",
+    description=("Linear windowed RMS amplitude and a peak-to-mean RMS ratio, "
+                 "extracted with FFmpeg; neither is perceptual loudness."),
     feeds="audio",
     tools=[
         ToolSpec(
@@ -556,6 +574,7 @@ AUDIO = MeasurementSpec(
                 "8 kHz. Linear amplitude, not perceptual loudness."
             ),
             status=DETERMINISTIC,
+            implementation_revision=2,
             notes=(
                 "Linear RMS, not a perceptual loudness standard (not LUFS/EBU R128). "
                 "When no audio track or no FFmpeg is present, the audio weight is "
@@ -569,7 +588,7 @@ SPEECH = MeasurementSpec(
     key="speech",
     name="Speech",
     description=(
-        "Words per minute and speech density. Caption files are used when present; "
+        "Words per timed-text minute and timed-text density. Caption files are used when present; "
         "Whisper transcribes only when they are absent."
     ),
     feeds="",
@@ -587,6 +606,7 @@ SPEECH = MeasurementSpec(
                 "skips the episode entirely when no caption file exists."
             ),
             status=DETERMINISTIC,
+            implementation_revision=2,
             notes=(
                 "Word counts are exactly what the caption file contains, so "
                 "the measure inherits whatever the captioner did: forced "
@@ -604,6 +624,7 @@ SPEECH = MeasurementSpec(
                 "(~2–5 min per episode on CPU)."
             ),
             status=UNVALIDATED,
+            implementation_revision=2,
             notes=(
                 "Whisper word counts have not been graded against captions on this "
                 "corpus. For words-per-minute, occasional word errors matter little, "
@@ -831,7 +852,11 @@ def fingerprint_payload(cfg: dict[str, Any]) -> dict[str, Any]:
         if m.can_disable and not enabled:
             payload[m.key] = {"enabled": False}
             continue
-        payload[m.key] = {"tool": tool.key, "params": params}
+        payload[m.key] = {
+            "tool": tool.key,
+            "implementation_revision": tool.implementation_revision,
+            "params": params,
+        }
     return payload
 
 

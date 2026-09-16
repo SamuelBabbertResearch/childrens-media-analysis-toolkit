@@ -10,6 +10,7 @@ detections made under different settings inside one comparison.
 
 from __future__ import annotations
 import copy
+from dataclasses import replace
 
 import pytest
 
@@ -102,6 +103,21 @@ def test_weight_change_does_not_change_fingerprint(cfg):
     other["sensory_load_weights"]["pacing"] = 0.9
     other["normalization_reference_ranges"]["cuts_per_min"] = [0, 99]
     assert M.measurement_fingerprint(other) == before
+
+
+def test_tool_implementation_revision_is_part_of_fingerprint(cfg, monkeypatch):
+    before = M.measurement_fingerprint(cfg)
+    original = M.TRANSITIONS.tools[0]
+    revised = replace(
+        original, implementation_revision=original.implementation_revision + 1)
+    patched = replace(M.TRANSITIONS, tools=[revised, *M.TRANSITIONS.tools[1:]])
+    monkeypatch.setattr(
+        M, "MEASUREMENTS",
+        [patched if spec.key == "transitions" else spec
+         for spec in M.MEASUREMENTS],
+    )
+
+    assert M.measurement_fingerprint(cfg) != before
 
 
 def test_threshold_change_changes_fingerprint(cfg):

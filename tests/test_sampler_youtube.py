@@ -132,15 +132,16 @@ def test_channel_slug_falls_back_for_a_bare_playlist_url():
 # --- ui.sampler.SamplerDialog wiring -----------------------------------------
 
 @pytest.fixture
-def dialog(qapp):
+def dialog(qapp, tmp_path):
     from PySide6.QtWidgets import QWidget
     from ui.sampler import SamplerDialog
 
     class _FakeWindow(QWidget):
-        _root = Path(r"C:\Users\Samuel\Child Development Television Index Project\Shows")
+        _root = tmp_path
         def _db(self):
             return None
 
+    (tmp_path / "Arthur").mkdir()
     win = _FakeWindow()
     d = SamplerDialog(win, win)
     yield d

@@ -42,6 +42,48 @@ session of its own:
   CLI print path was fixed; `ui/handcoding.py` already handled `None`
   correctly for the two-coder kappa, which is a different statistic.)
 
+**Methodological audit findings (superseded by the implementation record below),
+2026-09-16.** Read
+[`METHODOLOGICAL_AUDIT_2026-09-16.md`](METHODOLOGICAL_AUDIT_2026-09-16.md)
+before changing a measure. It found four issues that precede new substantive
+data collection, in this order; each is a separate session:
+
+- **Split the automated pacing estimands.** `hard_cuts_per_min` currently offers
+  TransNetV2 as a method even though TransNetV2 includes gradual transitions.
+  A method switch therefore changes the quantity while retaining the field name.
+- **Attach validation to the exact configuration graded.** The published 0.855
+  boundary F1 comes from `content-t27-diss` runs (ContentDetector plus the
+  experimental plateau pass), while the registry assigns it to
+  `pyscenedetect_content` and the shipped default disables dissolves.
+- **Correct caption timing before treating it as speech timing.** Merge
+  overlapping cue intervals, clean non-speech cues consistently, and call the
+  denominator caption-cue time until validation against timed transcripts
+  supports “dialogue time.” A real synthetic artefact currently gives density
+  1.0 for cue intervals whose union covers 0.75 of runtime.
+- **Record effective sampling rate.** Integer frame stepping means a requested
+  10 fps pass can execute at 12 fps on 24 fps material (and 12.5 fps on 25 fps
+  material). Persist source fps, frame interval, and effective rate.
+
+Then rename the over-broad raw measures (motion, contrast, flashing, loudness,
+dynamic range) to their observable definitions; decide whether a fixed FFC
+refuses missing audio or versions the five-input and six-input forms separately;
+and bring the language measures into the registry/recipe/status system.
+
+**Implementation record, 2026-09-16.** The four blocking items above are done:
+detector methods are split by estimand; exact `content-t27-solo` artefacts now
+support the default detector; timed-text intervals are cleaned and unioned; and
+source/requested/effective frame rates plus intervals travel in schema-3
+exports. Raw labels now describe formulas, FFC input variants are explicit,
+the final partial RMS window is retained, lexical norm files are independently
+optional, and language outputs carry exploratory status. Full suite: **790
+passed, 13 skipped** in `.venv`.
+
+Still outstanding: timestamp-based frame selection if exact temporal rates are
+required; LUFS/EBU R128 as a separate method; a standards-conformant flash
+method; standard-token MTLD beside the custom content-lemma form; the larger
+double-coded held-out validation in the audit; and empirical derivation or
+external validation of FFC recipes before confirmatory use.
+
 **Ready now, and in this order.** Each is its own session with its own
 verification against real output — do not do two at once.
 

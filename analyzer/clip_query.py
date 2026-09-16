@@ -54,9 +54,9 @@ COLUMNS: tuple[tuple[str, str], ...] = (
     ("duration_sec", "Length (s)"),
     ("cuts_per_min", "Cuts / min"),
     ("cuts_level", "Cuts level"),
-    ("motion_mean", "Motion mean"),
+    ("motion_mean", "Sampled-frame grayscale change"),
     ("motion_level", "Motion level"),
-    ("audio_rms_mean", "Audio RMS mean"),
+    ("audio_rms_mean", "Mean 1-s linear RMS amplitude"),
     ("audio_level", "Audio level"),
 )
 

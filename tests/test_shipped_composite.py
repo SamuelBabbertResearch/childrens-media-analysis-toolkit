@@ -206,8 +206,9 @@ def test_the_recipe_follows_the_configs_selected_detector(config):
     changed = json.loads(json.dumps(config))
     changed["measurements"]["transitions"]["tool"] = "transnetv2"
     recipe = R.shipped_composite(changed)
-    assert recipe.binding("hard_cuts_per_min").method_key == \
+    assert recipe.binding("transitions_per_min").method_key == \
         "auto:transitions:transnetv2"
+    assert recipe.binding("hard_cuts_per_min") is None
 
 
 # ---------------------------------------------------------------------------

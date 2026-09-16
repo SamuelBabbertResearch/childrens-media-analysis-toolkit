@@ -31,6 +31,9 @@ from .schema import SpeechMetrics
 _TAG_RE   = re.compile(r'<[^>]+>')
 _WORD_RE  = re.compile(r'\b\w+\b')
 _SEQ_RE   = re.compile(r'^\d+\s*$')   # SRT sequence number lines
+_BRACKET_RE = re.compile(r'\[.*?\]', re.DOTALL)
+_PAREN_RE = re.compile(r'\(.*?\)', re.DOTALL)
+_SPEAKER_RE = re.compile(r'\b[A-Z][A-Z ]{1,20}:\s*')
 
 # Matches both SRT (comma) and VTT (period) timestamp separators
 _STAMP_RE = re.compile(
@@ -46,6 +49,31 @@ def _ts_to_sec(h: str, m: str, s: str, ms: str) -> float:
 def _count_words(text: str) -> int:
     text = _TAG_RE.sub(' ', text)
     return len(_WORD_RE.findall(text))
+
+
+def strip_non_speech_cues(text: str) -> str:
+    """Remove recognized non-dialogue markup from transcript text."""
+    text = _TAG_RE.sub(' ', text)
+    text = _BRACKET_RE.sub(' ', text)
+    text = _PAREN_RE.sub(' ', text)
+    text = _SPEAKER_RE.sub(' ', text)
+    return re.sub(r'\s+', ' ', text).strip()
+
+
+def _interval_union_duration(intervals: list[tuple[float, float]]) -> float:
+    """Return the duration of the union of half-open intervals."""
+    if not intervals:
+        return 0.0
+    ordered = sorted(intervals)
+    start, end = ordered[0]
+    total = 0.0
+    for next_start, next_end in ordered[1:]:
+        if next_start <= end:
+            end = max(end, next_end)
+        else:
+            total += end - start
+            start, end = next_start, next_end
+    return total + end - start
 
 
 # ---------------------------------------------------------------------------
@@ -66,11 +94,10 @@ def _find_cc_file(video_path: Path) -> Path | None:
 # ---------------------------------------------------------------------------
 
 def extract_cc_text(cc_path: Path) -> str:
-    """Return cue dialogue lines joined as a single string.
+    """Return cue text joined as one string, without timing/sequence lines.
 
-    Strips timestamps and SRT sequence numbers only. Non-speech cues
-    (e.g. [MUSIC], speaker labels) are left intact for the caller to
-    handle according to its own analysis needs.
+    Non-speech cleanup remains a separate shared step so callers can retain
+    raw caption text when that is their intended estimand.
     """
     try:
         text = cc_path.read_text(encoding="utf-8", errors="replace")
@@ -95,8 +122,8 @@ def _parse_cc(cc_path: Path, duration_sec: float) -> SpeechMetrics:
     except OSError:
         return SpeechMetrics(available=False, source="none")
 
-    total_words        = 0
-    total_dialogue_sec = 0.0
+    total_words = 0
+    cue_intervals: list[tuple[float, float]] = []
 
     for cue in re.split(r'\n\s*\n', text):
         m = _STAMP_RE.search(cue)
@@ -110,14 +137,18 @@ def _parse_cc(cc_path: Path, duration_sec: float) -> SpeechMetrics:
 
         cue_body = _STAMP_RE.sub('', cue, count=1).strip()
         lines    = [ln for ln in cue_body.splitlines() if not _SEQ_RE.match(ln.strip())]
-        total_words        += _count_words(' '.join(lines))
-        total_dialogue_sec += end - start
+        cleaned = strip_non_speech_cues(' '.join(lines))
+        words = _count_words(cleaned)
+        if words:
+            total_words += words
+            cue_intervals.append((max(0.0, start), end))
 
-    if total_dialogue_sec < 0.5:
+    total_cue_sec = _interval_union_duration(cue_intervals)
+    if total_cue_sec < 0.5:
         return SpeechMetrics(available=False, source="none")
 
-    wpm     = total_words / (total_dialogue_sec / 60.0)
-    density = min(1.0, total_dialogue_sec / duration_sec) if duration_sec > 0 else 0.0
+    wpm     = total_words / (total_cue_sec / 60.0)
+    density = total_cue_sec / duration_sec if duration_sec > 0 else 0.0
 
     return SpeechMetrics(
         available=True,
@@ -184,16 +215,20 @@ def _transcribe(video_path: Path, duration_sec: float, model_size: str) -> Speec
     except Exception as exc:
         print(f"[speech] warning — could not save SRT: {exc}", flush=True)
 
-    total_words        = 0
-    total_dialogue_sec = 0.0
+    total_words = 0
+    speech_intervals: list[tuple[float, float]] = []
     for seg in segments:
         start, end = seg.start, seg.end
         if end <= start or start >= duration_sec:
             continue
         end = min(end, duration_sec)
-        total_words        += _count_words(seg.text)
-        total_dialogue_sec += end - start
-    print(f"[speech] done — {total_words} words, {total_dialogue_sec:.1f}s dialogue", flush=True)
+        cleaned = strip_non_speech_cues(seg.text)
+        words = _count_words(cleaned)
+        if words:
+            total_words += words
+            speech_intervals.append((max(0.0, start), end))
+    total_dialogue_sec = _interval_union_duration(speech_intervals)
+    print(f"[speech] done — {total_words} words, {total_dialogue_sec:.1f}s timed text", flush=True)
 
     if total_dialogue_sec < 0.5:
         return SpeechMetrics(available=False, source="none")

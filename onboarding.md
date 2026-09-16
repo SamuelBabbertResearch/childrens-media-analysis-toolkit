@@ -4,9 +4,59 @@ Previously-on, for a session starting with zero memory. Read this, then
 `TODO.md`, then `DECISIONS.md` and `LEARNINGS.md`. `INDEX.md` points at
 everything else.
 
-**Last updated:** 2026-09-04 (research-credibility audit; Formal-Feature
-Composite terminology; the adult-only participant redesign, Clip Finder, and
-2026-08-29 rating-scale entries follow.)
+**Last updated:** 2026-09-16 (methodological audit implementation; the
+2026-09-04 research-credibility audit, Formal-Feature Composite terminology,
+adult-only participant redesign, Clip Finder, and rating-scale entries follow.)
+
+---
+
+## What changed on 2026-09-16: methodological audit implementation
+
+The audit recommendations are implemented where current evidence permits.
+Detector methods are split by estimand; cleaned word-bearing timed-text
+intervals are unioned; frame results persist source/requested/effective rates
+and integer intervals; formula-accurate labels are used; FFC input variants
+travel to reports and exports; the final partial audio window is retained; and
+language outputs carry preprocessing/status provenance with independently
+optional norm tables. Compatibility storage keys remain unchanged.
+
+The exact default ContentDetector pilot is now `content-t27-solo`: F1 0.753
+(29/5/14) over 0–300 s and 0.914 (69/1/12) over 0–320 s; pooled F1 0.860
+(98/6/26), type-agnostic within ±2 s, PRELIMINARY single coder. The 0.855
+figure remains the combined ContentDetector-plus-plateau configuration and is
+not attributed to ContentDetector alone.
+
+An isolated Python 3.12 `.venv` now contains the full requirements, PySide6
+6.8.3, `en_core_web_sm`, and bundled CMUdict data. Verification finished at
+**790 passed, 13 skipped**; skips require absent Little Bear media.
+
+### Audit record before implementation
+
+`METHODOLOGICAL_AUDIT_2026-09-16.md` now separates computational definition,
+reproducibility, criterion validation and construct validity for every shipped
+measure and method. It checked the implementations, registry, recipes,
+validation CSVs/manifests and focused primary literature. **No computation or
+cached result changed.**
+
+The overall finding is mixed but usable: the architecture is unusually honest
+and reproducible; several raw statistics are defensible when named exactly;
+only the transition detector has even preliminary criterion validation; and the
+FFC remains an underived researcher-configured index rather than a validated
+construct score.
+
+Four newly concrete problems are first in `TODO.md`: TransNetV2 changes the
+estimand behind `hard_cuts_per_min`; the 0.855 validation artefacts include the
+experimental dissolve pass although the status is attached to ContentDetector;
+caption-cue durations double-count overlaps and non-speech text; and requested
+frame sample rates can differ materially from the effective integer-step rate.
+The report also recommends formula-accurate raw labels and explains why missing
+audio makes a different composite rather than merely the same 0–1 scale.
+
+Verification limits matter: the stored validation artefacts were read and the
+headline number recomputed; a synthetic caption file reproduced the overlap
+defect. The complete suite did not run in this environment because one Python
+installation could not load QtCore and the other lacked OpenCV. That is recorded
+in the report rather than represented as a pass.
 
 ---
 

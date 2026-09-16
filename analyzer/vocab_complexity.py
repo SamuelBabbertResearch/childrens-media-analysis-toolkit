@@ -45,14 +45,19 @@ ZIPF_TIER3_LT = 3.0   # Tier 3 — rare / domain-specific
 # Bikini Bottom) are rare tokens that would falsely inflate Tier 3.
 _CONTENT_POS = {"NOUN", "VERB", "ADJ", "ADV"}
 
-# Non-speech patterns stripped before analysis
-_BRACKET_RE = re.compile(r'\[.*?\]', re.DOTALL)   # [MUSIC], [APPLAUSE]
-_PAREN_RE   = re.compile(r'\(.*?\)', re.DOTALL)   # (laughs), (gasps)
-_SPEAKER_RE = re.compile(r'\b[A-Z][A-Z ]{1,20}:\s*')  # NARRATOR:  LITTLE BEAR:
-
 # Minimum sizes below which formulas are unreliable
 _MIN_WORDS_FOR_READABILITY = 30
 _MIN_TOKENS_FOR_DIVERSITY  = 50
+
+# These labels travel with every language export. Published formulas/norms do
+# not validate CMAT's caption preprocessing or their use for spoken dialogue.
+LANGUAGE_MEASUREMENT_STATUS = {
+    "readability": "exploratory — written-prose formulas applied to timed text",
+    "word_frequency": "exploratory — CMAT content-lemma token policy",
+    "aoa": "exploratory — adult retrospective written-word norms; coverage required",
+    "concreteness": "exploratory — written-word norms; coverage required",
+    "mtld": "exploratory — content-lemma-only MTLD variant",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -106,43 +111,35 @@ def load_norms(norm_dir: Path = _NORM_DIR) -> NormTables:
       kuperman_aoa.csv           — columns: Word, AoA_Rating_Mean
       brysbaert_concreteness.csv — columns: Word, Conc.M
 
-    Raises FileNotFoundError with a clear message if either file is absent.
+    Each table is optional. A missing table yields no norm mean and zero
+    coverage, while frequency, readability, and diversity still run.
     """
     import pandas as pd
 
     aoa_path  = Path(norm_dir) / "kuperman_aoa.csv"
     conc_path = Path(norm_dir) / "brysbaert_concreteness.csv"
 
-    if not aoa_path.exists():
-        raise FileNotFoundError(
-            f"Kuperman AoA norms not found: {aoa_path}\n"
-            "Place kuperman_aoa.csv in data/norms/ relative to the project root.\n"
-            "Expected columns: Word, AoA_Rating_Mean"
-        )
-    if not conc_path.exists():
-        raise FileNotFoundError(
-            f"Brysbaert concreteness norms not found: {conc_path}\n"
-            "Place brysbaert_concreteness.csv in data/norms/ relative to the project root.\n"
-            "Expected columns: Word, Conc.M"
-        )
-
-    aoa_df  = pd.read_csv(aoa_path)
-    conc_df = pd.read_csv(conc_path)
-
-    aoa = {
-        str(row["Word"]).lower(): float(row["AoA_Rating_Mean"])
-        for _, row in aoa_df.iterrows()
-        if pd.notna(row.get("AoA_Rating_Mean"))
-    }
-    conc = {
-        str(row["Word"]).lower(): float(row["Conc.M"])
-        for _, row in conc_df.iterrows()
-        if pd.notna(row.get("Conc.M"))
-    }
+    aoa: dict[str, float] = {}
+    conc: dict[str, float] = {}
+    if aoa_path.exists():
+        aoa_df = pd.read_csv(aoa_path)
+        aoa = {
+            str(row["Word"]).lower(): float(row["AoA_Rating_Mean"])
+            for _, row in aoa_df.iterrows()
+            if pd.notna(row.get("AoA_Rating_Mean"))
+        }
+    if conc_path.exists():
+        conc_df = pd.read_csv(conc_path)
+        conc = {
+            str(row["Word"]).lower(): float(row["Conc.M"])
+            for _, row in conc_df.iterrows()
+            if pd.notna(row.get("Conc.M"))
+        }
 
     return NormTables(
         aoa=aoa, concreteness=conc,
-        aoa_path=str(aoa_path), conc_path=str(conc_path),
+        aoa_path=str(aoa_path) if aoa_path.exists() else "not installed",
+        conc_path=str(conc_path) if conc_path.exists() else "not installed",
         aoa_n=len(aoa), conc_n=len(conc),
     )
 
@@ -152,11 +149,9 @@ def load_norms(norm_dir: Path = _NORM_DIR) -> NormTables:
 # ---------------------------------------------------------------------------
 
 def _strip_non_speech(text: str) -> str:
-    """Remove bracketed/parenthetical stage directions and speaker labels."""
-    text = _BRACKET_RE.sub(' ', text)
-    text = _PAREN_RE.sub(' ', text)
-    text = _SPEAKER_RE.sub(' ', text)
-    return re.sub(r'  +', ' ', text).strip()
+    """Compatibility wrapper around the shared caption-cleaning authority."""
+    from .speech import strip_non_speech_cues
+    return strip_non_speech_cues(text)
 
 
 # ---------------------------------------------------------------------------
@@ -327,6 +322,11 @@ class VocabResult:
             "status":              self.status,
             "word_count":          self.word_count,
             "content_token_count": self.content_token_count,
+            "readability_status": LANGUAGE_MEASUREMENT_STATUS["readability"],
+            "word_frequency_status": LANGUAGE_MEASUREMENT_STATUS["word_frequency"],
+            "aoa_status": LANGUAGE_MEASUREMENT_STATUS["aoa"],
+            "concreteness_status": LANGUAGE_MEASUREMENT_STATUS["concreteness"],
+            "mtld_status": LANGUAGE_MEASUREMENT_STATUS["mtld"],
         }
         row.update({f"read_{k}":  v for k, v in self.readability.items()})
         row.update({f"vocab_{k}": v for k, v in self.vocabulary.items()})
@@ -371,6 +371,7 @@ def _build_manifest(
             "tier2_ge": ZIPF_TIER2_GE,
             "tier3_lt": ZIPF_TIER3_LT,
         },
+        "measurement_status": LANGUAGE_MEASUREMENT_STATUS,
         "preprocessing_steps": [
             "timestamps and SRT sequence numbers stripped",
             "bracketed cues stripped (e.g. [MUSIC], [APPLAUSE])",

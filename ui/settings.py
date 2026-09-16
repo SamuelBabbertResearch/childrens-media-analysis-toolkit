@@ -40,14 +40,14 @@ FIELD_W = 44          # .form-row-dense input width
 WEIGHT_LABEL = {
     "pacing": "Pacing", "saturation": "Saturation",
     "color_contrast": "Contrast", "motion": "Motion",
-    "flashing": "Flashing", "audio": "Audio",
+    "flashing": "Luminance change", "audio": "Linear RMS amplitude",
 }
 CEILING_LABEL = {
     "cuts_per_min": "Cuts/min max",
     "color_saturation_mean": "Saturation max",
-    "color_contrast_mean": "Contrast max",
-    "motion_mean": "Motion max",
-    "flashing_events_per_min": "Flashing max",
+    "color_contrast_mean": "HSV-value dispersion max",
+    "motion_mean": "Frame-change max",
+    "flashing_events_per_min": "Luminance-change rate max",
     "audio_rms_mean": "Audio RMS max",
 }
 

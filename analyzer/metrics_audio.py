@@ -1,8 +1,8 @@
 """
-Audio loudness metrics via FFmpeg.
+Linear audio-amplitude metrics via FFmpeg.
 
 Extracts mono PCM audio through FFmpeg (assumed on PATH), then computes
-windowed RMS loudness to capture both overall intensity and temporal variation.
+windowed RMS amplitude to capture both overall level and temporal variation.
 
 WHAT IS COMPUTED. The track is downmixed to mono and RESAMPLED TO 8 kHz before
 any measurement, so everything below is amplitude on a band-limited signal, not
@@ -161,17 +161,21 @@ def _extract_audio(
 
 def _compute_from_samples(audio: np.ndarray) -> AudioMetrics:
     window_samples = max(1, int(_WINDOW_SEC * _SAMPLE_RATE))
-    n_windows = max(1, len(audio) // window_samples)
+    # Include a final non-empty partial window. Discarding it made the answer
+    # depend on whether duration happened to be an exact whole second.
+    n_windows = max(1, (len(audio) + window_samples - 1) // window_samples)
 
     rms_values = np.array([
-        float(np.sqrt(np.mean(audio[i * window_samples:(i + 1) * window_samples] ** 2)))
+        float(np.sqrt(np.mean(
+            audio[i * window_samples:min(len(audio), (i + 1) * window_samples)] ** 2
+        )))
         for i in range(n_windows)
     ])
 
     mean_rms = float(np.mean(rms_values))
     peak_rms = float(np.max(rms_values))
 
-    # Dynamic range: ratio of peak to mean in dB (0 if silent)
+    # Peak-to-mean windowed-RMS ratio in dB (0 if silent). This is not LRA.
     if mean_rms > 1e-9:
         dynamic_range_db = float(20 * np.log10(peak_rms / mean_rms))
     else:

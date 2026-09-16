@@ -79,7 +79,7 @@ def test_deterministic_carries_no_ungraded_warning_and_no_validity_claim():
     assert "Motion" not in flagged
     assert "Audio loudness" not in flagged
     # ...and the genuinely ungraded ones still are.
-    assert "Flashing" in flagged
+    assert "Whole-frame luminance-change events" in flagged
     # ...and the prose label never claims validation.
     label = M.STATUS_LABEL[M.DETERMINISTIC]
     assert "validated" not in label

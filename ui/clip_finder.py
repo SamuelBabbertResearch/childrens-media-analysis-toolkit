@@ -59,8 +59,8 @@ DIALOG_H = 800
 FEATURE_UI: dict[str, tuple[str, str, int, float]] = {
     # feature: (label, unit shown after the value, decimals, single step)
     "cuts":   ("Cuts per minute", "cuts/min", 2, 1.0),
-    "motion": ("Motion mean", "", 4, 0.005),
-    "audio":  ("Audio RMS mean", "", 4, 0.005),
+    "motion": ("Sampled-frame grayscale change", "", 4, 0.005),
+    "audio":  ("Mean 1-s linear RMS amplitude", "", 4, 0.005),
 }
 
 LEVEL_CHOICES = (("", "Any"),) + tuple((lv, lv.capitalize()) for lv in LEVELS)

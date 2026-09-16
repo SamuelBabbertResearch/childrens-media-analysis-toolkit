@@ -18,6 +18,17 @@ project got its shape) · [Product identity](#product-identity) ·
 
 ---
 
+### Formula-accurate measures keep compatibility keys; FFC variants remain distinct
+**Decision.** Display raw observables by their formulas while retaining legacy
+storage keys. Keep historical missing-audio redistribution, but persist and
+display `audio_visual` versus `visual_only_audio_unavailable` as different FFC
+input variants. TransNetV2 binds all-transition boundaries; ContentDetector and
+AdaptiveDetector bind hard-cut boundaries. **Reason.** Renaming keys would break
+old caches, while silently treating different estimands or five- and six-input
+composites as interchangeable would break scientific comparability. **Date.**
+2026-09-16. **Rejected.** Silently replacing historical FFC arithmetic; calling
+TransNetV2 a hard-cut method; treating matching 0–1 bounds as invariance.
+
 ## Foundations (June – August 2026)
 
 The decisions that gave the project its shape, in the order they were made.

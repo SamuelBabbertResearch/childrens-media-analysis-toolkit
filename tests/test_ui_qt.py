@@ -544,17 +544,18 @@ def test_every_tk_only_screen_is_now_in_qt():
 
 
 def test_speech_is_never_reported_without_density():
-    """WPM divides by dialogue time, so alone it invites the wrong reading.
+    """Timed-text rate is never reported without its runtime density.
 
     CLAUDE.md §2.2: "Words per minute is reported with speech density, or not
     at all." Both the column and the explanation are pinned here.
     """
     from ui import language
     headers = [h for h, _w, _r in language.SPEECH_COLUMNS]
-    assert "Words per minute" in headers
-    assert "Speech density" in headers
+    assert "Words per timed-text minute" in headers
+    assert "Timed-text density" in headers
     note = inspect.getsource(language.SpeechView._write_note)
-    assert "DIALOGUE time, not runtime" in note
+    assert "not independently" in note
+    assert "articulation time" in note
 
 
 def test_the_sampler_uses_the_engine_s_own_explanations():

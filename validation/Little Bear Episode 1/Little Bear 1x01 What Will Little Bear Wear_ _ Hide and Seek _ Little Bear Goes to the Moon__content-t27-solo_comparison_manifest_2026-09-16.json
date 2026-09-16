@@ -1,0 +1,15 @@
+{
+  "date": "2026-09-16",
+  "git_commit": "a50063a-dirty",
+  "detections_file": "Little Bear 1x01 What Will Little Bear Wear_ _ Hide and Seek _ Little Bear Goes to the Moon__content-t27-solo_detections.csv",
+  "manual_file": "Little Bear 1x01_manual.csv",
+  "tolerance_sec": 2.0,
+  "window": [
+    0.0,
+    320.0
+  ],
+  "n_detections": 70,
+  "n_manual": 81,
+  "count_ratio": 0.8642,
+  "signed_relative_count_error": -0.1358
+}

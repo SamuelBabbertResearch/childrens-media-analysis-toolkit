@@ -150,9 +150,9 @@ def _axes(figure):
 
 
 class SpeechChartDialog(QDialog):
-    """Words per minute per episode, with speech density beside it.
+    """Words per timed-text minute, with timed-text density beside it.
 
-    The two are plotted together on purpose. WPM divides by dialogue time, so
+    The two are plotted together on purpose. WPM divides by timed-text time, so
     a fast-talking episode with very little dialogue and a chatty one can sit
     at the same height; the density series is what tells them apart. A WPM
     chart on its own is the misreading `CLAUDE.md` §2.2 names.
@@ -177,14 +177,14 @@ class SpeechChartDialog(QDialog):
         axes = _axes(figure)
         axes.bar(labels, [r["wpm"] for r in ordered],
                  color=BAND_COLORS[0], edgecolor="white", linewidth=0.5,
-                 label="Words per minute (of dialogue time)")
-        axes.set_ylabel("Words per minute", fontsize=9)
+                 label="Words per timed-text minute")
+        axes.set_ylabel("Words per timed-text minute", fontsize=9)
 
         density = axes.twinx()
         density.plot(labels, [r["density"] for r in ordered], marker="o",
                      markersize=3.5, linewidth=1.2, color=BAND_COLORS[4],
-                     label="Speech density (fraction of runtime)")
-        density.set_ylabel("Speech density", fontsize=9)
+                     label="Timed-text density (fraction of runtime)")
+        density.set_ylabel("Timed-text density", fontsize=9)
         density.set_ylim(0, 1)
         density.spines["top"].set_visible(False)
         density.tick_params(axis="y", labelsize=8)

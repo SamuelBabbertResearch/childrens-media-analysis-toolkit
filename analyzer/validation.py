@@ -857,6 +857,50 @@ def type_confusion(results: list[dict],
 
 # ── Compare ───────────────────────────────────────────────────────────────────
 
+def derive_detection_subset(
+    source_path: Path,
+    output_path: Path,
+    *,
+    event_type: str,
+) -> tuple[Path, Path]:
+    """Write an auditable type-filtered detection artefact and manifest.
+
+    This separates a component's unchanged outputs from a historical combined
+    run. It does not rerun or reinterpret the detector: the manifest records
+    the source artefact, filter, row counts, and content hash.
+    """
+    import hashlib
+
+    with source_path.open(newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        fieldnames = list(reader.fieldnames or [])
+        source_rows = list(reader)
+    if "type" not in fieldnames:
+        raise ValueError(f"Detection artefact has no type column: {source_path}")
+    selected = [row for row in source_rows if row.get("type") == event_type]
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(selected)
+
+    manifest = {
+        "date": str(date.today()),
+        "git_commit": _git_commit(),
+        "derivation": "exact row subset; detector was not rerun",
+        "source_file": source_path.name,
+        "source_sha256": hashlib.sha256(source_path.read_bytes()).hexdigest(),
+        "filter": {"type": event_type},
+        "source_rows": len(source_rows),
+        "output_rows": len(selected),
+    }
+    manifest_path = output_path.with_name(
+        output_path.name.replace("_detections.csv", "_manifest.json"))
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return output_path, manifest_path
+
+
 def compare_detections(
     det_path: Path,
     manual_path: Path,

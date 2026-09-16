@@ -187,6 +187,10 @@ def export_episode_pdf(result: "EpisodeResult", cfg: dict, dest: Path) -> None:
     story.append(Paragraph(f"{m.sensory_load.score:.3f}", S["score"]))
     story.append(Paragraph(
         "Configurable 0–1 composite; not a viewer-effect measure.", S["dim"]))
+    variant = m.sensory_load.input_variant or "legacy (not recorded)"
+    story.append(Paragraph(
+        "FFC input variant: " + variant.replace("_", " ")
+        + ". Treat each input variant as a different composite.", S["dim"]))
     if not m.sensory_load.audio_available:
         story.append(Paragraph("[Visual only — no audio track]", S["dim"]))
     story.append(Spacer(1, 6))
@@ -199,7 +203,7 @@ def export_episode_pdf(result: "EpisodeResult", cfg: dict, dest: Path) -> None:
         ("Saturation", c.saturation, cfg_w.get("saturation",     0.05), "saturation"),
         ("Contrast",   c.contrast,   cfg_w.get("color_contrast", 0.10), "color_contrast"),
         ("Motion",     c.motion,     cfg_w.get("motion",         0.25), "motion"),
-        ("Flashing",   c.flashing,   cfg_w.get("flashing",       0.15), "flashing"),
+        ("Luminance change", c.flashing, cfg_w.get("flashing", 0.15), "flashing"),
         ("Audio",      c.audio,      cfg_w.get("audio",          0.20), "audio"),
     ]
     for label, val, wt, _ in component_data:
@@ -240,19 +244,20 @@ def export_episode_pdf(result: "EpisodeResult", cfg: dict, dest: Path) -> None:
         ["Shot-length CV (rhythm)",   f"{sp.shot_length_cv:.3f}"],
         ["Color saturation mean",     f"{cs.mean:.3f}"],
         ["Color saturation variance", f"{cs.temporal_var:.4f}"],
-        ["Color contrast mean",       f"{cs.contrast_mean:.3f}"],
-        ["Motion mean",               f"{mo.mean:.4f}"],
-        ["Motion peak",               f"{mo.peak:.4f}"],
-        ["Flashing events / min",     f"{fl.luminance_delta_events_per_min:.2f}"],
+        ["Spatial HSV-value dispersion", f"{cs.contrast_mean:.3f}"],
+        ["Sampled-frame grayscale change mean", f"{mo.mean:.4f}"],
+        ["Sampled-frame grayscale change peak", f"{mo.peak:.4f}"],
+        ["Whole-frame luminance-change events / min",
+         f"{fl.luminance_delta_events_per_min:.2f}"],
     ]
     if au.available:
         detail_rows += [
-            ["Audio RMS mean",        f"{au.rms_mean:.4f}"],
-            ["Audio RMS peak",        f"{au.rms_peak:.4f}"],
-            ["Dynamic range",         f"{au.dynamic_range_db:.1f} dB"],
+            ["Mean 1-s linear RMS amplitude (8 kHz mono)", f"{au.rms_mean:.4f}"],
+            ["Peak 1-s linear RMS amplitude (8 kHz mono)", f"{au.rms_peak:.4f}"],
+            ["Peak-to-mean 1-s RMS ratio", f"{au.dynamic_range_db:.1f} dB"],
         ]
     else:
-        detail_rows.append(["Audio loudness", "n/a"])
+        detail_rows.append(["Linear RMS amplitude", "n/a"])
     story.append(_tbl(detail_rows, [3.2*inch, 2.4*inch]))
     story.append(Spacer(1, 10))
 
@@ -306,12 +311,12 @@ def export_show_pdf(
     agg_rows.append(["Cuts / min"]         + _s(agg.cuts_per_min))
     agg_rows.append(["Shot length mean (s)"]+ _s(agg.shot_length_mean_sec))
     agg_rows.append(["Color saturation"]   + _s(agg.color_saturation_mean))
-    agg_rows.append(["Motion mean"]        + _s(agg.motion_mean))
-    agg_rows.append(["Flashing events/min"]+ _s(agg.flashing_events_per_min))
+    agg_rows.append(["Sampled-frame grayscale change"] + _s(agg.motion_mean))
+    agg_rows.append(["Whole-frame luminance-change events/min"] + _s(agg.flashing_events_per_min))
     if agg.audio_rms_mean.mean > 0:
-        agg_rows.append(["Audio RMS mean"]  + _s(agg.audio_rms_mean))
+        agg_rows.append(["Mean 1-s linear RMS amplitude"] + _s(agg.audio_rms_mean))
     else:
-        agg_rows.append(["Audio RMS mean", "n/a", "n/a", "n/a", "n/a", "n/a"])
+        agg_rows.append(["Mean 1-s linear RMS amplitude", "n/a", "n/a", "n/a", "n/a", "n/a"])
     cw2 = [2.4*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.8*inch]
     story.append(_tbl(agg_rows, cw2))
     story.append(Spacer(1, 10))

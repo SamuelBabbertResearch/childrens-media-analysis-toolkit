@@ -1804,6 +1804,53 @@ failure mode, and it looks identical to a measurement failure.
 
 ## Tooling and process
 
+### A test fixture carried a developer's absolute research-library path
+
+**2026-09-16.** The complete suite failed because a sampler UI fixture pointed
+at `C:\Users\Samuel\...\Shows\Arthur`. The test was described as touching no
+working-copy data, yet it depended on a private machine path and failed on a
+clean checkout. It now builds an `Arthur` directory under `tmp_path`.
+**Avoid:** fixtures must create the filesystem state they claim to test; a path
+literal is not test data, and a developer library is never a fixture.
+
+### A selectable method changed the estimand behind one field
+
+**2026-09-16.** `hard_cuts_per_min` said every automated method produced
+instantaneous boundaries. TransNetV2 is offered under that measure while the
+registry and the validation artefacts credit it with gradual transitions. The
+method menu therefore changed *what was counted* without changing the field
+name. A fingerprint made the runs distinguishable but did not make the
+quantities comparable. **Avoid:** define the estimand before listing methods;
+every method under one measure must be able to produce that same quantity.
+
+### Validation belonged to a pipeline configuration, not one component
+
+**2026-09-16.** The published 0.855 boundary F1 is reproducible from artefacts
+named `content-t27-diss`: ContentDetector plus the experimental plateau pass.
+The registry attached that evidence to ContentDetector alone, while the shipped
+default disables the pass. The number was right and the attribution was not.
+**Avoid:** grade and status the exact executable configuration, including every
+enabled secondary pass; never let evidence for a pipeline leak onto one part.
+
+### Caption intervals were added when they needed a union
+
+**2026-09-16.** Speech density and the WPM denominator sum each subtitle cue's
+duration. Overlapping cues count the same clock time twice, and clipping the
+final fraction to 1.0 hides the over-count. The speech path also counts bracketed
+sound cues and speaker labels that the vocabulary path removes. **Avoid:** test
+temporal measures with overlapping intervals and route shared preprocessing
+through one function. A format timestamp is not automatically a construct
+timestamp: caption-display time still needs validation before it is called
+dialogue time.
+
+### A requested sample rate was not the executed sample rate
+
+**2026-09-16.** `round(video_fps / sample_fps)` converts a requested temporal
+rate to an integer frame interval. At 24 fps, requested 10 fps becomes 12 fps;
+at 25 fps it becomes 12.5 fps. Provenance records the request, not that executed
+rate. **Avoid:** when discretization is part of a method, persist both the
+requested value and the realized value, and test awkward source frame rates.
+
 ### A patch script failed silently and the work looked done
 **What.** `ConfirmDialog` was imported but never called; the old message box
 was still live. Caught only because a test hung on the real modal dialog.

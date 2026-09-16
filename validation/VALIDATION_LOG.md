@@ -15,6 +15,24 @@ Entry format:
 
 ---
 
+## 2026-09-16 — default ContentDetector isolated from the plateau pass
+
+- Derived `content-t27-solo` detection artefacts as exact `type == hard_cut`
+  subsets of the stored `content-t27-diss` artefacts. Each derivation manifest
+  records the source filename, SHA-256, filter, and row counts; the detector was
+  not rerun and its outputs were not altered.
+- Scored with `analyzer.validation.compare_detections()`, type-agnostically
+  within ±2 s, on the pre-existing windows: Charlie Brown 0–300 s and Little
+  Bear 0–320 s. Hand coding is whole-second, approximately 0.55 s early,
+  PRELIMINARY and single-coder.
+- Charlie Brown: TP 29, FP 5, FN 14, precision 0.853, recall 0.674, F1 0.753.
+- Little Bear: TP 69, FP 1, FN 12, precision 0.986, recall 0.852, F1 0.914.
+- Pooled: TP 98, FP 6, FN 26, F1 0.860. Published rounded headline becomes
+  **0.86**, episode range **0.75–0.91**.
+- The earlier pooled 0.855 (103/14/21) is retained as evidence for the combined
+  `content-t27-diss` configuration only. It is superseded as an estimate of the
+  default ContentDetector configuration, not erased.
+
 ## 2026-08-15 — CORPUS CORRECTION: 66 duplicate episodes removed; one show-level figure was double-counted
 
 **What was done.** While building the research-context feature, the library was

@@ -306,7 +306,7 @@ def test_pinning_a_method_the_config_does_not_select_uses_that_methods_defaults(
     TransNetV2; copying one tool's numbers onto another pins a value that never
     applied."""
     recipe = R.new_recipe("x", "pacing", config,
-                          measures=[("hard_cuts_per_min",
+                          measures=[("transitions_per_min",
                                      "auto:transitions:transnetv2")])
     assert recipe.bindings[0].parameters["threshold"] == 0.5
 

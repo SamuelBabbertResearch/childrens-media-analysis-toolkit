@@ -46,7 +46,7 @@ from typing import Any
 
 # Release string for the toolkit as a whole. Bump on a release; the commit
 # below is what pins an individual run.
-__version__ = "1.2.1"
+__version__ = "1.3.0"
 
 CMAT_VERSION = __version__
 
@@ -58,7 +58,9 @@ CMAT_VERSION = __version__
 #      JSON exports; `results_to_dataframe` gained speech, error, fingerprint
 #      and per-metric availability columns, and returns empty rather than zero
 #      for a failed episode.
-EXPORT_SCHEMA = 2
+#   3  2026-09-16 — effective frame-sampling rates and the FFC input variant
+#      travel with exports; caption rates use cleaned text and interval unions.
+EXPORT_SCHEMA = 3
 
 _NOT_A_CHECKOUT = "unavailable (not a git checkout)"
 

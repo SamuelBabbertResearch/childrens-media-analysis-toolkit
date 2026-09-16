@@ -68,10 +68,20 @@ def test_aggregate_to_dict_has_all_fields():
 
 def test_results_to_dataframe_columns():
     results = [_fake_result("ep1.mp4", 10, 0.3, 0.05, 2.0, 0.2)]
+    results[0].metrics.motion.source_fps = 24.0
+    results[0].metrics.motion.requested_sample_fps = 10.0
+    results[0].metrics.motion.effective_sample_fps = 12.0
+    results[0].metrics.motion.frame_interval = 2
+    results[0].metrics.flashing.source_fps = 24.0
+    results[0].metrics.sensory_load.input_variant = "audio_visual"
     df = results_to_dataframe(results)
     assert "file" in df.columns
     assert "sensory_load_score" in df.columns
     assert "cuts_per_min" in df.columns
+    assert df.loc[0, "frame_effective_sample_fps"] == 12.0
+    assert df.loc[0, "frame_interval"] == 2
+    assert df.loc[0, "flashing_source_fps"] == 24.0
+    assert df.loc[0, "ffc_input_variant"] == "audio_visual"
     assert len(df) == 1
 
 

@@ -38,14 +38,18 @@ from typing import Any
 #
 # RESOLVED 2026-08-14 by recomputing from the comparison CSVs on disk. The
 # constants below are current. They cover TWO episodes scored against the
-# SHIPPED detector (`content-t27-diss`), ALL row, type-agnostic boundary
+# SHIPPED detector (`content-t27-solo`), ALL row, type-agnostic boundary
 # matching at +/-2s:
 #
-#   A Charlie Brown Christmas 1965   TP  32 FP 10 FN 11  -> F1 0.753
-#   Little Bear 1x01                 TP  71 FP  4 FN 10  -> F1 0.910
-#   pooled                           TP 103 FP 14 FN 21  -> F1 0.855
+#   A Charlie Brown Christmas 1965   TP 29 FP 5 FN 14  -> F1 0.753
+#   Little Bear 1x01                 TP 69 FP 1 FN 12  -> F1 0.914
+#   pooled                           TP 98 FP 6 FN 26   -> F1 0.860
 #
-# That is the 0.75-0.91 range and the 0.85 aggregate exactly. TransNetV2
+# That is the 0.75-0.91 range and the 0.86 aggregate. These solo artefacts are
+# exact hard_cut-row subsets of the historical content-t27-diss artefacts, so
+# they preserve ContentDetector's outputs while removing the plateau pass.
+# The combined configuration remains F1 0.855 and is not attributed to the
+# detector alone. TransNetV2
 # (`transnet-t0.5-solo`) scores 0.902 / 0.942, pooled 0.928, and is reported
 # separately - never blended into these.
 #
@@ -62,20 +66,20 @@ from typing import Any
 # really exist (0.841 / 0.964). A name pointing at a real but different number
 # is worse than a vague one — a reader has no way to notice.
 REFERENCE_BOUNDARY_F1_RANGE = "0.75–0.91"
-REFERENCE_BOUNDARY_F1_AGG = "0.85"
+REFERENCE_BOUNDARY_F1_AGG = "0.86"
 
 # What those numbers are, in one string, so no consumer has to infer it from a
 # field name. Exported alongside the figure for exactly that reason.
 REFERENCE_BOUNDARY_F1_BASIS = (
     "transition-boundary detection, ALL row (every coded transition type), "
-    "matched type-agnostically within ±2 s, detector content-t27-diss, "
+    "matched type-agnostically within ±2 s, detector content-t27-solo, "
     "2 episodes scored over their FIRST ~5 MINUTES ONLY (0–300 s and 0–320 s; "
     "~10 min of video in total), hand coding quantised to whole seconds and "
     "biased ~0.55 s early, single coder, PRELIMINARY")
 
 
 def local_boundary_f1(validation_dir: Path | None = None,
-                      detector_tag: str = "content") -> tuple[str, int] | None:
+                      detector_tag: str = "content-t27-solo") -> tuple[str, int] | None:
     """Live boundary-detection F1 for one detector, from local comparison CSVs.
 
     Filtered to a single detector configuration: aggregating across detectors
@@ -100,12 +104,10 @@ def local_boundary_f1(validation_dir: Path | None = None,
     # Match the detector config by parsed tag, and take only the newest run per
     # episode — substring matching on filenames merged different thresholds and
     # double-counted reruns.
-    tags = [t for t in available_detector_tags(vdir) if t.startswith(detector_tag)]
-    if not tags:
+    tags = set(available_detector_tags(vdir))
+    if detector_tag not in tags:
         return None
-    files: list[Path] = []
-    for t in tags:
-        files.extend(_latest_comparisons(vdir, detector_tag=t))
+    files = _latest_comparisons(vdir, detector_tag=detector_tag)
 
     tp = fp = fn = 0
     n_files = 0
@@ -295,7 +297,7 @@ def validation_dict(validation_dir: Path | None = None) -> dict[str, Any]:
         "boundary_f1_basis": (
             f"transition-boundary detection, ALL row (every coded transition "
             f"type), matched type-agnostically within ±2 s, detector "
-            f"content-t27-diss, pooled over {live[1]} comparison run(s) in "
+            f"content-t27-solo, pooled over {live[1]} comparison run(s) in "
             f"this install — each scored over a WINDOW recorded in its own "
             f"comparison manifest, not necessarily a whole episode; hand "
             f"coding may be quantised to whole seconds, single coder, "

@@ -110,6 +110,8 @@ def compute_sensory_load(
     return SensoryLoadMetrics(
         score=round(_clamp01(score), 4),
         audio_available=audio_available,
+        input_variant=("audio_visual" if audio_available
+                       else "visual_only_audio_unavailable"),
         components=SensoryLoadComponents(
             pacing=round(n_pacing, 4),
             saturation=round(n_saturation, 4),
