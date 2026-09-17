@@ -1043,6 +1043,21 @@ def test_chart_plots_components_not_the_composite_alone():
         assert weight_key in weights, weight_key
 
 
+def test_chart_bars_use_one_collection_per_series():
+    """Large episode sets must not create one Matplotlib artist per bar."""
+    from matplotlib.figure import Figure
+    from ui.chart import _bar_series
+
+    axes = Figure().add_subplot(111)
+    tops = _bar_series(
+        axes, [f"ep{i}" for i in range(200)], [0.2] * 200,
+        label="Pacing", color="#4e79a7")
+
+    assert len(tops) == 200
+    assert len(axes.collections) == 1
+    assert len(axes.patches) == 0
+
+
 # ---------------------------------------------------------------------------
 # Sending a Library selection to another tab
 # ---------------------------------------------------------------------------

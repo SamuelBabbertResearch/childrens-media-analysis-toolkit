@@ -26,9 +26,6 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 
-import cv2
-import numpy as np
-
 # PySceneDetect is imported inside load_hard_cuts, not here. It costs ~0.64s to
 # load and is needed only when detection actually runs, but this module is
 # reached from analyzer.pipeline (via trials) while the interface builds its
@@ -36,8 +33,6 @@ import numpy as np
 # The optional TransNetV2 detector in the same function is deferred for the
 # same reason.
 
-from .metrics_cuts import (_compute_frame_scores, _find_dissolves,
-                           classify_cut_transitions)
 from .config_loader import _base_dir
 from .version import git_commit as version_git_commit
 
@@ -514,6 +509,9 @@ def load_frame_scores(
     progress_cb: Callable[[float], None] | None = None,
     status_cb: Callable[[str], None] | None = None,
 ) -> list[tuple[float, float]]:
+    import numpy as np
+    from .metrics_cuts import _compute_frame_scores
+
     vdir = validation_dir or get_validation_dir()
     cache = vdir / f"{video_path.stem}_framescores.npz"
     if use_cache:
@@ -604,6 +602,8 @@ def export_detections(
     status_cb: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Run detection and write detections CSV + manifest. Returns paths/counts."""
+    from .metrics_cuts import _find_dissolves
+
     vdir = episode_dir(video_path, validation_dir)
     vdir.mkdir(parents=True, exist_ok=True)
     stem = video_path.stem
@@ -1046,6 +1046,8 @@ def run_sweep(
     status_cb: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Grid-search noise_floor x min_frames against manual coding (uses caches)."""
+    from .metrics_cuts import _find_dissolves
+
     vdir = episode_dir(video_path, validation_dir)
     floors = floors or [2.0, 3.0, 4.0, 5.0]
     frames = frames or [8, 12, 15, 20]
@@ -1135,6 +1137,9 @@ def classify_cuts_for_video(
     eyeballed side-by-side with the manual coding notes ("back to mama bear"
     vs "new scene…") — that comparison is the classifier's validation path.
     """
+    import cv2
+    from .metrics_cuts import classify_cut_transitions
+
     vdir = episode_dir(video_path, validation_dir)
     cut_times = load_hard_cuts(video_path, detector, threshold, vdir,
                                use_cache=True, status_cb=status_cb)
@@ -1232,6 +1237,9 @@ def grade_cut_classifier(
     threshold reporting accuracy + Cohen's kappa at each, plus the confusion
     matrix at the best (max-kappa) threshold.
     """
+    import cv2
+    from .metrics_cuts import classify_cut_transitions
+
     vdir = episode_dir(video_path, validation_dir)
     cut_times = load_hard_cuts(video_path, detector, threshold, vdir,
                                use_cache=True, status_cb=status_cb)

@@ -123,16 +123,8 @@ def _extract_audio(
     Run FFmpeg to decode audio as 8 kHz mono float32 PCM piped to stdout.
     Returns None if the file has no audio stream.
     """
-    # Fast probe: ffmpeg -i reads only container headers and exits immediately.
-    # (No output file specified → exits with error, but stderr has stream info.)
-    probe = subprocess.run(
-        [ffmpeg_exe(), "-i", str(video_path)],
-        capture_output=True, text=True, timeout=15, **_NO_WINDOW,
-    )
-    if "Audio:" not in probe.stderr:
-        logger.info("No audio stream in %s", video_path.name)
-        return None
-
+    # Decode directly. FFmpeg itself reports a missing audio stream; probing
+    # first only duplicated process startup and container parsing.
     command = [ffmpeg_exe()]
     if start_sec > 0:
         command.extend(["-ss", f"{start_sec:.6f}"])
@@ -153,9 +145,18 @@ def _extract_audio(
         timeout=300, **_NO_WINDOW,
     )
     if result.returncode != 0:
-        raise RuntimeError(result.stderr.decode(errors="replace")[-300:])
+        detail = result.stderr.decode(errors="replace")
+        lowered = detail.lower()
+        if ("does not contain any stream" in lowered
+                or "matches no streams" in lowered
+                or "no audio" in lowered):
+            logger.info("No audio stream in %s", video_path.name)
+            return None
+        raise RuntimeError(detail[-300:])
 
     raw = np.frombuffer(result.stdout, dtype=np.int16)
+    if not len(raw):
+        return None
     return raw.astype(np.float32) / 32768.0
 
 

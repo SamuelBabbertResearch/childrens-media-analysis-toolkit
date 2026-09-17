@@ -42,6 +42,42 @@ BAND_COLORS = ("#4e79a7", "#76b7b2", "#8cd17d", "#f1ce63", "#e15759",
                "#b07aa1")
 
 
+def _bar_series(axes, labels, values, *, bottoms=None, label="", color=""):
+    """Add many bars as one collection instead of one Artist per bar.
+
+    ``Axes.bar`` creates a Python Rectangle for every episode and component.
+    The FFC chart therefore built 1,200 artists for 200 episodes.  A
+    PolyCollection keeps the same rectangular geometry, colours and legend
+    semantics with one artist per series.
+    """
+    import numpy as np
+    from matplotlib.collections import PolyCollection
+
+    count = len(values)
+    if not count:
+        axes.set_xticks([])
+        return []
+    x = np.arange(count, dtype=float)
+    low = np.asarray(bottoms if bottoms is not None else [0.0] * count,
+                     dtype=float)
+    high = low + np.asarray(values, dtype=float)
+    left, right = x - 0.4, x + 0.4
+    vertices = np.stack((
+        np.column_stack((left, low)),
+        np.column_stack((left, high)),
+        np.column_stack((right, high)),
+        np.column_stack((right, low)),
+    ), axis=1)
+    collection = PolyCollection(
+        vertices, facecolors=color, edgecolors="white", linewidths=0.5,
+        label=label)
+    axes.add_collection(collection)
+    axes.set_xlim(-0.5, count - 0.5)
+    axes.set_xticks(x, labels)
+    axes.autoscale_view(scalex=False, scaley=True)
+    return high.tolist()
+
+
 class ChartDialog(QDialog):
     """Per-episode Formal-Feature Composite composition for one show."""
 
@@ -81,10 +117,9 @@ class ChartDialog(QDialog):
             values = [getattr(r.metrics.sensory_load.components, attribute)
                       * w.get(weight_key, 0.0)
                       for r, w in zip(ok, per_episode)]
-            axes.bar(labels, values, bottom=bottoms, label=label,
-                     color=BAND_COLORS[index], edgecolor="white",
-                     linewidth=0.5)
-            bottoms = [b + v for b, v in zip(bottoms, values)]
+            bottoms = _bar_series(
+                axes, labels, values, bottoms=bottoms, label=label,
+                color=BAND_COLORS[index])
 
         axes.set_ylabel("FFC score (configurable 0–1 composite)",
                         fontsize=9)
@@ -175,13 +210,13 @@ class SpeechChartDialog(QDialog):
         figure = Figure(figsize=(8.8, 4.6), dpi=100,
                         facecolor=COLORS["panel_bg"])
         axes = _axes(figure)
-        axes.bar(labels, [r["wpm"] for r in ordered],
-                 color=BAND_COLORS[0], edgecolor="white", linewidth=0.5,
-                 label="Words per timed-text minute")
+        _bar_series(
+            axes, labels, [r["wpm"] for r in ordered],
+            color=BAND_COLORS[0], label="Words per timed-text minute")
         axes.set_ylabel("Words per timed-text minute", fontsize=9)
 
         density = axes.twinx()
-        density.plot(labels, [r["density"] for r in ordered], marker="o",
+        density.plot(range(len(labels)), [r["density"] for r in ordered], marker="o",
                      markersize=3.5, linewidth=1.2, color=BAND_COLORS[4],
                      label="Timed-text density (fraction of runtime)")
         density.set_ylabel("Timed-text density", fontsize=9)
@@ -246,10 +281,9 @@ class VocabChartDialog(QDialog):
             bottoms = [0.0] * len(rows)
             for index, (key, label) in enumerate(TIER_SERIES):
                 values = [(r.get(key) or 0.0) for r in rows]
-                axes.bar(labels, values, bottom=bottoms, label=label,
-                         color=BAND_COLORS[index], edgecolor="white",
-                         linewidth=0.5)
-                bottoms = [b + v for b, v in zip(bottoms, values)]
+                bottoms = _bar_series(
+                    axes, labels, values, bottoms=bottoms, label=label,
+                    color=BAND_COLORS[index])
             axes.set_ylabel("Share of content words", fontsize=9)
             axes.set_ylim(0, 1)
             axes.legend(fontsize=8, ncol=3, frameon=False, loc="upper center",
@@ -258,9 +292,9 @@ class VocabChartDialog(QDialog):
             key, ylabel = VOCAB_SERIES[kind]
             present = [r for r in rows if r.get(key) is not None]
             present.sort(key=lambda r: r[key])
-            axes.bar([_short(str(r["episode_id"])) for r in present],
-                     [r[key] for r in present], color=BAND_COLORS[0],
-                     edgecolor="white", linewidth=0.5)
+            _bar_series(
+                axes, [_short(str(r["episode_id"])) for r in present],
+                [r[key] for r in present], color=BAND_COLORS[0])
             axes.set_ylabel(ylabel, fontsize=9)
             if not present:
                 axes.text(0.5, 0.5, "No episode has this measure.",

@@ -669,6 +669,17 @@ def test_extension_matching_ignores_case(tmp_path):
     assert len(list_episodes(show)) == 2
 
 
+def test_library_scan_cache_invalidates_when_directory_changes(tmp_path):
+    from analyzer.show_index import list_episodes
+    show = tmp_path / "Show"
+    show.mkdir()
+    (show / "one.mp4").write_bytes(b"")
+    assert [p.name for p in list_episodes(show)] == ["one.mp4"]
+
+    (show / "two.mkv").write_bytes(b"")
+    assert [p.name for p in list_episodes(show)] == ["one.mp4", "two.mkv"]
+
+
 # --- the Index obeys the context, and its Shows view is derived --------------
 
 def test_show_rows_are_derived_from_the_episodes_on_screen():

@@ -1,7 +1,9 @@
 """Disk cache for per-episode results under <root>/.analysis/<show>/<episode>.json"""
 
 from __future__ import annotations
+import copy
 import json
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -10,12 +12,29 @@ def cache_path(root: Path, show_name: str, episode_stem: str) -> Path:
     return root / ".analysis" / show_name / f"{episode_stem}.json"
 
 
+@lru_cache(maxsize=4096)
+def _load_cached_file(path: str, mtime_ns: int, ctime_ns: int,
+                      size: int) -> dict[str, Any] | None:
+    """Parse one cache revision once; revision fields prevent stale reads."""
+    del mtime_ns, ctime_ns, size       # key material, not file contents
+    try:
+        with Path(path).open(encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
 def load_cached(root: Path, show_name: str, episode_stem: str) -> dict[str, Any] | None:
     p = cache_path(root, show_name, episode_stem)
-    if p.exists():
-        with p.open() as fh:
-            return json.load(fh)
-    return None
+    try:
+        stat = p.stat()
+    except OSError:
+        return None
+    cached = _load_cached_file(
+        str(p), stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size)
+    # Speech-only workflows patch the returned dict before saving it.  Never
+    # let one caller mutate the memoized value seen by another screen.
+    return copy.deepcopy(cached) if cached is not None else None
 
 
 def load_scored(root: Path, show_name: str, episode_stem: str,
@@ -54,6 +73,9 @@ def save_cache(root: Path, show_name: str, episode_stem: str, data: dict[str, An
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("w") as fh:
         json.dump(data, fh, indent=2)
+    # A signature change normally selects the new revision.  Clearing also
+    # covers filesystems with coarse timestamps and drops superseded payloads.
+    _load_cached_file.cache_clear()
 
 
 # ---------------------------------------------------------------------------

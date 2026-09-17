@@ -102,6 +102,21 @@ def test_cache_miss_returns_none(tmp_path):
     assert load_cached(tmp_path, "NoShow", "ep") is None
 
 
+def test_cached_reads_are_isolated_and_saved_revisions_replace_the_memo(tmp_path):
+    """Memoizing JSON must not share mutable state or return an old save."""
+    first = EpisodeResult(file="first.mp4", duration_sec=10.0).to_dict()
+    save_cache(tmp_path, "MyShow", "ep", first)
+
+    loaded = load_cached(tmp_path, "MyShow", "ep")
+    loaded["metrics"]["speech"]["source"] = "changed by caller"
+    assert load_cached(tmp_path, "MyShow", "ep")["metrics"]["speech"][
+        "source"] == "none"
+
+    second = EpisodeResult(file="second.mp4", duration_sec=20.0).to_dict()
+    save_cache(tmp_path, "MyShow", "ep", second)
+    assert load_cached(tmp_path, "MyShow", "ep")["file"] == "second.mp4"
+
+
 def test_episode_result_from_dict_roundtrip():
     original = EpisodeResult(file="ep.mp4", duration_sec=500.0)
     original.metrics.scene_pacing.cuts_per_min = 12.5
