@@ -2,33 +2,38 @@
 
 Retrieval table of contents. Load what the task needs; do not load everything.
 
+**Document layout:** engineering and working-session documentation lives in
+[`docs/project/`](docs/project/README.md). The study record remains at the
+repository root because its paths are preserved in its SHA-256 provenance
+inventory; start that record at [STUDY_INDEX.md](STUDY_INDEX.md).
+
 ---
 
 ## Start every session here
 
 | Read | For |
 |---|---|
-| [onboarding.md](onboarding.md) | what happened last session, what is next, what a cold start must know |
-| [TODO.md](TODO.md) | what is ready to be done now |
+| [onboarding.md](docs/project/onboarding.md) | what happened last session, what is next, what a cold start must know |
+| [TODO.md](docs/project/TODO.md) | what is ready to be done now |
 | [CLAUDE.md](CLAUDE.md) | the rules — short, strict, non-negotiable |
 
 ## Before changing anything
 
 | Read | When |
 |---|---|
-| [DECISIONS.md](DECISIONS.md) | before revisiting a settled choice — the reason is recorded |
-| [LEARNINGS.md](LEARNINGS.md) | before debugging **and before calling work finished** — it opens with the five recurring shapes of defect on this project, and how to test for each |
-| [navigation.md](navigation.md) | to find the file that owns a behaviour |
+| [DECISIONS.md](docs/project/DECISIONS.md) | before revisiting a settled choice — the reason is recorded |
+| [LEARNINGS.md](docs/project/LEARNINGS.md) | before debugging **and before calling work finished** — it opens with the five recurring shapes of defect on this project, and how to test for each |
+| [navigation.md](docs/project/navigation.md) | to find the file that owns a behaviour |
 
 ## Reference
 
 | Document | Covers |
 |---|---|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | the pipeline model, authoritative vs derived state, data flow, metric definitions, data conventions |
-| [CEILINGS.md](CEILINGS.md) | what the normalization ceilings are, how the current values were set, and **when to revisit them** — read before quoting a composite score |
-| [STACK.md](STACK.md) | frameworks, libraries, platform constraints, Qt facts that are not guessable |
-| [MEASUREMENT_MODEL.md](MEASUREMENT_MODEL.md) | **the current phase** — constructs, measures, methods, recipes, versions, staleness. Partly built: **read the status line on a capability before assuming it is built.** §4.1–§4.3 built (`analyzer/constructs.py`, `analyzer/recipes.py`, the shipped composite); §4.4 and §4.7 partly; §4.5, §4.6 and §4.8–§4.10 not. The screens are `ui/recipes.py`, `ui/construct_editor.py` and the Constructs tab, which draws a recipe **and authors it** |
-| [ROADMAP.md](ROADMAP.md) | positioning, priorities, and what is deliberately not being built |
+| [ARCHITECTURE.md](docs/project/ARCHITECTURE.md) | the pipeline model, authoritative vs derived state, data flow, metric definitions, data conventions |
+| [CEILINGS.md](docs/project/CEILINGS.md) | what the normalization ceilings are, how the current values were set, and **when to revisit them** — read before quoting a composite score |
+| [STACK.md](docs/project/STACK.md) | frameworks, libraries, platform constraints, Qt facts that are not guessable |
+| [MEASUREMENT_MODEL.md](docs/project/MEASUREMENT_MODEL.md) | **the current phase** — constructs, measures, methods, recipes, versions, staleness. Partly built: **read the status line on a capability before assuming it is built.** §4.1–§4.3 built (`analyzer/constructs.py`, `analyzer/recipes.py`, the shipped composite); §4.4 and §4.7 partly; §4.5, §4.6 and §4.8–§4.10 not. The screens are `ui/recipes.py`, `ui/construct_editor.py` and the Constructs tab, which draws a recipe **and authors it** |
+| [ROADMAP.md](docs/project/ROADMAP.md) | positioning, priorities, and what is deliberately not being built |
 | [README.md](README.md) | public-facing description |
 | [design/README.md](design/README.md) | specifications and strategy notes — the pipeline north-star spec, migration strategy, UX audit, positioning. **Inputs, not authority**; never adopt a label, metric or number from them |
 
@@ -70,20 +75,20 @@ Retrieval table of contents. Load what the task needs; do not load everything.
 
 | Question | Document |
 |---|---|
-| What does this metric mean? | `ARCHITECTURE.md` §8 |
-| What construct is it a measure of, and by what method? | `analyzer/constructs.py` — seven constructs, sixteen measures, methods generated from the registry. A researcher's own constructs merge into the same lookup; `MEASUREMENT_MODEL.md` §4.1 |
+| What does this metric mean? | `docs/project/ARCHITECTURE.md` §8 |
+| What construct is it a measure of, and by what method? | `analyzer/constructs.py` — seven constructs, sixteen measures, methods generated from the registry. A researcher's own constructs merge into the same lookup; `docs/project/MEASUREMENT_MODEL.md` §4.1 |
 | How do I define a construct of my own, and operationalize it? | **Constructs tab → Constructs…** to define it, then **Edit** on that tab to bind shipped measures to it. Measures are not user-definable, by rule; `ui/construct_editor.py`, `ui/constructs_tab.py` |
-| How was this operationalized, and can I cite it? | `analyzer/recipes.py` — a recipe pins its parameters and is cited as version + content hash; `MEASUREMENT_MODEL.md` §4.2 |
-| **Can I trust this number?** | `ARCHITECTURE.md` §9 — status per tool, and the F1 qualifiers. **Exactly one tool has been graded against human coding**; the rest are ungraded or have no detection step to grade |
+| How was this operationalized, and can I cite it? | `analyzer/recipes.py` — a recipe pins its parameters and is cited as version + content hash; `docs/project/MEASUREMENT_MODEL.md` §4.2 |
+| **Can I trust this number?** | `docs/project/ARCHITECTURE.md` §9 — status per tool, and the F1 qualifiers. **Exactly one tool has been graded against human coding**; the rest are ungraded or have no detection step to grade |
 | Which build and which input produced this result? | `analyzer/version.py` — the one place CMAT says so; README — *Reproducibility and provenance* lists what every artefact records |
-| Is this sweep's best F1 a performance figure? | **No.** It is a resubstitution estimate, labelled as one in the result, the manifest and the Trials row; `LEARNINGS.md` — *A grid maximum was published as a performance figure* |
-| Are the age presets developmental norms? | **No.** They are illustrative configurations with no recorded derivation; `CEILINGS.md`, `DECISIONS.md` — *Age-named presets are presented as illustrative configurations* |
-| What is the default for this setting? | `ARCHITECTURE.md` §10 |
-| What do the tests protect? | `ARCHITECTURE.md` §11 |
-| Why is it built this way? | `DECISIONS.md` |
-| Why did this break before? | `LEARNINGS.md` |
-| How do I know this actually works? | `LEARNINGS.md` § The shape most of these share; `CLAUDE.md` §6 |
-| Which file do I edit? | `navigation.md` |
-| What is authoritative vs rebuildable? | `ARCHITECTURE.md` §2 |
-| Can I change this dependency? | `STACK.md` — ask first |
+| Is this sweep's best F1 a performance figure? | **No.** It is a resubstitution estimate, labelled as one in the result, the manifest and the Trials row; `docs/project/LEARNINGS.md` — *A grid maximum was published as a performance figure* |
+| Are the age presets developmental norms? | **No.** They are illustrative configurations with no recorded derivation; `docs/project/CEILINGS.md`, `docs/project/DECISIONS.md` — *Age-named presets are presented as illustrative configurations* |
+| What is the default for this setting? | `docs/project/ARCHITECTURE.md` §10 |
+| What do the tests protect? | `docs/project/ARCHITECTURE.md` §11 |
+| Why is it built this way? | `docs/project/DECISIONS.md` |
+| Why did this break before? | `docs/project/LEARNINGS.md` |
+| How do I know this actually works? | `docs/project/LEARNINGS.md` § The shape most of these share; `CLAUDE.md` §6 |
+| Which file do I edit? | `docs/project/navigation.md` |
+| What is authoritative vs rebuildable? | `docs/project/ARCHITECTURE.md` §2 |
+| Can I change this dependency? | `docs/project/STACK.md` — ask first |
 | What am I not allowed to do? | `CLAUDE.md` |

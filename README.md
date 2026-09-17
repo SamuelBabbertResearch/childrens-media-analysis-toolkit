@@ -240,7 +240,7 @@ properties may be useful to measure; they do not establish causal effects or
 specify how to combine the properties into one number. The composite's weights
 and normalization ceilings are a configurable scaling convention, not derived
 from theory and not validated. Component measures are reported separately for
-that reason. See [CEILINGS.md](CEILINGS.md).
+that reason. See [CEILINGS.md](docs/project/CEILINGS.md).
 
 ---
 
@@ -515,8 +515,8 @@ preset changes every composite score and no raw measurement.
 
 **None of the shipped values is derived from anything.** The ceilings were
 fitted to what one 78-episode working corpus produced
-([CEILINGS.md](CEILINGS.md)); the weights have no recorded derivation at all
-([ARCHITECTURE.md](ARCHITECTURE.md) §8.1a). Each preset carries
+([CEILINGS.md](docs/project/CEILINGS.md)); the weights have no recorded derivation at all
+([ARCHITECTURE.md](docs/project/ARCHITECTURE.md) §8.1a). Each preset carries
 `"illustrative": true` and `"derivation": "none recorded"` in `config.json`, and
 the Settings dialog says so above the chooser in both front-ends.
 

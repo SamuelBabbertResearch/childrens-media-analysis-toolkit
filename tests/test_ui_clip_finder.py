@@ -14,7 +14,9 @@ from PySide6.QtCore import Qt
 
 from analyzer.clip_query import COLUMNS
 from tests.test_clip_query import _row, _write_run
-from ui.clip_finder import NO_BOUND, ClipFinderDialog, PoolWorker, _Cancelled
+from ui.clip_finder import (
+    NO_BOUND, ClipFinderDialog, FeatureMapDialog, PoolWorker, _Cancelled,
+)
 
 MANIFEST = {
     "source_dir": "C:/shows/Season 1",
@@ -162,9 +164,22 @@ def test_clicking_a_header_sorts_and_clicking_again_reverses(qapp, tmp_path):
 def test_export_is_disabled_until_rows_are_chosen(qapp, tmp_path):
     dialog = _pool_dialog(qapp, tmp_path)
     assert not dialog._btn_export.isEnabled()
+    assert not dialog._btn_map.isEnabled()
     dialog._table.selectRow(0)
     assert dialog._btn_export.isEnabled()
+    assert dialog._btn_map.isEnabled()
     assert "Export 1 Selected Clip…" == dialog._btn_export.text()
+    dialog.close()
+
+
+def test_feature_map_shows_selected_candidate_measurements(qapp, tmp_path):
+    dialog = _pool_dialog(qapp, tmp_path)
+    dialog._table.selectRow(0)
+    feature_map = FeatureMapDialog(dialog.selected_rows(), dialog)
+    assert feature_map._table.rowCount() == 1
+    assert feature_map._table.item(0, 0).text() == "4"
+    assert "automated screening values" in feature_map._note.text()
+    feature_map.close()
     dialog.close()
 
 

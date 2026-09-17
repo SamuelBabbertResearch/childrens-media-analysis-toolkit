@@ -82,7 +82,7 @@ The study uses CMAT but is not part of it. Relevant engine pieces:
 - [analyzer/metrics_cuts.py](analyzer/metrics_cuts.py) — transition detection
 - [analyzer/metrics_audio.py](analyzer/metrics_audio.py) — RMS audio intensity
 - [analyzer/recipes.py](analyzer/recipes.py) — the frozen recipe binding
-- [MEASUREMENT_MODEL.md](MEASUREMENT_MODEL.md) — construct / measure / method / recipe vocabulary
+- [MEASUREMENT_MODEL.md](docs/project/MEASUREMENT_MODEL.md) — construct / measure / method / recipe vocabulary
 
 ### Why the files are not in one folder
 

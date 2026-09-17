@@ -86,7 +86,7 @@ Name the metric when you mean the metric.
 **Unvalidated measures are flagged wherever their numbers appear.**
 `analyzer.measurements.ungraded_measurements()` computes the current list from
 the registry — call it, never hard-code one, or the copy goes stale silently.
-`ARCHITECTURE.md` §9 explains what each status means.
+`docs/project/ARCHITECTURE.md` §9 explains what each status means.
 
 The grounding is Huston & Wright's formal features and Lang's LC4MP; Lillard &
 Peterson (2011) and Christakis et al. (2004) are the associations usually
@@ -128,7 +128,7 @@ A construct is not a value in an MP4 file. `cuts_per_min` is *one*
 operationalization of pacing, produced by one method at one threshold — so
 CMAT never implies *"transitions = algorithm X"*, only *"transitions were
 operationalized using method X with parameters Y"*. Rules that follow;
-`MEASUREMENT_MODEL.md` is the full plan and the current status of each part.
+`docs/project/MEASUREMENT_MODEL.md` is the full plan and the current status of each part.
 
 - **Never hard-code one "correct" measurement for a construct.** Where several
   defensible methods exist, offer the choice; a default is not privileged by
@@ -137,7 +137,7 @@ operationalized using method X with parameters Y"*. Rules that follow;
   is not merely a step towards validating automation. Both are methods.
 - **Never average across methods.** Two detectors summed into one figure is not
   a measurement of either — that mistake reached the public site once already
-  (`LEARNINGS.md`). Report per method.
+  (`docs/project/LEARNINGS.md`). Report per method.
 - **Never compare quantities that are not the same quantity.**
   `validation.manual_pacing_metrics()` already documents which hand-coded
   fields mirror the engine and which have no automated counterpart. Read that
@@ -164,7 +164,7 @@ code, interface strings, and documents; do not invent synonyms.
 
 **The stage names describe the workflow. A second, finer vocabulary describes
 the operationalization** — how a construct became a number. Both are in use and
-they are not competing; see `MEASUREMENT_MODEL.md` §2.
+they are not competing; see `docs/project/MEASUREMENT_MODEL.md` §2.
 
 | Term | Means | Example |
 |---|---|---|
@@ -237,13 +237,13 @@ Other terms:
 
 - **Short sessions.** When a task broadens, stop and split it — hand off
   through the repo files, not the chat.
-- **Start by reading** `onboarding.md`, `TODO.md`, `DECISIONS.md`,
-  `LEARNINGS.md`. Do not assume context from previous chats unless it is
+- **Start by reading** `docs/project/onboarding.md`, `docs/project/TODO.md`, `docs/project/DECISIONS.md`,
+  `docs/project/LEARNINGS.md`. Do not assume context from previous chats unless it is
   recorded in the repo.
-- **End by updating** `TODO.md` and `onboarding.md`; log any real decision in
-  `DECISIONS.md` and any failure in `LEARNINGS.md`; update `navigation.md` if
+- **End by updating** `docs/project/TODO.md` and `docs/project/onboarding.md`; log any real decision in
+  `docs/project/DECISIONS.md` and any failure in `docs/project/LEARNINGS.md`; update `docs/project/navigation.md` if
   the structure changed.
-- **No unrequested redesigns.** A settled choice is recorded in `DECISIONS.md`
+- **No unrequested redesigns.** A settled choice is recorded in `docs/project/DECISIONS.md`
   with its reason — read it before revisiting.
 - **No context drift.** If a change does not serve the research pipeline, it
   does not belong.
@@ -251,7 +251,7 @@ Other terms:
 ## 6. Coding constraints
 
 The recurring failure shapes on this project, each with a test for it, are in
-`LEARNINGS.md` § *The shape most of these share*. Read it before believing a
+`docs/project/LEARNINGS.md` § *The shape most of these share*. Read it before believing a
 piece of work is finished. Most of this project's real defects are not typos —
 they are one of these shapes recurring in a new location, invisible from the
 interface, surviving because verification stopped at "it ran".
@@ -272,7 +272,7 @@ interface, surviving because verification stopped at "it ran".
   `analyzer.cache.load_scored()` is the shape of the fix. When a bug instead
   gets fixed at each call site separately (three copies of one backfill loop,
   patched three times because nothing shares the logic — see
-  `LEARNINGS.md`), that is a standing invitation for a fourth copy to
+  `docs/project/LEARNINGS.md`), that is a standing invitation for a fourth copy to
   reintroduce it later. Prefer factoring the shared logic into one function
   over patching each site identically, unless the sites are about to diverge
   for an unrelated reason.
@@ -287,7 +287,7 @@ interface, surviving because verification stopped at "it ran".
   every WRITER of that key audited, not just its readers.** A reader that
   derives its answer on demand cannot have an overwrite bug by construction;
   a writer that caches an aggregate under the key can, and it fails silently —
-  a plausible count and mean, not a crash. See `LEARNINGS.md` § *The fix for
+  a plausible count and mean, not a crash. See `docs/project/LEARNINGS.md` § *The fix for
   one season-collapsing defect became the cause of the next*.
 - **Read the neighbouring implementation before writing a parallel one.**
 - **A module that calls itself the source of truth must be READ, not
@@ -299,7 +299,7 @@ interface, surviving because verification stopped at "it ran".
   overstates progress is worse than one that says nothing.
 - **Never write into the working copy's data from a test.** `Shows/`,
   `validation/` and the pipeline documents are real research data.
-- **Do not substitute a dependency** without asking — see `STACK.md`.
+- **Do not substitute a dependency** without asking — see `docs/project/STACK.md`.
 - Type sizes in the Qt front-end are **device-independent pixels**; the Tk
   tokens are points and are marked Tk-only.
 - Qt 6 is per-monitor DPI aware by default. **Do not add `ctypes` DPI calls.**

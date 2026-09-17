@@ -294,7 +294,12 @@ Use the same ordered response options for everyone:
 pace-rating scale” is more precise because this is one repeated item rather
 than a multi-item Likert scale.
 
-### Phase 1: Adults
+### Superseded history: former adult-prediction flow
+
+This section records the former design only. It was superseded by the
+adult-only redesign on 2026-08-31. Do not use it for recruitment, pilot
+testing, collection, analysis, or participant software. The active procedure
+is `STUDY_PROCEDURE_ADULT_ONLY.md`.
 
 Each adult watches the 12 clips once. Immediately after each clip:
 
@@ -305,11 +310,10 @@ Each adult watches the 12 clips once. Immediately after each clip:
 4. Record the 1–5 adult self-perception rating without displaying the prior
    answer.
 
-Each adult produces 12 responses from 12 clip viewings: one self-perception
-rating after each clip. The working session estimate is 8–12 minutes and must
-be checked in piloting. No adult prediction question is included.
+This former flow collected a prediction and a self-perception rating after each
+clip. It is retained solely to explain the superseded development artifacts.
 
-### Phase 2: Children — superseded history
+### Superseded history: former child flow
 
 After parent/guardian permission and age-appropriate child assent, each child
 watches the same 12 clips once. After each clip ask:
@@ -543,9 +547,9 @@ which should remain the source if participants will watch HD.
    automated manifests, all manual coding and comparison outputs, tuning
    decisions, finalist MP4s and measurements, rejection log, and participant
    presentation-order manifest.
-8. **Pilot both participant flows.** Verify instructions, prediction-first
-   locking, scale comprehension, playback volume, randomization, breaks, timing,
-   and response logging.
+8. **Pilot the adult-only participant flow.** Verify instructions, scale
+   comprehension, playback volume, counterbalancing, timing, and response
+   logging.
 9. **Complete faculty, statistical, and IRB review** before recruitment or data
    collection.
 

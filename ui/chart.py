@@ -20,6 +20,9 @@ with each other, which is the only comparison the data supports.
 
 from __future__ import annotations
 
+from collections import defaultdict
+import re
+
 from PySide6.QtWidgets import QDialog, QVBoxLayout
 
 from ui.modal import ModalDialogFrame
@@ -42,6 +45,15 @@ BAND_COLORS = ("#4e79a7", "#76b7b2", "#8cd17d", "#f1ce63", "#e15759",
                "#b07aa1")
 
 
+# Display text is never used as a matplotlib categorical coordinate. Long
+# filenames regularly share a title fragment, and matplotlib draws matching
+# categorical strings at one position. Keep identity and geometry separate.
+_EPISODE_ID = re.compile(
+    r"(?i)(?:s(?P<season>\d{1,2})e(?P<first>\d{1,3})(?:[-–]e?(?P<last>\d{1,3}))?"
+    r"|(?P<season_x>\d{1,2})x(?P<first_x>\d{1,3})(?:[-–]?(?P<last_x>\d{1,3}))?)"
+)
+
+
 class ChartDialog(QDialog):
     """Per-episode Formal-Feature Composite composition for one show."""
 
@@ -49,7 +61,6 @@ class ChartDialog(QDialog):
                  parent=None) -> None:
         super().__init__(parent)
         self.setModal(False)
-        self.resize(880, 520)
 
         body = ModalDialogFrame.install(
             self, f"Formal-Feature Composite (FFC) — {show_name}",
@@ -60,8 +71,14 @@ class ChartDialog(QDialog):
 
         ok = [r for r in results if r.status == "ok"]
         ok.sort(key=lambda r: r.metrics.sensory_load.score)
+        horizontal = len(ok) > 10
+        figure_height = (max(5.6, min(8.6, 1.7 + len(ok) * 0.30))
+                         if horizontal else 4.6)
+        self.resize(920 if horizontal else 880,
+                    max(520, int(figure_height * 100) + 60))
 
-        figure = Figure(figsize=(8.6, 4.6), dpi=100,
+        figure = Figure(figsize=(8.9 if horizontal else 8.6, figure_height),
+                        dpi=100,
                         facecolor=COLORS["panel_bg"])
         axes = figure.add_subplot(111)
         axes.set_facecolor(COLORS["panel_bg"])
@@ -74,47 +91,106 @@ class ChartDialog(QDialog):
         per_episode = [effective_weights(r.config,
                                          r.metrics.sensory_load.audio_available)
                        for r in ok]
-        labels = [_short(r.file) for r in ok]
+        positions = list(range(len(ok)))
+        labels = _episode_labels(
+            [r.file for r in ok], title_limit=30 if horizontal else 24)
         bottoms = [0.0] * len(ok)
 
         for index, (label, attribute, weight_key) in enumerate(COMPONENTS):
             values = [getattr(r.metrics.sensory_load.components, attribute)
                       * w.get(weight_key, 0.0)
                       for r, w in zip(ok, per_episode)]
-            axes.bar(labels, values, bottom=bottoms, label=label,
-                     color=BAND_COLORS[index], edgecolor="white",
-                     linewidth=0.5)
+            if horizontal:
+                axes.barh(positions, values, left=bottoms, label=label,
+                          color=BAND_COLORS[index], edgecolor="white",
+                          linewidth=0.5)
+            else:
+                axes.bar(positions, values, bottom=bottoms, label=label,
+                         color=BAND_COLORS[index], edgecolor="white",
+                         linewidth=0.5)
             bottoms = [b + v for b, v in zip(bottoms, values)]
 
-        axes.set_ylabel("FFC score (configurable 0–1 composite)",
-                        fontsize=9)
-        axes.set_ylim(0, max(1.0, max(bottoms) * 1.15 if bottoms else 1.0))
-        axes.tick_params(axis="x", labelrotation=30, labelsize=8)
+        score_limit = max(1.0, max(bottoms) * 1.15 if bottoms else 1.0)
+        if horizontal:
+            axes.set_yticks(positions, labels=labels, fontsize=8)
+            axes.set_xlabel("FFC score (configurable 0–1 composite)",
+                            fontsize=9)
+            axes.set_ylabel("Episode — ordered by FFC", fontsize=9)
+            axes.set_xlim(0, score_limit)
+            axes.invert_yaxis()
+            axes.grid(axis="x", color=COLORS["mw_row_line"], linewidth=0.8)
+        else:
+            _set_x_labels(axes, positions, labels)
+            axes.set_ylabel("FFC score (configurable 0–1 composite)",
+                            fontsize=9)
+            axes.set_ylim(0, score_limit)
+            axes.grid(axis="y", color=COLORS["mw_row_line"], linewidth=0.8)
         axes.tick_params(axis="y", labelsize=8)
-        for tick in axes.get_xticklabels():
-            tick.set_horizontalalignment("right")
-        axes.spines["top"].set_visible(False)
-        axes.spines["right"].set_visible(False)
-        axes.grid(axis="y", color=COLORS["mw_row_line"], linewidth=0.8)
         axes.set_axisbelow(True)
         axes.legend(fontsize=8, ncol=6, frameon=False,
                     loc="upper center", bbox_to_anchor=(0.5, 1.12))
-        # Room for the rotated episode names, which are the long labels here,
-        # plus the validation note beneath them.
-        figure.subplots_adjust(bottom=0.40, top=0.86, left=0.09, right=0.98)
-        _validation_footnote(figure)
+        if horizontal:
+            figure.subplots_adjust(bottom=0.13, top=0.87, left=0.36,
+                                   right=0.98)
+            _validation_footnote(figure, x=0.36)
+        else:
+            # Room for the rotated episode names, which are the long labels
+            # here, plus the validation note beneath them.
+            figure.subplots_adjust(bottom=0.40, top=0.86, left=0.09,
+                                   right=0.98)
+            _validation_footnote(figure)
 
         canvas = FigureCanvasQTAgg(figure)
         body.addWidget(canvas, 1)
 
 
 def _short(file_name: str, limit: int = 28) -> str:
-    """Episode names are long; the tail is what distinguishes them."""
+    """Compact a title without discarding the episode identifier before it."""
     stem = file_name.rsplit(".", 1)[0]
-    return stem if len(stem) <= limit else "…" + stem[-(limit - 1):]
+    return stem if len(stem) <= limit else stem[:limit - 1].rstrip() + "…"
 
 
-def _validation_footnote(figure) -> None:
+def _episode_labels(file_names, title_limit: int = 28) -> list[str]:
+    """Return readable, unique labels for a list of episode identifiers.
+
+    A label is presentation, not an x-coordinate. The numbered suffix is
+    deliberately retained even for duplicate source filenames: an analyst
+    must be able to see that the chart holds separate results rather than one
+    silently overwritten category.
+    """
+    bases = [_episode_label(name, title_limit) for name in file_names]
+    seen: defaultdict[str, int] = defaultdict(int)
+    labels = []
+    for base in bases:
+        seen[base] += 1
+        labels.append(base if seen[base] == 1 else f"{base} [{seen[base]}]")
+    return labels
+
+
+def _episode_label(file_name: str, title_limit: int) -> str:
+    stem = file_name.rsplit(".", 1)[0]
+    match = _EPISODE_ID.search(stem)
+    if not match:
+        return _short(stem, title_limit)
+
+    season = match.group("season") or match.group("season_x")
+    first = match.group("first") or match.group("first_x")
+    last = match.group("last") or match.group("last_x")
+    episode_id = f"S{int(season):02}E{int(first):02}"
+    if last:
+        episode_id += f"–E{int(last):02}"
+    title = stem[match.end():].strip(" ._-–")
+    return (f"{episode_id} — {_short(title, title_limit)}"
+            if title else episode_id)
+
+
+def _set_x_labels(axes, positions, labels) -> None:
+    """Attach labels to numeric positions; never invoke categorical plotting."""
+    axes.set_xticks(positions, labels=labels, rotation=30, ha="right",
+                    fontsize=8)
+
+
+def _validation_footnote(figure, x: float = 0.09) -> None:
     """Name the ungraded components under the chart.
 
     CLAUDE.md §2.2 requires the flag wherever the numbers appear, and a
@@ -126,7 +202,7 @@ def _validation_footnote(figure) -> None:
     if not names:
         return
     figure.text(
-        0.09, 0.015,
+        x, 0.015,
         "Not graded against hand coding: " + ", ".join(names)
         + ".  These compare episodes measured the same way; they are not "
           "validated figures, and flashing is not a safety assessment.",
@@ -138,10 +214,7 @@ def _axes(figure):
     """The shared chart furniture: no top/right spine, horizontal grid only."""
     axes = figure.add_subplot(111)
     axes.set_facecolor(COLORS["panel_bg"])
-    axes.tick_params(axis="x", labelrotation=30, labelsize=8)
     axes.tick_params(axis="y", labelsize=8)
-    for tick in axes.get_xticklabels():
-        tick.set_horizontalalignment("right")
     axes.spines["top"].set_visible(False)
     axes.spines["right"].set_visible(False)
     axes.grid(axis="y", color=COLORS["mw_row_line"], linewidth=0.8)
@@ -170,18 +243,20 @@ class SpeechChartDialog(QDialog):
         from matplotlib.figure import Figure
 
         ordered = sorted(rows, key=lambda r: r["wpm"])
-        labels = [_short(r["file"]) for r in ordered]
+        positions = list(range(len(ordered)))
+        labels = _episode_labels([r["file"] for r in ordered])
 
         figure = Figure(figsize=(8.8, 4.6), dpi=100,
                         facecolor=COLORS["panel_bg"])
         axes = _axes(figure)
-        axes.bar(labels, [r["wpm"] for r in ordered],
+        axes.bar(positions, [r["wpm"] for r in ordered],
                  color=BAND_COLORS[0], edgecolor="white", linewidth=0.5,
                  label="Words per minute (of dialogue time)")
+        _set_x_labels(axes, positions, labels)
         axes.set_ylabel("Words per minute", fontsize=9)
 
         density = axes.twinx()
-        density.plot(labels, [r["density"] for r in ordered], marker="o",
+        density.plot(positions, [r["density"] for r in ordered], marker="o",
                      markersize=3.5, linewidth=1.2, color=BAND_COLORS[4],
                      label="Speech density (fraction of runtime)")
         density.set_ylabel("Speech density", fontsize=9)
@@ -242,14 +317,17 @@ class VocabChartDialog(QDialog):
 
         if kind not in VOCAB_SERIES:            # the stacked tier chart
             rows.sort(key=lambda r: r.get("vocab_tier1_proportion") or 0.0)
-            labels = [_short(str(r["episode_id"])) for r in rows]
+            positions = list(range(len(rows)))
+            labels = _episode_labels(
+                [str(r["episode_id"]) for r in rows])
             bottoms = [0.0] * len(rows)
             for index, (key, label) in enumerate(TIER_SERIES):
                 values = [(r.get(key) or 0.0) for r in rows]
-                axes.bar(labels, values, bottom=bottoms, label=label,
+                axes.bar(positions, values, bottom=bottoms, label=label,
                          color=BAND_COLORS[index], edgecolor="white",
                          linewidth=0.5)
                 bottoms = [b + v for b, v in zip(bottoms, values)]
+            _set_x_labels(axes, positions, labels)
             axes.set_ylabel("Share of content words", fontsize=9)
             axes.set_ylim(0, 1)
             axes.legend(fontsize=8, ncol=3, frameon=False, loc="upper center",
@@ -258,9 +336,13 @@ class VocabChartDialog(QDialog):
             key, ylabel = VOCAB_SERIES[kind]
             present = [r for r in rows if r.get(key) is not None]
             present.sort(key=lambda r: r[key])
-            axes.bar([_short(str(r["episode_id"])) for r in present],
+            positions = list(range(len(present)))
+            labels = _episode_labels(
+                [str(r["episode_id"]) for r in present])
+            axes.bar(positions,
                      [r[key] for r in present], color=BAND_COLORS[0],
                      edgecolor="white", linewidth=0.5)
+            _set_x_labels(axes, positions, labels)
             axes.set_ylabel(ylabel, fontsize=9)
             if not present:
                 axes.text(0.5, 0.5, "No episode has this measure.",

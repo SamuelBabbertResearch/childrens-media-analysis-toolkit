@@ -1,13 +1,24 @@
 # CMAT — Onboarding
 
 Previously-on, for a session starting with zero memory. Read this, then
-`TODO.md`, then `DECISIONS.md` and `LEARNINGS.md`. `INDEX.md` points at
-everything else.
+`TODO.md`, then `DECISIONS.md` and `LEARNINGS.md`. [INDEX.md](../../INDEX.md)
+points at everything else, including the separate provenance-bound study record.
 
-**Last updated:** 2026-09-07 (the public Index's terminology pass; the
+**Last updated:** 2026-09-07 (the documentation layout cleanup; the public Index's terminology pass; the
 2026-09-04 research-credibility audit, Formal-Feature Composite terminology,
 the adult-only participant redesign, Clip Finder, and 2026-08-29 rating-scale
 entries follow.)
+
+---
+
+## What changed on 2026-09-07: documentation layout
+
+Engineering, product, decision, and working-session documents now live in
+`docs/project/`; its [README](README.md) is the local map. The repository-root
+[INDEX.md](../../INDEX.md) remains the cross-project entry point. Study files
+remain at the root because their existing paths are recorded in the study's
+SHA-256 provenance inventory; use [STUDY_INDEX.md](../../STUDY_INDEX.md) for
+that separate record.
 
 ---
 
@@ -1925,3 +1936,5 @@ The three things most worth knowing before choosing what to do next:
 All three items above are closed as of 2026-08-17 — this section is kept as a
 record of what "picking it up cold" looked like that day, not as live status.
 For current status read the top of this file.
+
+2026-09-16 — Mia coding package correction: agent confused newer set with Seasons 2–4 shortlist; user clarified Season 1. Preserved Downloads MIA01_coding_2026-09-16T19-30-26-989Z.json unchanged and source mapping under audio1_frame_coding/mia_received_wrong_set_20260916. All completion flags false; do not treat as finalized. Built separate mia_season1_correction06_20260916 from authoritative correction-06 selection with all 12 S01 IDs and checksum-verified historical media, including CUTS_2 replacement. New package/storage keys prevent cross-set import. Reviewed wrong-set coding: AUDIO_2 additional promising pair (8 hard cuts each; motion .0684/.0680; RMS .02930/.04849); AUDIO_1 four cuts each. Two Slide Cut notes visually confirmed as wipes, retained raw and documented separately. M03 visual cut begins566 rather than SB01 552. Added wipe/slide to simplified options, review flags remain separate. No participant selection or frozen calibration changes. See preserved export REVIEW.md.

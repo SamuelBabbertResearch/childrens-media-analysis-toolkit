@@ -27,16 +27,19 @@ manifest rather than restated here.
 
 from __future__ import annotations
 
+import csv
 import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import QUrl, Qt, QThread, QTimer, Signal
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog,
     QGridLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
-    QMessageBox, QProgressBar, QPushButton, QTableWidget, QTableWidgetItem,
+    QMessageBox, QProgressBar, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget, QDialog,
 )
 
@@ -49,6 +52,8 @@ from analyzer.study_clips import (
     run_candidate_pool,
 )
 from ui.modal import ModalDialogFrame
+from ui.pair_cut_marker import build_pair_cut_marker
+from ui.player import VideoPlayer, available as video_available
 
 DIALOG_W = 1180
 DIALOG_H = 800
@@ -141,6 +146,335 @@ class ExportWorker(QThread):
             self.failed.emit(str(exc))
             return
         self.finished_ok.emit(results)
+
+
+class FeatureMapDialog(QDialog):
+    """Researcher-only heat-map view of selected candidate windows.
+
+    This is deliberately part of the Clip Finder rather than Study Runner:
+    pair identities and feature values must not be shown to participants. Its
+    cut column comes from the candidate measurement pass, so the instruction
+    explains that hand-coded cuts replace it for a final stimulus set.
+    """
+
+    _COLUMNS = (
+        ("cuts_per_min", "Candidate cuts/min"),
+        ("motion_mean", "Visual motion"),
+        ("audio_rms_mean", "Audio intensity\n(linear RMS)"),
+    )
+
+    def __init__(self, rows: list[dict[str, Any]], parent=None) -> None:
+        super().__init__(parent)
+        self.setModal(True)
+        self.setWindowTitle("Candidate Feature Map")
+        self.resize(820, min(720, 180 + 42 * max(1, len(rows))))
+        layout = QVBoxLayout(self)
+        self._note = QLabel(
+            "Darker means more of that one measured characteristic among the "
+            "windows shown; it is not a score, verdict, or suitability rating. "
+            "Candidate cuts are automated screening values. Use hand-coded cuts "
+            "in a final participant-stimulus map.")
+        self._note.setWordWrap(True)
+        self._note.setProperty("role", "dim")
+        layout.addWidget(self._note)
+
+        self._table = QTableWidget(len(rows), len(self._COLUMNS))
+        self._table.setHorizontalHeaderLabels([label for _, label in self._COLUMNS])
+        self._table.setVerticalHeaderLabels([self._row_label(row) for row in rows])
+        self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self._table.setSelectionMode(QAbstractItemView.NoSelection)
+        self._table.verticalHeader().setDefaultSectionSize(34)
+        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self._table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self._fill(rows)
+        layout.addWidget(self._table, 1)
+
+        close = QPushButton("Close")
+        close.clicked.connect(self.accept)
+        layout.addWidget(close, alignment=Qt.AlignRight)
+
+    @staticmethod
+    def _row_label(row: dict[str, Any]) -> str:
+        episode = Path(str(row.get("source_relpath") or "clip")).stem
+        start = str(row.get("start_timecode") or "")
+        return f"{episode[:42]} · {start}".strip(" ·")
+
+    @staticmethod
+    def _blue(value: float | None, low: float, high: float) -> QColor:
+        if value is None:
+            return QColor("#ECECEC")
+        fraction = 0.5 if high == low else (value - low) / (high - low)
+        # One hue, light to dark: quantity only, never approval or a verdict.
+        return QColor.fromHsvF(0.58, 0.56, 0.98 - 0.36 * fraction)
+
+    def _fill(self, rows: list[dict[str, Any]]) -> None:
+        for column, (key, _label) in enumerate(self._COLUMNS):
+            values = [row.get(key) for row in rows
+                      if isinstance(row.get(key), (int, float))]
+            low, high = (min(values), max(values)) if values else (0.0, 0.0)
+            for index, row in enumerate(rows):
+                value = row.get(key)
+                item = QTableWidgetItem("—" if value is None else f"{value:.4g}")
+                item.setTextAlignment(Qt.AlignCenter)
+                item.setBackground(self._blue(value, low, high))
+                self._table.setItem(index, column, item)
+
+
+HAND_CODED_CUTS_FILE = "hand_coded_pair_cuts.csv"
+HAND_CODED_CUTS_FIELDS = (
+    "pair_id", "target_feature", "study_label", "target_level", "clip_id",
+    "source_relpath", "source_path", "start_sec", "end_sec", "duration_sec",
+    "hard_cut_count", "hand_coded_cuts_per_min", "coded_at_utc",
+)
+
+
+def _read_csv_rows(path: Path) -> list[dict[str, str]]:
+    if not path.is_file():
+        return []
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def save_hand_coded_pair(run_dir: Path, rows: list[dict[str, Any]],
+                         counts: dict[str, int]) -> Path:
+    """Persist the latest manual hard-cut count for both clips in a pair.
+
+    Automated measurements remain untouched. Existing coding for other clips
+    is preserved, while saving the same clip again deliberately replaces its
+    earlier value so the file always represents the current verified set.
+    """
+    destination = run_dir / HAND_CODED_CUTS_FILE
+    retained = [row for row in _read_csv_rows(destination)
+                if row.get("clip_id") not in counts]
+    coded_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    for row in rows:
+        clip_id = str(row.get("clip_id") or "")
+        if clip_id not in counts:
+            continue
+        duration = float(row.get("duration_sec") or
+                         (float(row["end_sec"]) - float(row["start_sec"])))
+        count = int(counts[clip_id])
+        retained.append({
+            "pair_id": row.get("pair_id", ""),
+            "target_feature": row.get("target_feature", ""),
+            "study_label": row.get("study_label", ""),
+            "target_level": row.get("target_level", ""),
+            "clip_id": clip_id,
+            "source_relpath": row.get("source_relpath", ""),
+            "source_path": row.get("source_path", ""),
+            "start_sec": row.get("start_sec", ""),
+            "end_sec": row.get("end_sec", ""),
+            "duration_sec": duration,
+            "hard_cut_count": count,
+            "hand_coded_cuts_per_min": round(count * 60.0 / duration, 6),
+            "coded_at_utc": coded_at,
+        })
+    temporary = destination.with_suffix(".tmp")
+    with temporary.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=HAND_CODED_CUTS_FIELDS,
+                                extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(retained)
+    temporary.replace(destination)
+    return destination
+
+
+class PairCutCodingDialog(QDialog):
+    """Play matched candidate windows and verify their hard-cut counts."""
+
+    def __init__(self, run_dir: Path, parent=None) -> None:
+        super().__init__(parent)
+        self.setModal(True)
+        self.setWindowTitle("Hand-code Matched Pair Cuts")
+        self.resize(1050, 760)
+        self._run_dir = Path(run_dir)
+        selected = _read_csv_rows(self._run_dir / "selected_clips.csv")
+        self._pairs: dict[str, list[dict[str, Any]]] = {}
+        for row in selected:
+            pair_id = row.get("pair_id", "")
+            if pair_id:
+                self._pairs.setdefault(pair_id, []).append(row)
+        self._current_rows: list[dict[str, Any]] = []
+        self._count_spins: dict[str, QSpinBox] = {}
+        self._reviewed: dict[str, QCheckBox] = {}
+        self._active_start: float | None = None
+        self._active_end: float | None = None
+
+        layout = QVBoxLayout(self)
+        note = QLabel(
+            "Count only abrupt shot changes (hard cuts). Do not count the start "
+            "of the clip, fades, or dissolves. Automated cuts/min is shown only "
+            "as a reference; your saved number is calculated from your count.")
+        note.setWordWrap(True)
+        note.setProperty("role", "dim")
+        layout.addWidget(note)
+
+        choose = QHBoxLayout()
+        choose.addWidget(QLabel("Matched pair"))
+        self._pair = QComboBox()
+        for pair_id in sorted(self._pairs):
+            self._pair.addItem(pair_id, pair_id)
+        preferred = self._pair.findData("AUDIO_1")
+        if preferred >= 0:
+            self._pair.setCurrentIndex(preferred)
+        self._pair.currentIndexChanged.connect(self._load_pair)
+        choose.addWidget(self._pair)
+        choose.addStretch(1)
+        layout.addLayout(choose)
+
+        self._table = QTableWidget(0, 6)
+        self._table.setHorizontalHeaderLabels([
+            "Level", "Episode and window", "Automated cuts/min",
+            "Hard-cut count", "Hand-coded cuts/min", "Reviewed",
+        ])
+        self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self._table.verticalHeader().setVisible(False)
+        self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self._table.setMaximumHeight(150)
+        layout.addWidget(self._table)
+
+        load_row = QHBoxLayout()
+        self._btn_load_clip = QPushButton("Load Selected Clip")
+        self._btn_load_clip.clicked.connect(self._load_selected_clip)
+        load_row.addWidget(self._btn_load_clip)
+        self._clip_status = QLabel("Select a row, then load its 30-second window.")
+        self._clip_status.setProperty("role", "dim")
+        load_row.addWidget(self._clip_status, 1)
+        layout.addLayout(load_row)
+
+        self._player = VideoPlayer()
+        self._player.position_changed.connect(self._keep_inside_window)
+        layout.addWidget(self._player, 1)
+
+        actions = QHBoxLayout()
+        actions.addStretch(1)
+        self._btn_save = QPushButton("Save Verified Pair")
+        self._btn_save.setProperty("primary", "true")
+        self._btn_save.clicked.connect(self._save)
+        actions.addWidget(self._btn_save)
+        close = QPushButton("Close")
+        close.clicked.connect(self.reject)
+        actions.addWidget(close)
+        layout.addLayout(actions)
+
+        self._load_pair()
+
+    @staticmethod
+    def _number(row: dict[str, Any], key: str) -> float:
+        return float(row.get(key) or 0.0)
+
+    def _load_pair(self) -> None:
+        pair_id = str(self._pair.currentData() or "")
+        self._current_rows = sorted(
+            self._pairs.get(pair_id, []),
+            key=lambda row: str(row.get("target_level", "")), reverse=True)
+        prior = {row.get("clip_id", ""): row
+                 for row in _read_csv_rows(self._run_dir / HAND_CODED_CUTS_FILE)}
+        self._count_spins.clear()
+        self._reviewed.clear()
+        self._table.setRowCount(len(self._current_rows))
+        for index, row in enumerate(self._current_rows):
+            clip_id = str(row.get("clip_id") or "")
+            level = str(row.get("target_level") or "").title()
+            description = (f"{row.get('source_relpath', '')}  ·  "
+                           f"{row.get('start_timecode', '')}–{row.get('end_timecode', '')}")
+            self._table.setItem(index, 0, QTableWidgetItem(level))
+            self._table.setItem(index, 1, QTableWidgetItem(description))
+            self._table.setItem(index, 2, QTableWidgetItem(
+                f"{self._number(row, 'cuts_per_min'):.1f}"))
+
+            spin = QSpinBox()
+            spin.setRange(0, 300)
+            spin.setAlignment(Qt.AlignCenter)
+            previous = prior.get(clip_id)
+            if previous:
+                spin.setValue(int(float(previous.get("hard_cut_count") or 0)))
+            spin.valueChanged.connect(
+                lambda value, r=index: self._update_rate(r, value))
+            self._table.setCellWidget(index, 3, spin)
+            self._count_spins[clip_id] = spin
+
+            rate = QLabel()
+            rate.setAlignment(Qt.AlignCenter)
+            self._table.setCellWidget(index, 4, rate)
+            self._update_rate(index, spin.value())
+
+            reviewed = QCheckBox("Done")
+            reviewed.setChecked(bool(previous))
+            reviewed.stateChanged.connect(self._sync_save)
+            self._table.setCellWidget(index, 5, reviewed)
+            self._reviewed[clip_id] = reviewed
+        if self._current_rows:
+            self._table.selectRow(0)
+        self._sync_save()
+
+    def _update_rate(self, table_row: int, count: int) -> None:
+        if table_row >= len(self._current_rows):
+            return
+        duration = self._number(self._current_rows[table_row], "duration_sec") or 30.0
+        label = self._table.cellWidget(table_row, 4)
+        if isinstance(label, QLabel):
+            label.setText(f"{count * 60.0 / duration:.1f}")
+
+    def _selected_row(self) -> dict[str, Any] | None:
+        indexes = self._table.selectionModel().selectedRows()
+        if not indexes:
+            return None
+        index = indexes[0].row()
+        return self._current_rows[index] if index < len(self._current_rows) else None
+
+    def _load_selected_clip(self) -> None:
+        row = self._selected_row()
+        if row is None:
+            return
+        source = Path(str(row.get("source_path") or ""))
+        if not source.is_file():
+            QMessageBox.warning(self, "Episode not found",
+                                f"The source episode is not available:\n{source}")
+            return
+        self._active_start = self._number(row, "start_sec")
+        self._active_end = self._number(row, "end_sec")
+        self._player.open(source)
+        QTimer.singleShot(450, lambda: self._player.seek(self._active_start or 0.0))
+        self._clip_status.setText(
+            f"Loaded {row.get('study_label', '')} · "
+            f"{row.get('start_timecode', '')}–{row.get('end_timecode', '')}. "
+            "Playback returns to the start at the end of the window.")
+
+    def _keep_inside_window(self, position: float) -> None:
+        if self._active_start is None or self._active_end is None:
+            return
+        if position >= self._active_end:
+            if self._player.is_playing():
+                self._player.toggle()
+            self._player.seek(self._active_start)
+
+    def _sync_save(self) -> None:
+        complete_pair = len(self._current_rows) == 2
+        reviewed = complete_pair and all(box.isChecked()
+                                         for box in self._reviewed.values())
+        self._btn_save.setEnabled(reviewed)
+
+    def _save(self) -> None:
+        counts = {clip_id: spin.value()
+                  for clip_id, spin in self._count_spins.items()}
+        try:
+            destination = save_hand_coded_pair(
+                self._run_dir, self._current_rows, counts)
+        except (OSError, ValueError, KeyError) as exc:
+            QMessageBox.critical(self, "Could not save hand coding", str(exc))
+            return
+        QMessageBox.information(
+            self, "Pair saved",
+            f"Saved the verified hard-cut counts and calculated cuts/min to:\n"
+            f"{destination}")
+        self.accept()
+
+    def done(self, result: int) -> None:
+        self._player.close()
+        super().done(result)
 
 
 class ClipFinderDialog(QDialog):
@@ -431,8 +765,24 @@ class ClipFinderDialog(QDialog):
         self._table.horizontalHeader().sectionClicked.connect(self._on_sort)
         self._table.itemSelectionChanged.connect(self._sync_enabled)
         lay.addWidget(self._table, 1)
+        footer = QHBoxLayout()
         self._count = QLabel("No pool loaded.")
-        lay.addWidget(self._count)
+        footer.addWidget(self._count, 1)
+        self._btn_map = QPushButton("Feature Map…")
+        self._btn_map.setToolTip(
+            "Show cuts, motion, and audio for the selected candidate windows. "
+            "This researcher view never appears in Study Runner.")
+        self._btn_map.setEnabled(False)
+        self._btn_map.clicked.connect(self._show_feature_map)
+        footer.addWidget(self._btn_map)
+        self._btn_handcode = QPushButton("Open Browser Cut Marker…")
+        self._btn_handcode.setToolTip(
+            "Open the matched pairs in a browser, then mark the exact "
+            "timestamp of every hard cut.")
+        self._btn_handcode.setEnabled(False)
+        self._btn_handcode.clicked.connect(self._handcode_matched_pair)
+        footer.addWidget(self._btn_handcode)
+        lay.addLayout(footer)
         return box
 
     def _provenance_box(self) -> QWidget:
@@ -586,6 +936,27 @@ class ClipFinderDialog(QDialog):
         indexes = sorted({i.row() for i in self._table.selectedIndexes()})
         return [self._shown[i] for i in indexes if i < len(self._shown)]
 
+    def _show_feature_map(self) -> None:
+        rows = self.selected_rows()
+        if rows:
+            FeatureMapDialog(rows, self).exec()
+
+    def _handcode_matched_pair(self) -> None:
+        if self._pool is None:
+            return
+        try:
+            page = build_pair_cut_marker(self._pool.run_dir)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Could not build cut marker", str(exc))
+            return
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(page))):
+            QMessageBox.warning(
+                self, "Could not open browser",
+                f"Open this page in your browser:\n{page}")
+            return
+        self._status.setText(
+            "Browser cut marker opened. Download its CSV when coding is complete.")
+
     def _export(self) -> None:
         rows = self.selected_rows()
         if not rows or self._pool is None:
@@ -647,6 +1018,10 @@ class ClipFinderDialog(QDialog):
         self._btn_measure.clicked.connect(self._stop if running else self._measure)
         self._btn_open.setEnabled(not busy)
         chosen = len(self.selected_rows())
+        self._btn_map.setEnabled(bool(chosen) and not busy)
+        has_pairs = bool(self._pool is not None and
+                         (self._pool.run_dir / "selected_clips.csv").is_file())
+        self._btn_handcode.setEnabled(has_pairs and not busy)
         self._btn_export.setEnabled(bool(chosen) and not busy)
         self._btn_export.setText(
             f"Export {chosen} Selected Clip{'s' if chosen != 1 else ''}…"

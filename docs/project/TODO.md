@@ -736,3 +736,5 @@ What the scale still needs, in order:
    `gui_sampler.py`, `gui_pipeline.py`), which item 9 retires. Its findings
    may be fixed, may have moved, or may never have applied to Qt. Do this
    alongside item 7 rather than acting on the audit as written.
+
+Mia: complete corrected Season 1 coding, confirm completion of wrong-set export before finalized use, and adjudicate noted wipes/frame disagreements. Package: .analysis/study_clips/curious_george_s2_s4_30s_skip65s_20260907/audio1_frame_coding/mia_season1_correction06_20260916.

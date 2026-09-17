@@ -2150,3 +2150,5 @@ the candidate list.
 *cannot* re-derive its composite the way it does for every other show — it
 publishes a frozen number written under whatever ceilings were in force at the
 time. See `TODO.md`.
+
+2026-09-16: Ambiguous 'newer' clip set resolved incorrectly to Seasons 2–4; user intended Season 1. Before packaging, verify season and exact selection manifest, show those identifiers explicitly, and never reuse neutral clip IDs across different package identities. Limited transition choices led wipes to be entered as hard cuts with notes; preserve notes and offer review flags, revising allowed types when evidence warrants.
