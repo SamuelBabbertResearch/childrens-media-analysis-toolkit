@@ -108,6 +108,13 @@ directory `st_mtime_ns` and `st_ctime_ns` unchanged; `_scan_directory` then
 returns the cached first listing. Fix this as a separate performance/cache
 session—do not fold it into the typography change. See `LEARNINGS.md`.
 
+**Constructs zoom controls, implemented 2026-09-17.** The Constructs toolbar
+now has labelled Zoom out / Zoom in buttons, a percentage readout, and Reset
+zoom. The view clamps the shared transform to 30–250%, emits one zoom state for
+buttons and wheel input, and keeps 100% as the readable reference. Focused
+verification: **133 passed** (`tests/test_ui_constructs_tab.py` and
+`tests/test_ui_qt.py`).
+
 **Ready now, and in this order.** Each is its own session with its own
 verification against real output — do not do two at once.
 

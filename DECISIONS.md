@@ -2052,3 +2052,23 @@ body and table type as the corresponding change. Reports, recipe documents,
 and both painted canvases read these shared tokens and expand their line boxes
 with them. This keeps the information-first layout compact while making
 legibility the higher-order constraint.
+
+### Constructs zoom is explicit and reversible
+
+**Decision.** The Constructs toolbar exposes **Zoom out**, a percentage
+readout, **Zoom in**, and **Reset zoom**. The controls use the same clamped
+view transform as the mouse wheel, with 100% as the readable reference scale.
+Scaling is uniform across boxes, text, and wires; it never changes stored box
+positions, recipe bindings, or measurement data.
+
+**Reason.** The graph is intentionally allowed to remain larger than a normal
+window so its labels stay legible. Researchers need a discoverable way to
+inspect a dense recipe at a larger scale or see more of it at once without
+changing the operationalization. An explicit readout makes the current view
+reproducible when a diagram is discussed or saved.
+
+**Date.** 2026-09-17.
+
+**Rejected.** Automatically shrinking the graph to fit the viewport; an
+icon-only control with no accessible label; storing zoom as part of a recipe
+or treating it as a measurement setting.

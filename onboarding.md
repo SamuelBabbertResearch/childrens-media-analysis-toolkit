@@ -44,6 +44,13 @@ extracted mockups. Targeted UI, pipeline, report, provenance, and participant
 scale verification passed (237 tests). The complete suite finished at **796
 passed, 13 skipped**; skips require the absent Little Bear media fixtures.
 
+The Constructs canvas also has explicit **Zoom out**, percentage, **Zoom in**,
+and **Reset zoom** controls. They uniformly scale the graph without changing
+recipe layout or measurement data; mouse-wheel zoom uses the same 30–250%
+limits. The readout is kept in sync with both input paths, and 100% remains the
+readable reference scale. Focused Constructs/Qt verification now passes **133
+tests**.
+
 ---
 
 ## What changed on 2026-09-16: methodological audit implementation

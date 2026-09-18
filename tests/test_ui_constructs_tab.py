@@ -176,6 +176,33 @@ def test_canvas_opens_at_a_readable_scale_with_large_cards(tab):
     assert _items(tab, MeasureItem)[0].boundingRect().width() == MEASURE_W
 
 
+def test_constructs_zoom_controls_scale_and_clamp_the_canvas(tab):
+    """Toolbar zoom changes the view transform without changing the graph."""
+    view = tab._view
+    assert tab._zoom_label.text() == "100%"
+
+    view.zoom_in()
+    assert view._zoom == pytest.approx(1.15)
+    assert view.transform().m11() == pytest.approx(1.15)
+    assert tab._zoom_label.text() == "115%"
+
+    view.zoom_out()
+    assert view._zoom == pytest.approx(1.0)
+    assert tab._zoom_label.text() == "100%"
+
+    view.set_zoom(99)
+    assert view._zoom == pytest.approx(view.ZOOM_MAX)
+    assert not tab._btn_zoom_in.isEnabled()
+    view.set_zoom(0)
+    assert view._zoom == pytest.approx(view.ZOOM_MIN)
+    assert not tab._btn_zoom_out.isEnabled()
+
+    view.reset_zoom()
+    assert view._zoom == pytest.approx(1.0)
+    assert view.transform().m11() == pytest.approx(1.0)
+    assert tab._zoom_label.text() == "100%"
+
+
 def test_a_constructs_edge_carries_the_sum_of_its_measures(tab):
     """Colour owns saturation (0.05) and contrast (0.10), so Colour's edge to
     the composite stands for 0.15 — a summary of stored facts, not a stored

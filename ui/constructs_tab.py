@@ -541,10 +541,36 @@ class DiagramView(QGraphicsView):
 
     def wheelEvent(self, event) -> None:
         step = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
-        target = max(self.ZOOM_MIN, min(self.ZOOM_MAX, self._zoom * step))
-        if target != self._zoom:
+        self.set_zoom(self._zoom * step)
+
+    zoom_changed = Signal(float)
+
+    def set_zoom(self, target: float) -> None:
+        """Set the canvas scale, keeping all zoom entry points in sync.
+
+        The transform belongs to the view, so this scales the complete graph
+        uniformly: boxes, labels, and wires remain aligned and the stored
+        layout and measurement data are untouched.
+        """
+        target = max(self.ZOOM_MIN, min(self.ZOOM_MAX, float(target)))
+        if abs(target - self._zoom) > 1e-9:
             self.scale(target / self._zoom, target / self._zoom)
             self._zoom = target
+        self.zoom_changed.emit(self._zoom)
+
+    def zoom_in(self) -> None:
+        """Make the diagram larger by one 15% step."""
+        self.set_zoom(self._zoom * 1.15)
+
+    def zoom_out(self) -> None:
+        """Make the diagram smaller by one 15% step."""
+        self.set_zoom(self._zoom / 1.15)
+
+    def reset_zoom(self) -> None:
+        """Return to the readable 100% reference scale."""
+        self.resetTransform()
+        self._zoom = 1.0
+        self.zoom_changed.emit(self._zoom)
 
     # -- building ---------------------------------------------------------
     def build(self, recipe: R.Recipe, parts: dict | None,
@@ -740,8 +766,7 @@ class DiagramView(QGraphicsView):
         rect = self._scene.itemsBoundingRect()
         if rect.isEmpty():
             return
-        self.resetTransform()
-        self._zoom = 1.0
+        self.reset_zoom()
         self.centerOn(rect.center())
 
     def to_image(self) -> QImage:
@@ -808,6 +833,26 @@ class ConstructsTab(QWidget):
         self._btn_image.clicked.connect(self._save_image)
         bar.row.addWidget(self._btn_image)
 
+        # Keep zoom controls explicit and keyboard/accessibility friendly. The
+        # percentage is a readout rather than a second source of state; the
+        # view owns the transform and emits changes from buttons or the wheel.
+        self._btn_zoom_out = QPushButton("Zoom out")
+        self._btn_zoom_out.setToolTip(
+            "Make the Constructs boxes and text smaller.")
+
+        self._zoom_label = QLabel("100%")
+        self._zoom_label.setProperty("role", "dim")
+        self._zoom_label.setAlignment(Qt.AlignCenter)
+        self._zoom_label.setMinimumWidth(48)
+        self._zoom_label.setToolTip("Current Constructs diagram zoom.")
+
+        self._btn_zoom_in = QPushButton("Zoom in")
+        self._btn_zoom_in.setToolTip(
+            "Make the Constructs boxes and text larger.")
+
+        self._btn_zoom_reset = QPushButton("Reset zoom")
+        self._btn_zoom_reset.setToolTip("Return the Constructs diagram to 100%.")
+
         self._btn_edit = QPushButton("Edit")
         self._btn_edit.setCheckable(True)
         self._btn_edit.setToolTip(
@@ -859,6 +904,10 @@ class ConstructsTab(QWidget):
         bar.row.addWidget(self._btn_duplicate)
 
         bar.row.addStretch(1)
+        bar.row.addWidget(self._btn_zoom_out)
+        bar.row.addWidget(self._zoom_label)
+        bar.row.addWidget(self._btn_zoom_in)
+        bar.row.addWidget(self._btn_zoom_reset)
         lay.addWidget(bar)
 
         self._headline = QLabel("")
@@ -874,6 +923,11 @@ class ConstructsTab(QWidget):
         # more, which is also the shape `ui/recipes.py` already uses.
         self._split = QSplitter(Qt.Horizontal)
         self._view = DiagramView()
+        self._btn_zoom_out.clicked.connect(self._view.zoom_out)
+        self._btn_zoom_in.clicked.connect(self._view.zoom_in)
+        self._btn_zoom_reset.clicked.connect(self._view.reset_zoom)
+        self._view.zoom_changed.connect(self._update_zoom_controls)
+        self._update_zoom_controls(self._view._zoom)
         self._view.layout_changed.connect(self._persist_layout)
         self._split.addWidget(self._view)
         self._panel = self._build_edit_panel()
@@ -893,6 +947,14 @@ class ConstructsTab(QWidget):
         self._legend.setProperty("role", "dim")
         self._legend.setContentsMargins(8, 4, 8, 6)
         lay.addWidget(self._legend)
+
+    def _update_zoom_controls(self, zoom: float) -> None:
+        """Reflect the canvas zoom in the toolbar and button availability."""
+        self._zoom_label.setText(f"{zoom * 100:.0f}%")
+        self._btn_zoom_out.setEnabled(
+            zoom > DiagramView.ZOOM_MIN + 1e-9)
+        self._btn_zoom_in.setEnabled(
+            zoom < DiagramView.ZOOM_MAX - 1e-9)
 
     # -- the editing panel ------------------------------------------------
     def _build_edit_panel(self) -> QWidget:

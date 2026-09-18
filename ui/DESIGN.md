@@ -34,6 +34,17 @@ The constraints did not move:
 - nothing in the palette implies programme quality, appropriateness, or viewer
   effect.
 
+### Constructs canvas zoom
+
+The Constructs toolbar provides labelled **Zoom out**, a percentage readout,
+**Zoom in**, and **Reset zoom** controls. Mouse-wheel zoom and these buttons
+share one clamped transform (30–250%) and one state signal, so the readout is
+never stale. Scaling is uniform over node boxes, painted text, labels, and
+wires. It changes only the current view: stored layout coordinates, recipe
+bindings, and measurement values remain unchanged. The 100% reset is the
+readable reference scale; the canvas remains pannable when the full graph does
+not fit in the window.
+
 This is a finish change, not a content redesign. The mockups still do not
 authorize invented labels, metrics, columns, or values.
 
