@@ -64,3 +64,20 @@ identical analysis and readability results. Main-window, chart, timed-text,
 and Clip Finder rendering succeeded, and VLC advanced through the synthetic
 video. The first build's missing word lists were fixed in the spec before the
 final build. Archive qualification is repeated immediately before publishing.
+
+
+## Published release
+
+Published on 2026-09-18 as the latest non-prerelease:
+https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/releases/tag/v1.3.0
+
+- Tag/source commit: `v1.3.0` / `7781d60ad6bfe2efee690f53188555d033becf44`.
+- Windows archive: `CMAT-v1.3.0-windows.zip`, 352,323,084 bytes.
+- SHA-256: `38c66ef90903326164e5cf4033b6cf4ac894c75daee104a7ceafd621f6b24c56`.
+- ZIP CRC/integrity check passed. A fresh extraction passed every frozen smoke
+  check, with analysis/readability results matching the source run exactly.
+- GitHub's uploaded-asset digest matched the local checksum before publication.
+- `SHA256SUMS.txt` is attached as a separate asset. `master` was not modified.
+
+This publication record was added after tagging; it does not move the release
+tag or change the packaged executable.

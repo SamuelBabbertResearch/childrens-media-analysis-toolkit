@@ -10,7 +10,8 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
 Review and merge `codex/integrate-liu-september-updates` into `master`, then
 update both laptops before creating new work branches. Follow
 [CONTRIBUTING.md](../../CONTRIBUTING.md). A release tag does not update master.
-Windows packaging and its resource-file correction are documented in
+The v1.3.0 Windows release is published; packaging checks and its resource-file
+correction are documented in
 [RELEASE_1.3.0.md](RELEASE_1.3.0.md).
 
 ## Integration checkpoint — 2026-09-17

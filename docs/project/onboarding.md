@@ -12,7 +12,8 @@ adult-only participant redesign, Clip Finder, and rating-scale entries follow.)
 
 ## What changed on 2026-09-18: Windows release packaging
 
-Version 1.3.0 packages the integration branch as a Windows ZIP. See
+Version 1.3.0 is published as the latest GitHub release with a verified Windows
+ZIP, checksum, and source tag `7781d60`. See
 [release build notes](RELEASE_1.3.0.md) for the synthetic package checks and
 resource-file fix. `cmat_qt.py` now supports the opt-in `--check-package`
 diagnostic; normal startup is unchanged. Shared development across laptops is
