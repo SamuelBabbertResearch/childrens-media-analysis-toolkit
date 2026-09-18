@@ -1,5 +1,10 @@
 # Children's Media Analysis Toolkit (CMAT)
 
+**September 17 source update:** [Changes and download options](CHANGELOG.md)
+cover the integrated methodological corrections, performance improvements,
+charts, and clip tools. These updates are available as source; the existing
+Windows package remains v1.2.1.
+
 **An open-source research application for quantitative analysis of children's
 audiovisual media.** CMAT is a Windows desktop application for researchers who
 need to measure formal media features in children's television: pacing and shot
@@ -258,12 +263,18 @@ that reason. See [CEILINGS.md](docs/project/CEILINGS.md).
 
 ## Download & Install (Windows)
 
-1. Go to the [Releases page](../../releases/latest)
-2. Download the latest `CMAT` Windows `.zip`
+1. Go to the [v1.2.1 Windows release](https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/releases/tag/v1.2.1)
+2. Download `CMAT-v1.2.1-windows.zip`
 3. Unzip anywhere (e.g. `C:\CMAT\`)
 4. Double-click `CMAT.exe`
 
 No Python, no FFmpeg, no other installs required. Everything is bundled.
+
+This packaged version predates the September 16–17 source updates. The
+`v1.2.2` DOI-linkage release has no Windows asset. For the updated source ZIP
+and the exact tested commit, see [download options](CHANGELOG.md#downloads).
+A source ZIP requires Python and the dependencies in the source setup below;
+it is not the ready-to-run `CMAT.exe` package.
 
 ---
 

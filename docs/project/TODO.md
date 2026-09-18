@@ -9,9 +9,10 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
 
 Local edits and Dr. Liu's September 16–17 changes have been reconciled and
 tested on `codex/integrate-liu-september-updates`; see the [integration record](INTEGRATION_2026-09-17.md).
-Full suite: **804 passed, 13 skipped** for absent media. Publishing or pushing
-this local integration has not been done. The methodological follow-ups below
-remain separate work.
+Full suite: **804 passed, 13 skipped** for absent media. Source publication
+targets the integration branch; [update notes](../../CHANGELOG.md) list its
+contents and downloads. A new Windows package is not included in this source
+push. The methodological follow-ups below remain separate work.
 
 ## Current phase — the measurement model
 

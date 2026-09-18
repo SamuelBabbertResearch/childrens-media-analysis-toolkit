@@ -18,8 +18,10 @@ horizontal charts, clip tools, the relocated documentation, and September 7
 public Index fixes are preserved alongside the methodological corrections and
 performance changes. The full isolated suite passed: **804 passed, 13 skipped**
 (the skips require absent Little Bear media). See the [integration record](INTEGRATION_2026-09-17.md)
-for conflict decisions, visual checks, and limitations. No remote push or site
-publication was performed.
+for conflict decisions, visual checks, and limitations. The subsequent source
+push targets that integration branch, with [update notes](../../CHANGELOG.md)
+and source-download links. It does not publish a Windows build or the Index
+website.
 
 ---
 

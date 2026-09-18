@@ -52,4 +52,8 @@ Windows fonts: vertical and horizontal FFC, timed-text rate/density, vocabulary
 tiers, readability including a negative value, the feature map, and Clip
 Finder. This was not a real-media playback trial or a packaged-release check.
 
-The merge is local. No remote branch or published site was updated.
+At verification time the merge was local. The subsequent source-publication
+step targets `origin/codex/integrate-liu-september-updates`, preserving `master`.
+[Update notes](../../CHANGELOG.md) describe the combined changes and distinguish
+the source archive from the older Windows package. No new packaged release or
+Index website publication is included.
