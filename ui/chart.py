@@ -20,10 +20,12 @@ with each other, which is the only comparison the data supports.
 
 from __future__ import annotations
 
+from textwrap import fill
+
 from PySide6.QtWidgets import QDialog, QVBoxLayout
 
 from ui.modal import ModalDialogFrame
-from ui.tokens import COLORS
+from ui.tokens import COLORS, color
 
 # The component order the report lists them in, so the two read alike.
 COMPONENTS = (
@@ -38,8 +40,7 @@ COMPONENTS = (
 # One hue per component, distinguishable in greyscale by ordering rather than
 # by lightness alone. None of them encodes a judgement; they identify a
 # component, which is why the legend is not optional.
-BAND_COLORS = ("#4e79a7", "#76b7b2", "#8cd17d", "#f1ce63", "#e15759",
-               "#b07aa1")
+BAND_COLORS = tuple(color(f"chart_{index}") for index in range(1, 7))
 
 
 def _bar_series(axes, labels, values, *, bottoms=None, label="", color=""):
@@ -160,13 +161,16 @@ def _validation_footnote(figure) -> None:
     names = [name for name, _why in ungraded_measurements()]
     if not names:
         return
+    note = (
+        "Not graded against hand coding: " + ", ".join(names)
+        + ". These compare episodes measured the same way; they are not "
+          "validated figures, and flashing is not a safety assessment."
+    )
     figure.text(
         0.09, 0.015,
-        "Not graded against hand coding: " + ", ".join(names)
-        + ".  These compare episodes measured the same way; they are not "
-          "validated figures, and flashing is not a safety assessment.",
+        fill(note, width=112),
         fontsize=7, color=COLORS["text_dim"], ha="left", va="bottom",
-        wrap=True)
+    )
 
 
 def _axes(figure):

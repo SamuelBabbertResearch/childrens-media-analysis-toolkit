@@ -43,6 +43,16 @@ def test_both_front_ends_share_one_palette():
     assert gui_theme.FONT_PT is tokens.FONT_PT
 
 
+def test_default_type_scale_has_a_readable_floor():
+    """The scientific layout stays dense without returning to tiny type."""
+    assert tokens.FONT_PX["body"] >= 14
+    assert tokens.FONT_PX["table"] >= 14
+    assert tokens.FONT_PX["small"] >= 12
+    assert tokens.FONT_PX["tiny"] >= 11
+    assert tokens.METRICS["control_h"] >= 30
+    assert tokens.METRICS["row_h"] >= 29
+
+
 def test_every_colour_is_a_hex_triplet():
     bad = [k for k, v in tokens.COLORS.items()
            if not re.fullmatch(r"#[0-9a-fA-F]{6}", v)]
@@ -117,6 +127,13 @@ def test_report_renders_a_document():
     # The reference's own class names, so the reference's own CSS applies.
     assert 'class="data-table"' in html
     assert 'class="kv"' not in html
+
+
+def test_report_typography_reads_the_shared_scale():
+    """Document views must grow with the widget theme, not trail behind it."""
+    assert f"font-size: {tokens.FONT_PX['body']}px" in report.STYLE
+    assert f"font-size: {tokens.FONT_PX['small']}px" in report.STYLE
+    assert f"font-size: {tokens.FONT_PX['tiny']}px" in report.STYLE
 
 
 def test_report_uses_the_reference_stylesheet_not_a_copy_of_it():

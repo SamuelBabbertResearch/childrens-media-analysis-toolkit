@@ -121,23 +121,41 @@ from analyzer.show_index import list_episodes, list_shows, show_key
 from ui.modal import ConfirmDialog
 from ui.recipes import EvaluationWorker
 from ui import theme
-# Geometry is IMPORTED from the pipeline canvas rather than re-typed. Both
-# canvases are the same reference stylesheet's node card, and a second copy of
-# these numbers would drift the first time `ui/reference/pipeline.css` is
-# re-extracted — `LEARNINGS.md` shape 3 applies to values as much as to claims.
+# The grid and wire vocabulary stays shared with the Pipeline canvas. The
+# Constructs cards derive a larger local reading scale from those shared
+# values: this diagram carries dense method and parameter text, and fitting
+# the whole graph into one viewport made both its type and boxes too small.
 from ui.pipeline_view import GRID, NODE_PAD, NODE_RADIUS, WIRE_W
-from ui.tokens import color
+from ui.tokens import FONT_PX, color
 
-TARGET_W = 200
-CONSTRUCT_W = 170
-MEASURE_W = 250
-CARD_GAP = 10
-LANE_GAP = 18
-COL_GAP = 150
+TARGET_W = 280
+CONSTRUCT_W = 230
+MEASURE_W = 340
+CARD_PAD = NODE_PAD + 4
+CARD_RADIUS = NODE_RADIUS + 2
+CARD_GAP = 16
+LANE_GAP = 26
+COL_GAP = 170
 
 PANEL_W = 320
 
 WIRE_MIN, WIRE_MAX = 1.0, 7.0
+
+NODE_FONT_PX = {
+    "body": FONT_PX["body"] + 3,
+    "small": FONT_PX["small"] + 3,
+    "tiny": FONT_PX["tiny"] + 2,
+}
+TITLE_LINE_H = NODE_FONT_PX["body"] + 7
+BODY_LINE_H = NODE_FONT_PX["small"] + 6
+META_LINE_H = NODE_FONT_PX["tiny"] + 6
+
+
+def _node_font(role: str, bold: bool = False) -> QFont:
+    """Constructs-canvas type derived from, but larger than, the UI scale."""
+    font = theme.font(role, bold=bold)
+    font.setPixelSize(NODE_FONT_PX[role])
+    return font
 
 
 def _shrinkable(combo: QComboBox) -> None:
@@ -223,10 +241,11 @@ class TargetItem(CanvasNode):
         self._recipe = recipe
         self._lines = _wrap(
             construct.definition if construct else "",
-            theme.font("small"), TARGET_W - NODE_PAD * 2)
+            _node_font("small"), TARGET_W - CARD_PAD * 2)
 
     def _height(self) -> float:
-        return NODE_PAD * 2 + 16 + 6 + len(self._lines) * 13 + 16
+        return (CARD_PAD * 2 + TITLE_LINE_H + 8
+                + len(self._lines) * BODY_LINE_H + META_LINE_H)
 
     def boundingRect(self) -> QRectF:
         return QRectF(0, 0, TARGET_W, self._height())
@@ -236,33 +255,33 @@ class TargetItem(CanvasNode):
         body = QRectF(0, 0, TARGET_W, self._height())
         p.setBrush(QBrush(QColor(color("node_bg"))))
         p.setPen(QPen(QColor(color("accent")), 2))
-        p.drawRoundedRect(body, NODE_RADIUS, NODE_RADIUS)
+        p.drawRoundedRect(body, CARD_RADIUS, CARD_RADIUS)
 
-        x, y = NODE_PAD, NODE_PAD
-        p.setFont(theme.font("body", bold=True))
-        p.setPen(QColor("#111111"))
+        x, y = CARD_PAD, CARD_PAD
+        p.setFont(_node_font("body", bold=True))
+        p.setPen(QColor(color("text")))
         name = self._construct.name if self._construct else self._recipe.construct_key
-        p.drawText(QRectF(x, y, TARGET_W - NODE_PAD * 2, 16),
+        p.drawText(QRectF(x, y, TARGET_W - CARD_PAD * 2, TITLE_LINE_H),
                    Qt.AlignVCenter | Qt.AlignLeft, name)
-        y += 16 + 4
+        y += TITLE_LINE_H + 6
         p.setPen(QPen(QColor(color("node_rule")), 1))
-        p.drawLine(QPointF(x, y), QPointF(TARGET_W - NODE_PAD, y))
+        p.drawLine(QPointF(x, y), QPointF(TARGET_W - CARD_PAD, y))
         y += 2
 
-        p.setFont(theme.font("small"))
+        p.setFont(_node_font("small"))
         p.setPen(QColor(color("text_dim")))
         for line in self._lines:
-            p.drawText(QRectF(x, y, TARGET_W - NODE_PAD * 2, 13),
+            p.drawText(QRectF(x, y, TARGET_W - CARD_PAD * 2, BODY_LINE_H),
                        Qt.AlignVCenter | Qt.AlignLeft, line)
-            y += 13
+            y += BODY_LINE_H
 
         # The word "construct" on the box itself: this is the one node on the
         # canvas that is NOT observable, and that is the whole point of it.
-        f = theme.font("tiny")
+        f = _node_font("tiny")
         f.setItalic(True)
         p.setFont(f)
         p.setPen(QColor(color("node_status")))
-        p.drawText(QRectF(x, y, TARGET_W - NODE_PAD * 2, 14),
+        p.drawText(QRectF(x, y, TARGET_W - CARD_PAD * 2, META_LINE_H),
                    Qt.AlignVCenter | Qt.AlignLeft,
                    "construct — not observable, not in the file")
 
@@ -329,7 +348,8 @@ class MeasureItem(CanvasNode):
         return self._measure.unit if self._measure else ""
 
     def _height(self) -> float:
-        return NODE_PAD * 2 + 16 + 4 + len(self._body) * 13
+        return (CARD_PAD * 2 + TITLE_LINE_H + 6
+                + len(self._body) * BODY_LINE_H)
 
     def boundingRect(self) -> QRectF:
         return QRectF(0, 0, MEASURE_W, self._height())
@@ -347,44 +367,44 @@ class MeasureItem(CanvasNode):
         if refused:
             pen.setStyle(Qt.DashLine)
         p.setPen(pen)
-        p.drawRoundedRect(body, NODE_RADIUS, NODE_RADIUS)
+        p.drawRoundedRect(body, CARD_RADIUS, CARD_RADIUS)
 
-        x, y = NODE_PAD, NODE_PAD
-        p.setFont(theme.font("body", bold=True))
-        p.setPen(QColor(color("node_status") if refused else "#111111"))
+        x, y = CARD_PAD, CARD_PAD
+        p.setFont(_node_font("body", bold=True))
+        p.setPen(QColor(color("node_status") if refused else color("text")))
         title = self._measure.name if self._measure else self.binding.measure_key
         unit = f"  ({self._unit()})" if self._unit() else ""
-        p.drawText(QRectF(x, y, MEASURE_W - NODE_PAD * 2, 16),
+        p.drawText(QRectF(x, y, MEASURE_W - CARD_PAD * 2, TITLE_LINE_H),
                    Qt.AlignVCenter | Qt.AlignLeft, title + unit)
-        y += 16 + 4
+        y += TITLE_LINE_H + 6
 
         for kind, text in self._body:
             if kind == "method":
-                p.setFont(theme.font("small"))
-                p.setPen(QColor("#111111" if not refused
-                                else color("node_status")))
+                p.setFont(_node_font("small"))
+                p.setPen(QColor(color("text") if not refused
+                                 else color("node_status")))
             elif kind == "flag":
-                f = theme.font("tiny")
+                f = _node_font("tiny")
                 f.setItalic(True)
                 p.setFont(f)
                 p.setPen(QColor(color("warn_rule")))
             elif kind == "value":
-                p.setFont(theme.font("small", bold=True))
+                p.setFont(_node_font("small", bold=True))
                 p.setPen(QColor(color("accent_dark")))
             elif kind == "share":
-                p.setFont(theme.font("small", bold=True))
+                p.setFont(_node_font("small", bold=True))
                 p.setPen(QColor(color("aqua_bottom")))
             elif kind == "refusal":
-                f = theme.font("tiny")
+                f = _node_font("tiny")
                 f.setItalic(True)
                 p.setFont(f)
                 p.setPen(QColor(color("node_status")))
             else:
-                p.setFont(theme.font("tiny"))
+                p.setFont(_node_font("tiny"))
                 p.setPen(QColor(color("text_dim")))
-            p.drawText(QRectF(x, y, MEASURE_W - NODE_PAD * 2, 13),
+            p.drawText(QRectF(x, y, MEASURE_W - CARD_PAD * 2, BODY_LINE_H),
                        Qt.AlignVCenter | Qt.AlignLeft, text)
-            y += 13
+            y += BODY_LINE_H
 
 
 class ConstructItem(CanvasNode):
@@ -423,7 +443,7 @@ class ConstructItem(CanvasNode):
                 f"{'' if self._n == 1 else 's'} in this recipe")
 
     def _height(self) -> float:
-        return NODE_PAD * 2 + 16 + 14
+        return CARD_PAD * 2 + TITLE_LINE_H + META_LINE_H
 
     def boundingRect(self) -> QRectF:
         return QRectF(0, 0, CONSTRUCT_W, self._height())
@@ -433,20 +453,20 @@ class ConstructItem(CanvasNode):
         body = QRectF(0, 0, CONSTRUCT_W, self._height())
         p.setBrush(QBrush(QColor(color("node_bg"))))
         p.setPen(QPen(QColor(color("aqua_bottom")), 1))
-        p.drawRoundedRect(body, NODE_RADIUS, NODE_RADIUS)
+        p.drawRoundedRect(body, CARD_RADIUS, CARD_RADIUS)
 
-        x, y = NODE_PAD, NODE_PAD
-        p.setFont(theme.font("body", bold=True))
-        p.setPen(QColor("#111111"))
-        p.drawText(QRectF(x, y, CONSTRUCT_W - NODE_PAD * 2, 16),
+        x, y = CARD_PAD, CARD_PAD
+        p.setFont(_node_font("body", bold=True))
+        p.setPen(QColor(color("text")))
+        p.drawText(QRectF(x, y, CONSTRUCT_W - CARD_PAD * 2, TITLE_LINE_H),
                    Qt.AlignVCenter | Qt.AlignLeft,
                    self.construct.name if self.construct else self.key)
-        y += 16
-        f = theme.font("tiny")
+        y += TITLE_LINE_H
+        f = _node_font("tiny")
         f.setItalic(True)
         p.setFont(f)
         p.setPen(QColor(color("node_status")))
-        p.drawText(QRectF(x, y, CONSTRUCT_W - NODE_PAD * 2, 14),
+        p.drawText(QRectF(x, y, CONSTRUCT_W - CARD_PAD * 2, META_LINE_H),
                    Qt.AlignVCenter | Qt.AlignLeft,
                    self.caption())
 
@@ -662,7 +682,7 @@ class DiagramView(QGraphicsView):
                         src_view_key=src_view_key, dst_view_key=item.view_key)
         self._scene.addItem(edge)
         if label:
-            edge.label = self._scene.addText(label, theme.font("tiny"))
+            edge.label = self._scene.addText(label, _node_font("tiny"))
             edge.label.setDefaultTextColor(QColor(color("text_dim")))
         self._edges.append(edge)
 
@@ -710,11 +730,19 @@ class DiagramView(QGraphicsView):
                 for key, item in self._nodes.items()}
 
     def fit(self) -> None:
+        """Show the diagram at a readable 100%; overflow remains pannable.
+
+        Fitting the complete FFC graph into the viewport reduced the 17 px
+        node titles to single-digit rendered sizes on ordinary windows. The
+        canvas already supports panning and wheel zoom, so preserving readable
+        text is more useful than showing every node at once.
+        """
         rect = self._scene.itemsBoundingRect()
         if rect.isEmpty():
             return
-        self.fitInView(rect.adjusted(-20, -20, 20, 20), Qt.KeepAspectRatio)
-        self._zoom = self.transform().m11()
+        self.resetTransform()
+        self._zoom = 1.0
+        self.centerOn(rect.center())
 
     def to_image(self) -> QImage:
         """The diagram as a picture, for a methods-section figure.

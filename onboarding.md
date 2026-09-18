@@ -4,9 +4,45 @@ Previously-on, for a session starting with zero memory. Read this, then
 `TODO.md`, then `DECISIONS.md` and `LEARNINGS.md`. `INDEX.md` points at
 everything else.
 
-**Last updated:** 2026-09-16 (methodological audit implementation; the
+**Last updated:** 2026-09-17 (readability scale and modern scientific-desktop visual refresh; the
+2026-09-16 methodological audit implementation, the
 2026-09-04 research-credibility audit, Formal-Feature Composite terminology,
 adult-only participant redesign, Clip Finder, and rating-scale entries follow.)
+
+---
+
+## What changed on 2026-09-17: modern scientific-desktop visual refresh
+
+The Qt interface keeps the same workflow, information density, native Windows
+behaviour, one-accent rule, and stimulus-only guardrail, but the finish is now
+flat and contemporary: neutral surfaces, quieter seams, 30 px controls, 29 px
+data rows, underline-selected workspace tabs, stronger focus borders, light
+selection washes in numeric views, cleaner pipeline nodes, and a coordinated
+categorical chart palette. `ui/tokens.py` remains the single source of visual
+values and `ui/theme.py` remains their Qt translation.
+
+After the first live review, the Qt type scale increased to 14 logical px for
+body, table, and grid text, 12 px for secondary text, and 11 px for the
+smallest annotations. The Classic Desktop UI moved from 9 pt to 10 pt body and
+table type. Report and recipe HTML now read those tokens instead of restating
+smaller sizes, and the Pipeline and Constructs canvases derive their line
+boxes from the same scale so larger text is not clipped. Focused theme,
+document, recipe, Pipeline, and Constructs verification passed (218 tests).
+The complete suite reached 797 passed, 13 skipped, and one unrelated failure:
+the directory-listing cache can miss a file created before this Windows
+filesystem advances the directory's mtime/ctime. The isolated test fails
+repeatedly; it is recorded in `TODO.md` and `LEARNINGS.md` for a separate cache
+session. No analyzer code changed in the readability work.
+
+The analysis report follows the same surface and table treatment. Its FFC
+number is blue rather than green: a green score looked favorable even though
+the FFC is neither a quality rating nor a viewer-effect measure. No workflow,
+metric, stored value, or export changed.
+
+`ui/DESIGN.md` now states how the modern token layer relates to the older
+extracted mockups. Targeted UI, pipeline, report, provenance, and participant
+scale verification passed (237 tests). The complete suite finished at **796
+passed, 13 skipped**; skips require the absent Little Bear media fixtures.
 
 ---
 
@@ -27,8 +63,10 @@ figure remains the combined ContentDetector-plus-plateau configuration and is
 not attributed to ContentDetector alone.
 
 An isolated Python 3.12 `.venv` now contains the full requirements, PySide6
-6.8.3, `en_core_web_sm`, and bundled CMUdict data. Verification finished at
-**790 passed, 13 skipped**; skips require absent Little Bear media.
+6.8.3, `en_core_web_sm`, and bundled CMUdict data. Verification at the time of
+the methodological implementation finished at **790 passed, 13 skipped**;
+skips require absent Little Bear media. The current suite count is recorded in
+the newer entry above.
 
 ### Audit record before implementation
 

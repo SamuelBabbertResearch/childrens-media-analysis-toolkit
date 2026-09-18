@@ -22,7 +22,7 @@ from __future__ import annotations
 from html import escape
 
 from ui import reference_css
-from ui.tokens import COLORS as C
+from ui.tokens import COLORS as C, FONT_PX as P
 
 # Qt's rich text engine supports a practical subset of CSS 2.1: it honours
 # borders, background-color, padding, font properties and table attributes,
@@ -51,25 +51,44 @@ _REFERENCE = reference_css.rules((
 # handful of things the reference has no equivalent for. Everything here is an
 # addition; nothing overrides a reference value.
 STYLE = _REFERENCE + f"""
-body {{ color: {C['text']}; font-size: 11px; }}
+body {{ color: {C['text']}; font-size: {P['body']}px; background: {C['panel_bg']}; }}
 p {{ margin: 3px 0; }}
+
+/* Modern surface treatment over the reference's component structure. */
+.results-container {{ padding: 10px; background: {C['panel_bg']}; }}
+.section-title {{ color: {C['section_title']};
+                  border-bottom: 1px solid {C['hairline']};
+                  padding-bottom: 4px; margin-top: 6px; }}
+.sub-text {{ color: {C['text_dim']}; font-size: {P['small']}px; }}
+.data-table {{ border: 1px solid {C['mw_border']}; }}
+.data-table th {{ background: {C['mw_header_bg']};
+                  border: 1px solid {C['mw_border']};
+                  padding: 4px 7px; height: 24px; }}
+.data-table td {{ border: 1px solid {C['table_cell_line']};
+                  padding: 4px 7px; height: 23px; }}
+.info-banner {{ background: {C['info_bg']}; border: 1px solid {C['info_border']};
+                border-radius: 4px; padding: 8px 10px; }}
+.info-title {{ color: {C['info_text']}; }}
+fieldset {{ border: 1px solid {C['panel_border']}; border-radius: 4px;
+            padding: 7px 9px; }}
+legend {{ color: {C['legend_fg']}; font-size: {P['small']}px; }}
 
 /* No :nth-child in Qt's rich text engine, so striping is a class per row. */
 tr.alt td {{ background-color: {C['table_alt_row']}; }}
 /* No :first-child either; the label column is marked explicitly. */
 .data-table th.l, .data-table td.l {{ text-align: left; }}
 /* A prose cell in an otherwise numeric table. */
-.data-table td.n {{ color: {C['text_dim']}; font-size: 10px;
+.data-table td.n {{ color: {C['text_dim']}; font-size: {P['tiny']}px;
                     text-align: left; font-style: italic; }}
 
-.title {{ font-size: 12px; font-weight: bold; margin: 0; }}
-.score {{ font-size: 20px; font-weight: bold; color: {C['status_complete']}; }}
+.title {{ font-size: {P['heading']}px; font-weight: bold; margin: 0; }}
+.score {{ font-size: {P['title'] + 6}px; font-weight: bold; color: {C['accent_dark']}; }}
 .scorenote {{ color: {C['text_dim']}; }}
 .pct {{ color: {C['accent_dark']}; margin: 2px 0 6px 0; }}
 .dim {{ color: {C['text_dim']}; }}
-.note {{ color: {C['text_dim']}; font-style: italic; font-size: 10px; }}
+.note {{ color: {C['text_dim']}; font-style: italic; font-size: {P['tiny']}px; }}
 .warn {{ background: {C['warn_bg']}; border: 1px solid {C['warn_border']};
-         color: {C['warn_text']}; font-size: 10px; padding: 6px 8px; }}
+         color: {C['warn_text']}; font-size: {P['tiny']}px; padding: 6px 8px; }}
 """
 
 # The reference gives the key column a fixed 140px. Qt's rich text layout wants

@@ -84,6 +84,30 @@ method; standard-token MTLD beside the custom content-lemma form; the larger
 double-coded held-out validation in the audit; and empirical derivation or
 external validation of FFC recipes before confirmatory use.
 
+**Interface implementation record, 2026-09-17.** The Qt visual layer was
+refreshed to a modern scientific-desktop finish through the shared tokens and
+theme, without changing navigation, workflow vocabulary, measurements, or
+exports. The Pipeline remains central, dense tables remain dense, Windows
+behaviour remains native, and the FFC display no longer uses verdict-like
+green. Targeted UI and guardrail suite: **237 passed**. Full-suite verification
+finished at **796 passed, 13 skipped**; the skips require absent Little Bear
+media fixtures.
+
+**Readability follow-up, 2026-09-17.** Live review found 12 px body type too
+small. The shared Qt scale is now 14 px for body/table/grid, with 30 px controls
+and 29 px data rows; the Classic Desktop UI follows at 10 pt. Report and recipe
+HTML plus both painted canvases consume the same scale. Focused verification:
+**218 passed**. The complete suite reached **797 passed, 13 skipped, 1
+failed**: the unrelated, repeatable directory-scan cache invalidation failure
+described below.
+
+**Directory-scan cache invalidation, found 2026-09-17.**
+`tests/test_scope.py::test_library_scan_cache_invalidates_when_directory_changes`
+fails on this Windows filesystem because creating a second file can leave both
+directory `st_mtime_ns` and `st_ctime_ns` unchanged; `_scan_directory` then
+returns the cached first listing. Fix this as a separate performance/cache
+session—do not fold it into the typography change. See `LEARNINGS.md`.
+
 **Ready now, and in this order.** Each is its own session with its own
 verification against real output — do not do two at once.
 

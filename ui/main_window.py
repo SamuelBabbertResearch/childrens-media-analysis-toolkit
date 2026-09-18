@@ -2518,7 +2518,7 @@ class MainWindow(QMainWindow):
         result = self._cached(show_key(self._root, ep.parent), ep.stem)
         if result is None:
             self._report.setHtml(
-                f"<p style='color:#54595d'><b>{ep.name}</b><br>"
+                f"<p style='color:{color('text_dim')}'><b>{ep.name}</b><br>"
                 "Not analyzed yet. Run it from Automated coding; the result "
                 "appears here when it finishes.</p>")
             self._set_export_source()

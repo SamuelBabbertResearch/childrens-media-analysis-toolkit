@@ -4,6 +4,39 @@ The visual language for the PySide6 front-end. Design detail lives here rather
 than in `CLAUDE.md` so that file stays a short rules-and-orientation document;
 `CLAUDE.md` §4 links here.
 
+## Current visual layer: modern scientific desktop (2026-09-17)
+
+The application now uses a flatter, contemporary visual finish while keeping
+the interaction model and research-oriented density specified below. The
+reference stylesheets remain the authority for component structure, table
+idioms, workflow vocabulary, and Windows-native behaviour. For palette,
+control height, corner radius, focus treatment, and tab treatment, the current
+tokens in `ui/tokens.py` and their translation in `ui/theme.py` supersede the
+older bevelled values in the extracted mockups.
+
+The current readability scale uses 14 logical px for body, table, and grid
+text; 12 px for secondary text; and 11 px for the smallest annotations.
+Controls are 30 px high and data rows are 29 px high. These remain compact
+desktop dimensions, but they are deliberately larger than the reference's
+11 px type and 19–20 px boxes. Document views and painted canvases read the
+same tokens, so no screen silently falls back to the older scale.
+
+The constraints did not move:
+
+- information-first, compact, and legible; no dashboard cards or display-size
+  headings;
+- one accent used for selection, focus, and the one primary action;
+- colour never carries status by itself;
+- numeric tables use a light selection wash so figures remain readable;
+- the visual Pipeline remains the primary orientation device;
+- native window, keyboard, DPI, accessibility, and dialog behaviours stay
+  intact;
+- nothing in the palette implies programme quality, appropriateness, or viewer
+  effect.
+
+This is a finish change, not a content redesign. The mockups still do not
+authorize invented labels, metrics, columns, or values.
+
 Each section gives the specification as written, then **Qt notes** — because Qt
 Style Sheets are a subset of CSS and will silently ignore what they do not
 support. A rule that is dropped rather than rejected is the worst kind, so the
@@ -75,18 +108,18 @@ stated or the interface drifts. All of them live in `ui/tokens.py`:
 
 | Token | Value | Reference rule |
 |---|---|---|
-| `FONT_PX["body"]` | 11 | `body` |
-| `METRICS["row_h"]` | 19 | `.tree-row` |
-| `METRICS["control_h"]` | 20 | `.btn` |
-| `METRICS["dialog_input_h"]` | 19 | `input` inside `.dialog-content` |
-| `METRICS["header_h"]` | 20 | `.data-table th` |
-| `METRICS["titlebar_h"]` | 30 | `.titlebar` — 24 in the mockups; see below |
-| `METRICS["caption_btn_w"]` | 34 | not in the mockups; Windows caption |
+| `FONT_PX["body"]` | 14 | readable override of `body` |
+| `METRICS["row_h"]` | 29 | readable override of `.tree-row` |
+| `METRICS["control_h"]` | 30 | readable override of `.btn` |
+| `METRICS["dialog_input_h"]` | 30 | readable override of dialog inputs |
+| `METRICS["header_h"]` | 30 | readable override of `.data-table th` |
+| `METRICS["titlebar_h"]` | 38 | Windows caption plus larger type |
+| `METRICS["caption_btn_w"]` | 50 | Windows caption target width |
 
 Sizes are **device-independent pixels**. Qt 6 scales the whole interface by
-the display's device-pixel ratio, so `11px` is 11px at 100% and 16.5 physical
-at 150%. This reverses the Tk rule: there a pixel was physical, which is why
-`FONT_PT` still exists and is marked Tk-only.
+the display's device-pixel ratio, so `14px` is 14px at 100% and 21 physical
+pixels at 150%. This reverses the Tk rule: there a pixel was physical, which is
+why `FONT_PT` still exists and is marked Tk-only.
 
 ### 0.4 Qt behaviours that have already cost time
 

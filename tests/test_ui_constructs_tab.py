@@ -155,6 +155,27 @@ def test_the_columns_are_ordered_left_to_right(tab):
                for m in measures for c in constructs)
 
 
+def test_canvas_opens_at_a_readable_scale_with_large_cards(tab):
+    """The complete FFC must scroll, not shrink its text to fit at once."""
+    from ui import tokens
+    from ui.constructs_tab import (
+        CONSTRUCT_W, MEASURE_W, NODE_FONT_PX, TARGET_W, ConstructItem,
+        MeasureItem, TargetItem,
+    )
+    from ui.pipeline_view import NODE_W
+
+    assert tab._view.transform().m11() == pytest.approx(1.0)
+    assert tab._view._zoom == pytest.approx(1.0)
+    assert NODE_FONT_PX["body"] >= tokens.FONT_PX["body"] + 3
+    assert NODE_FONT_PX["small"] >= tokens.FONT_PX["small"] + 3
+    assert TARGET_W > NODE_W
+    assert CONSTRUCT_W > NODE_W
+    assert MEASURE_W > TARGET_W
+    assert _items(tab, TargetItem)[0].boundingRect().width() == TARGET_W
+    assert _items(tab, ConstructItem)[0].boundingRect().width() == CONSTRUCT_W
+    assert _items(tab, MeasureItem)[0].boundingRect().width() == MEASURE_W
+
+
 def test_a_constructs_edge_carries_the_sum_of_its_measures(tab):
     """Colour owns saturation (0.05) and contrast (0.10), so Colour's edge to
     the composite stands for 0.15 — a summary of stored facts, not a stored

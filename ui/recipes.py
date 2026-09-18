@@ -57,7 +57,7 @@ from analyzer import recipes as R
 from analyzer.show_index import list_episodes, list_shows, show_key
 from ui import reference_css
 from ui.modal import ConfirmDialog, ModalDialogFrame
-from ui.tokens import COLORS as _C
+from ui.tokens import COLORS as _C, FONT_PX as _P
 
 DIALOG_W = 980
 DIALOG_H = 700
@@ -70,15 +70,15 @@ _REFERENCE = reference_css.rules((
 ))
 
 _STYLE = _REFERENCE + f"""
-body {{ color: {_C['text']}; font-size: 11px; }}
+body {{ color: {_C['text']}; font-size: {_P['body']}px; }}
 p {{ margin: 3px 0; }}
 tr.alt td {{ background-color: {_C['table_alt_row']}; }}
 .data-table th.l, .data-table td.l {{ text-align: left; }}
 .dim {{ color: {_C['text_dim']}; }}
-.note {{ color: {_C['text_dim']}; font-style: italic; font-size: 10px; }}
+.note {{ color: {_C['text_dim']}; font-style: italic; font-size: {_P['tiny']}px; }}
 .warn {{ background: {_C['warn_bg']}; border: 1px solid {_C['warn_border']};
-         color: {_C['warn_text']}; font-size: 10px; padding: 6px 8px; }}
-.cite {{ font-family: Consolas, monospace; font-size: 10px;
+         color: {_C['warn_text']}; font-size: {_P['tiny']}px; padding: 6px 8px; }}
+.cite {{ font-family: Consolas, monospace; font-size: {_P['tiny']}px;
          color: {_C['accent_dark']}; }}
 """
 

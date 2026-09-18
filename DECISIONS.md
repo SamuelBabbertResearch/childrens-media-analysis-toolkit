@@ -2020,3 +2020,35 @@ retaining adult prediction as a proxy outcome after removing children.
 **Provenance exception.** Frozen recipe names, file paths, manifests, inventory
 rows, and citations keep the former title because changing them would break the
 historical hash chain. Active documents label those strings as legacy.
+
+### The interface uses a modern scientific-desktop finish without changing its interaction model
+
+**Decision.** Refresh the shared visual tokens and Qt translation to use flat
+neutral surfaces, quieter borders, modestly larger compact controls, underline
+workspace tabs, explicit focus borders, light selection washes for numeric
+views, and cleaner pipeline nodes. Keep the existing stage structure, top-level
+tabs, visual Pipeline, dense tables, one-accent discipline, and native Windows
+window behaviour.
+
+**Reason.** The bevelled chrome and 19–20 px controls made a current research
+tool read as a period reconstruction. A modern finish improves scanability and
+target clarity without turning CMAT into a card-grid dashboard or hiding its
+methods. The refresh stays centralized in `ui/tokens.py` / `ui/theme.py`, so
+the palette cannot drift between screens. The FFC score changed from green to
+the accent blue because green beside a score implies a favorable verdict,
+which CMAT does not issue.
+
+**Date.** 2026-09-17.
+
+**Rejected.** A generic SaaS dashboard with cards and oversized headings; a
+dark theme that competes with video and chart content; per-screen palettes; a
+navigation rewrite; colour-only status; retaining green for the FFC number.
+
+**Readability amendment, 2026-09-17.** Researcher feedback found the first
+refresh's 12 px body type too small in use. The Qt body, table, and grid scale
+is now 14 logical px, with 12 px secondary text and 11 px annotations; controls
+are 30 px high and rows 29 px. The Classic Desktop UI moves from 9 pt to 10 pt
+body and table type as the corresponding change. Reports, recipe documents,
+and both painted canvases read these shared tokens and expand their line boxes
+with them. This keeps the information-first layout compact while making
+legibility the higher-order constraint.
