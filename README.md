@@ -1,9 +1,8 @@
 # Children's Media Analysis Toolkit (CMAT)
 
-**September 17 source update:** [Changes and download options](CHANGELOG.md)
-cover the integrated methodological corrections, performance improvements,
-charts, and clip tools. These updates are available as source; the existing
-Windows package remains v1.2.1.
+**Version 1.3.0:** [Download the Windows release](https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/releases/tag/v1.3.0)
+with the integrated methodological corrections, performance improvements,
+charts, and clip tools. See [what changed](CHANGELOG.md).
 
 **An open-source research application for quantitative analysis of children's
 audiovisual media.** CMAT is a Windows desktop application for researchers who
@@ -263,18 +262,18 @@ that reason. See [CEILINGS.md](docs/project/CEILINGS.md).
 
 ## Download & Install (Windows)
 
-1. Go to the [v1.2.1 Windows release](https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/releases/tag/v1.2.1)
-2. Download `CMAT-v1.2.1-windows.zip`
+1. Go to the [v1.3.0 Windows release](https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/releases/tag/v1.3.0)
+2. Download `CMAT-v1.3.0-windows.zip`
 3. Unzip anywhere (e.g. `C:\CMAT\`)
 4. Double-click `CMAT.exe`
 
 No Python, no FFmpeg, no other installs required. Everything is bundled.
 
-This packaged version predates the September 16–17 source updates. The
-`v1.2.2` DOI-linkage release has no Windows asset. For the updated source ZIP
-and the exact tested commit, see [download options](CHANGELOG.md#downloads).
-A source ZIP requires Python and the dependencies in the source setup below;
-it is not the ready-to-run `CMAT.exe` package.
+Use the named **Windows ZIP** under release assets. GitHub's separate
+"Source code" archives require Python and the source dependencies below.
+Unzip the whole Windows package and keep `_internal` beside `CMAT.exe`.
+FFmpeg, VLC, the English language model, and the pronunciation dictionary are
+included. Optional Whisper transcription downloads its model on first use.
 
 ---
 
@@ -762,6 +761,8 @@ metric, and a provenance block nobody reads protects nobody.
 
 ---
 
+For shared development across laptops, follow the [collaboration workflow](CONTRIBUTING.md).
+
 ## Building from source
 
 **Requirements:** Python 3.11+, FFmpeg on PATH
@@ -795,6 +796,11 @@ pytest tests/
 python -m PyInstaller build.spec -y
 copy config.json dist\CMAT\config.json
 ```
+
+Before publishing, run the opt-in packaged check and inspect its JSON report:
+`CMAT.exe --check-package report.json`. It uses synthetic temporary media to
+check analysis, language resources, Qt screens, and bundled VLC playback.
+See [release build notes](docs/project/RELEASE_1.3.0.md).
 
 ---
 

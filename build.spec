@@ -51,6 +51,10 @@ wordfreq_datas = [
 # Bundle it so readability analysis works on an offline research workstation.
 nltk_corpus_datas = [('.analysis/nltk_data', 'nltk_data')]
 
+# textstat's Spache/Dale-Chall formulas also require its packaged word lists.
+# Hidden imports collect Python modules, not these resources.
+textstat_datas = collect_data_files('textstat')
+
 # Bundle the native VLC runtime used by the frame-accurate Human Coding player.
 # CMAT_VLC_DIR supports non-default build machines while keeping the usual
 # Windows install location automatic.
@@ -99,6 +103,7 @@ a = Analysis(
         *blis_datas,
         *wordfreq_datas,
         *nltk_corpus_datas,
+        *textstat_datas,
         *vlc_datas,
     ],
     hiddenimports=[

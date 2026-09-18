@@ -1,5 +1,19 @@
 # Update history
 
+## v1.3.0 — Windows release, 2026-09-18
+
+- Packages the integrated September update described below as a 64-bit Windows
+  application, including FFmpeg, VLC, the English model, and CMU dictionary.
+- Fixes missing bundled `textstat` word lists required by Spache/Dale-Chall
+  readability formulas.
+- Adds an opt-in `--check-package report.json` diagnostic that exercises the
+  installed bundle with synthetic media and writes a machine-readable report.
+- Includes user-editable `config.json`, update notes, build identity, and a
+  SHA-256 checksum for the downloadable ZIP.
+
+[Windows release and assets](https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/releases/tag/v1.3.0)
+· [Build and verification notes](docs/project/RELEASE_1.3.0.md)
+
 ## 2026-09-17 — integrated source update
 
 This update combines Dr. Liu's September 16–17 changes with the local chart,

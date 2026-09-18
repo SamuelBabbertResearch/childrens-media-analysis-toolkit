@@ -182,3 +182,5 @@ wrong one — check which file you are in before changing a screen.
 | `FOR_PAPER.txt` | paper notes — **never committed** |
 
 September 17 local/upstream reconciliation and verification: [integration record](INTEGRATION_2026-09-17.md).
+
+Windows build/qualification: [RELEASE_1.3.0.md](RELEASE_1.3.0.md). Two-laptop workflow: [CONTRIBUTING.md](../../CONTRIBUTING.md).

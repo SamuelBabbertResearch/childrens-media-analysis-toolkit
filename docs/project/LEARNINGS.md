@@ -2214,3 +2214,13 @@ full run passed 804 tests, with 13 media-dependent skips.
 The incoming validation wording also made the horizontal chart's footnote
 collide with its axis label. Render the combined UI after a merge even when
 both source branches have passing tests; text changes can alter layout.
+
+
+## Imported Python modules do not imply packaged resource files — 2026-09-17
+
+The v1.3.0 frozen smoke check analyzed video successfully but failed on Spache
+readability because `textstat/resources/en/easy_words.txt` was absent. Hidden
+imports included the formulas, not their word lists. `build.spec` now collects
+`textstat` data explicitly. The package check exercises all six readability
+formulas with the bundled CMU dictionary and must pass from a fresh extraction
+before publishing. Source tests cannot detect this missing-file build defect.

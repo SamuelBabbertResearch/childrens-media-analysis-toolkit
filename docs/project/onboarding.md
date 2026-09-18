@@ -4,9 +4,20 @@ Previously-on, for a session starting with zero memory. Read this, then
 `TODO.md`, then `DECISIONS.md` and `LEARNINGS.md`. [INDEX.md](../../INDEX.md)
 points at everything else, including the separate provenance-bound study record.
 
-**Last updated:** 2026-09-17 (integration of local work and methodological audit; the
+**Last updated:** 2026-09-18 (integration of local work and methodological audit; the
 2026-09-04 research-credibility audit, Formal-Feature Composite terminology,
 adult-only participant redesign, Clip Finder, and rating-scale entries follow.)
+
+---
+
+## What changed on 2026-09-18: Windows release packaging
+
+Version 1.3.0 packages the integration branch as a Windows ZIP. See
+[release build notes](RELEASE_1.3.0.md) for the synthetic package checks and
+resource-file fix. `cmat_qt.py` now supports the opt-in `--check-package`
+diagnostic; normal startup is unchanged. Shared development across laptops is
+documented in [CONTRIBUTING.md](../../CONTRIBUTING.md). The integration still
+needs review/merge into `master`; publishing a release does not merge it.
 
 ---
 
