@@ -18,6 +18,17 @@ project got its shape) · [Product identity](#product-identity) ·
 
 ---
 
+### Formula-accurate measures keep compatibility keys; FFC variants remain distinct
+**Decision.** Display raw observables by their formulas while retaining legacy
+storage keys. Keep historical missing-audio redistribution, but persist and
+display `audio_visual` versus `visual_only_audio_unavailable` as different FFC
+input variants. TransNetV2 binds all-transition boundaries; ContentDetector and
+AdaptiveDetector bind hard-cut boundaries. **Reason.** Renaming keys would break
+old caches, while silently treating different estimands or five- and six-input
+composites as interchangeable would break scientific comparability. **Date.**
+2026-09-16. **Rejected.** Silently replacing historical FFC arithmetic; calling
+TransNetV2 a hard-cut method; treating matching 0–1 bounds as invariance.
+
 ## Foundations (June – August 2026)
 
 The decisions that gave the project its shape, in the order they were made.
@@ -2089,3 +2100,15 @@ show entirely — its component metrics and 62 language transcripts are current
 and accurate, and deleting them would lose real data to fix a rescaling.
 
 2026-09-16 — Mia coding package correction: agent confused newer set with Seasons 2–4 shortlist; user clarified Season 1. Preserved Downloads MIA01_coding_2026-09-16T19-30-26-989Z.json unchanged and source mapping under audio1_frame_coding/mia_received_wrong_set_20260916. All completion flags false; do not treat as finalized. Built separate mia_season1_correction06_20260916 from authoritative correction-06 selection with all 12 S01 IDs and checksum-verified historical media, including CUTS_2 replacement. New package/storage keys prevent cross-set import. Reviewed wrong-set coding: AUDIO_2 additional promising pair (8 hard cuts each; motion .0684/.0680; RMS .02930/.04849); AUDIO_1 four cuts each. Two Slide Cut notes visually confirmed as wipes, retained raw and documented separately. M03 visual cut begins566 rather than SB01 552. Added wipe/slide to simplified options, review flags remain separate. No participant selection or frozen calibration changes. See preserved export REVIEW.md.
+
+
+## Preserve both branches' contributions during September integration
+
+**Decision.** Keep the local documentation layout, clip tools, chart labels,
+and horizontal layout; combine them with the incoming measurement corrections
+and collection-based chart rendering. Preserve both histories through a merge.
+**Reason.** Selecting either complete chart file would lose independent work.
+The engine remains identical to Dr. Liu's version; UI reconciliation is confined
+to presentation and verification. **Date.** 2026-09-17.
+**Rejected.** Replacing local work with master or discarding upstream changes.
+See the [integration record](INTEGRATION_2026-09-17.md).

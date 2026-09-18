@@ -1,9 +1,15 @@
 """Output data contract for per-episode and per-show analysis results."""
 
 from __future__ import annotations
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, fields
 from typing import Any
 import json
+
+
+def _known_fields(cls: type, values: dict[str, Any]) -> dict[str, Any]:
+    """Keep cache readers forward-compatible with fields added by new builds."""
+    names = {item.name for item in fields(cls)}
+    return {key: value for key, value in values.items() if key in names}
 
 
 @dataclass
@@ -37,17 +43,29 @@ class ColorSaturationMetrics:
     mean: float = 0.0
     temporal_var: float = 0.0
     contrast_mean: float = 0.0   # spatial std-dev of V channel, averaged across sampled frames
+    source_fps: float = 0.0
+    requested_sample_fps: float = 0.0
+    effective_sample_fps: float = 0.0
+    frame_interval: int = 0
 
 
 @dataclass
 class MotionMetrics:
     mean: float = 0.0
     peak: float = 0.0
+    source_fps: float = 0.0
+    requested_sample_fps: float = 0.0
+    effective_sample_fps: float = 0.0
+    frame_interval: int = 0
 
 
 @dataclass
 class FlashingMetrics:
     luminance_delta_events_per_min: float = 0.0
+    source_fps: float = 0.0
+    requested_sample_fps: float = 0.0
+    effective_sample_fps: float = 0.0
+    frame_interval: int = 0
 
 
 @dataclass
@@ -80,7 +98,7 @@ class SpeechMetrics:
     available: bool = False
     source: str = "none"           # "srt" | "vtt" | "whisper" | "none"
     words_per_minute: float = 0.0
-    speech_density: float = 0.0    # fraction of episode duration with speech (0.0–1.0)
+    speech_density: float = 0.0    # fraction covered by timed text intervals (0.0–1.0)
     total_words: int = 0
 
 
@@ -98,6 +116,7 @@ class SensoryLoadComponents:
 class SensoryLoadMetrics:
     score: float = 0.0
     audio_available: bool = False
+    input_variant: str = ""  # audio_visual | visual_only_audio_unavailable | legacy
     components: SensoryLoadComponents = field(default_factory=SensoryLoadComponents)
 
 
@@ -188,17 +207,19 @@ class EpisodeResult:
                     mean=cs.get("mean", 0.0),
                     temporal_var=cs.get("temporal_var", 0.0),
                     contrast_mean=cs.get("contrast_mean", 0.0),
+                    source_fps=cs.get("source_fps", 0.0),
+                    requested_sample_fps=cs.get("requested_sample_fps", 0.0),
+                    effective_sample_fps=cs.get("effective_sample_fps", 0.0),
+                    frame_interval=cs.get("frame_interval", 0),
                 ) if cs else ColorSaturationMetrics(),
-                motion=MotionMetrics(**mo) if mo else MotionMetrics(),
-                flashing=FlashingMetrics(**fl) if fl else FlashingMetrics(),
+                motion=MotionMetrics(**_known_fields(MotionMetrics, mo))
+                if mo else MotionMetrics(),
+                flashing=FlashingMetrics(**_known_fields(FlashingMetrics, fl))
+                if fl else FlashingMetrics(),
                 # Filtered, not splatted: a cache written by a build with a
                 # field this one does not have must load, not raise.
-                audio=AudioMetrics(**{
-                    k: v for k, v in au.items()
-                    if k in {"rms_mean", "rms_peak", "rms_temporal_var",
-                             "dynamic_range_db", "available",
-                             "unavailable_reason"}
-                }) if au else AudioMetrics(),
+                audio=AudioMetrics(**_known_fields(AudioMetrics, au))
+                if au else AudioMetrics(),
                 speech=SpeechMetrics(
                     available=spe.get("available", False),
                     source=spe.get("source", "none"),
@@ -209,6 +230,7 @@ class EpisodeResult:
                 sensory_load=SensoryLoadMetrics(
                     score=sn.get("score", 0.0),
                     audio_available=sn.get("audio_available", False),
+                    input_variant=sn.get("input_variant", "legacy"),
                     components=SensoryLoadComponents(
                         pacing=sc.get("pacing", 0.0),
                         saturation=sc.get("saturation", 0.0),

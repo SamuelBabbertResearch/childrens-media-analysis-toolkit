@@ -1479,10 +1479,11 @@ class App(tk.Tk):
              "rhythm variability; higher is burstier"),
             ("Colour saturation", f"{cs.mean:.3f}",
              f"temporal variance {cs.temporal_var:.4f}"),
-            ("Colour contrast", f"{cs.contrast_mean:.3f}",
+            ("Spatial HSV-value dispersion", f"{cs.contrast_mean:.3f}",
              "spatial spread of brightness"),
-            ("Motion (mean)", f"{mo.mean:.4f}", f"peak {mo.peak:.4f}"),
-            ("Flashing events/min",
+            ("Sampled-frame grayscale change (mean)", f"{mo.mean:.4f}",
+             f"peak {mo.peak:.4f}"),
+            ("Whole-frame luminance-change events/min",
              f"{fl.luminance_delta_events_per_min:.2f}",
              "whole-frame luminance change"),
         ])
@@ -1496,7 +1497,7 @@ class App(tk.Tk):
                 ("RMS peak", f"{au.rms_peak:.4f}", ""),
                 ("Temporal variance", f"{au.rms_temporal_var:.6f}",
                  "volume variation over time"),
-                ("Dynamic range", f"{au.dynamic_range_db:.1f} dB",
+                ("Peak-to-mean 1-s RMS ratio", f"{au.dynamic_range_db:.1f} dB",
                  "peak-to-mean ratio"),
             ])
         else:
@@ -1510,8 +1511,8 @@ class App(tk.Tk):
             src = {"srt": "SRT subtitle file", "vtt": "VTT subtitle file",
                    "whisper": "Whisper transcription"}.get(spx.source, spx.source)
             self._props(t, [
-                ("Words per minute", f"{spx.words_per_minute:.1f}", ""),
-                ("Speech density", f"{spx.speech_density:.1%}",
+                ("Words per timed-text minute", f"{spx.words_per_minute:.1f}", ""),
+                ("Timed-text density", f"{spx.speech_density:.1%}",
                  "share of runtime containing dialogue"),
                 ("Total words", f"{spx.total_words:,}", ""),
                 ("Source", src, "English-only metrics"),
@@ -1754,16 +1755,16 @@ class App(tk.Tk):
             ("Cuts / min",           agg.cuts_per_min),
             ("Shot length mean (s)", agg.shot_length_mean_sec),
             ("Colour saturation",    agg.color_saturation_mean),
-            ("Colour contrast",      agg.color_contrast_mean),
-            ("Motion mean",          agg.motion_mean),
-            ("Flashing events/min",  agg.flashing_events_per_min),
+            ("Spatial HSV-value dispersion", agg.color_contrast_mean),
+            ("Sampled-frame grayscale change", agg.motion_mean),
+            ("Whole-frame luminance-change events/min", agg.flashing_events_per_min),
         ]
         rows = [{"metric": label, "mean": s.mean, "median": s.median,
                  "std": s.std, "min": s.min, "max": s.max}
                 for label, s in stats]
         audio = agg.audio_rms_mean
-        rows.append({"metric": "Audio RMS mean"} if audio.mean <= 0 else
-                    {"metric": "Audio RMS mean", "mean": audio.mean,
+        rows.append({"metric": "Mean 1-s linear RMS amplitude"} if audio.mean <= 0 else
+                    {"metric": "Mean 1-s linear RMS amplitude", "mean": audio.mean,
                      "median": audio.median, "std": audio.std,
                      "min": audio.min, "max": audio.max})
 
@@ -1788,7 +1789,7 @@ class App(tk.Tk):
             Column("episode", "Episode", width=170, stretch=True),
             Column("cuts", "Cuts/min", width=58, numeric=True, fmt="{:.1f}"),
             Column("sat", "Sat.", width=48, numeric=True),
-            Column("motion", "Motion", width=52, numeric=True),
+            Column("motion", "Frame change", width=76, numeric=True),
             Column("flash", "Flash/min", width=62, numeric=True, fmt="{:.1f}"),
             Column("audio", "Audio", width=56, numeric=True, fmt="{:.4f}"),
             Column("load", "Load", width=52, numeric=True),
@@ -3269,10 +3270,10 @@ class App(tk.Tk):
             "dur":   "Duration in seconds",
             "cpm":   "Cuts per minute — how often the camera cuts to a new shot.\nHigher = faster-paced.",
             "sat":   "Color saturation mean (0-1) — how vivid and pure the colors are.\nTypically higher in cartoons, lower in live-action.",
-            "con":   "Color contrast mean (0-1) — spatial spread of brightness within frames.\n"
+            "con":   "Spatial HSV-value dispersion (0-1) — within-frame SD of HSV V.\n"
                      "High for stark dark/light content such as presentation slides or whiteboards.\n"
                      "Can push live-action/lecture scores up unexpectedly relative to animation.",
-            "mot":   "Motion mean (0-1) — mean absolute grayscale difference between\n"
+            "mot":   "Sampled-frame grayscale change (0-1) — mean absolute difference between\n"
                      "CONSECUTIVE SAMPLED frames. Measures image change, not depicted\n"
                      "movement: a cut, a camera pan and a running character all raise it.\n"
                      "Depends on the frame sampling rate.",
@@ -3282,7 +3283,7 @@ class App(tk.Tk):
                      "specifies, and it has never been graded against human coding.\n"
                      "Zero does not mean safe. Comparable only across episodes measured\n"
                      "at the same sample rate and threshold.",
-            "rms":   "Audio RMS loudness mean — average volume level.\n"
+            "rms":   "Mean 1-s linear RMS amplitude at 8 kHz mono.\n"
                      "Spoken-word content (lectures, narration) often scores higher here\n"
                      "than music-backed animation with quieter dialogue.\n"
                      "'n/a' if no audio track detected.",
@@ -3316,7 +3317,7 @@ class App(tk.Tk):
             "con":   "Average color contrast mean across all episodes.\n"
                      "High for content with stark bright/dark frames (slides, whiteboards).",
             "flash": "Average flashing events per minute across all episodes.",
-            "rms":   "Average audio RMS loudness across all episodes.\n"
+            "rms":   "Average mean 1-s linear RMS amplitude across all episodes.\n"
                      "Spoken-word content typically scores higher than animation.",
         })
 
@@ -4488,7 +4489,7 @@ class SettingsDialog(tk.Toplevel):
     ]
     _RANGE_LABELS  = [
         "Cuts/min max", "Saturation max", "Contrast max",
-        "Motion max", "Flashing events/min max", "Audio RMS max",
+        "Frame-change max", "Luminance-change rate max", "Linear RMS max",
     ]
     # The clamping note. "over-threshold for this age" was the old wording and
     # was wrong twice over: a ceiling is a denominator, not a threshold, and
@@ -5033,9 +5034,9 @@ class CompareWindow(tk.Toplevel):
         row("Saturation mean", ma.color_saturation.mean,        mb.color_saturation.mean)
         row("Contrast mean",   ma.color_saturation.contrast_mean, mb.color_saturation.contrast_mean)
 
-        row("Motion", section=True, va=None, vb=None)
-        row("Motion mean", ma.motion.mean, mb.motion.mean)
-        row("Motion peak", ma.motion.peak, mb.motion.peak)
+        row("Sampled-frame grayscale change", section=True, va=None, vb=None)
+        row("Frame-change mean", ma.motion.mean, mb.motion.mean)
+        row("Frame-change peak", ma.motion.peak, mb.motion.peak)
 
         row("Flashing", section=True, va=None, vb=None)
         row("Events / min", ma.flashing.luminance_delta_events_per_min,
@@ -5045,10 +5046,11 @@ class CompareWindow(tk.Toplevel):
             row("Audio", section=True, va=None, vb=None)
             va = ma.audio.rms_mean        if ma.audio.available else None
             vb = mb.audio.rms_mean        if mb.audio.available else None
-            row("RMS loudness mean", va, vb, fmt=".4f")
+            row("Mean 1-s linear RMS amplitude", va, vb, fmt=".4f")
             va = ma.audio.dynamic_range_db if ma.audio.available else None
             vb = mb.audio.dynamic_range_db if mb.audio.available else None
-            row("Dynamic range (dB)", va, vb, lower_better=False, fmt=".1f")
+            row("Peak-to-mean 1-s RMS ratio (dB)", va, vb,
+                lower_better=False, fmt=".1f")
 
     @staticmethod
     def _fill_show(row, a: ShowAggregate, b: ShowAggregate) -> None:
@@ -5084,7 +5086,7 @@ class CompareWindow(tk.Toplevel):
             row("Audio", section=True, va=None, vb=None)
             va = a.audio_rms_mean.mean if a.audio_rms_mean.mean > 0 else None
             vb = b.audio_rms_mean.mean if b.audio_rms_mean.mean > 0 else None
-            row("Avg RMS loudness", va, vb, fmt=".4f")
+            row("Avg mean 1-s linear RMS amplitude", va, vb, fmt=".4f")
 
 
 def _ensure_shows_folder() -> None:

@@ -1,4 +1,4 @@
-# CLAUDE.md — CMAT rulebook
+# AGENTS.md — CMAT rulebook
 
 Rules only. Everything else has a home: `INDEX.md` points at it.
 

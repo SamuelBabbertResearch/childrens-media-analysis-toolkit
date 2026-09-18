@@ -1,0 +1,12 @@
+{
+  "date": "2026-09-16",
+  "git_commit": "a50063a-dirty",
+  "derivation": "exact row subset; detector was not rerun",
+  "source_file": "A Charlie Brown Christmas 1965__content-t27-diss_detections.csv",
+  "source_sha256": "f699e39afebbc3e43a6a442220978e9380e35a26eb548c8368c82f75fe901f45",
+  "filter": {
+    "type": "hard_cut"
+  },
+  "source_rows": 183,
+  "output_rows": 163
+}

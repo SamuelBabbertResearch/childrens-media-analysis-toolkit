@@ -1,0 +1,12 @@
+{
+  "date": "2026-09-16",
+  "git_commit": "a50063a-dirty",
+  "derivation": "exact row subset; detector was not rerun",
+  "source_file": "Little Bear 1x01 What Will Little Bear Wear_ _ Hide and Seek _ Little Bear Goes to the Moon__content-t27-diss_detections.csv",
+  "source_sha256": "e094c37e467456bf356ef5347488c9a7a4b4732924608419d0e3b6a8c0e0c9f2",
+  "filter": {
+    "type": "hard_cut"
+  },
+  "source_rows": 322,
+  "output_rows": 316
+}

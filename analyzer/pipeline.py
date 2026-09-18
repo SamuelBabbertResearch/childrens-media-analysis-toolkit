@@ -367,7 +367,7 @@ def _language_stage(root: Path | None, episodes: list[Path]) -> Stage:
         key="language",
         name="Language",
         subtitle="Speech rate and vocabulary",
-        explanation="Words per minute, speech density, and lexical complexity "
+        explanation="Words per timed-text minute, timed-text density, and lexical complexity "
                     "from captions or transcripts. English-only.",
     )
     total = len(episodes)

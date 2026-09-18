@@ -288,7 +288,7 @@ Sensory load ─── Pacing ─────── Hard cuts / min   ContentDet
                             └── Contrast         HSV mean
               ─── Motion ─────── Motion           Frame differencing
               ─── Luminance ──── Flashing         Luminance delta  (unvalidated)
-              ─── Loudness ───── Audio loudness   FFmpeg RMS
+              ─── Loudness ───── Linear RMS amplitude   FFmpeg RMS
 ```
 
 **The construct column is DERIVED.** A recipe stores bindings to measures and
@@ -529,13 +529,13 @@ components actually contribute.** Over the 15 episodes in the live index:
 |---|---|---|---|
 | Pacing | 25% | 0.253 | 28.0% |
 | Saturation | 5% | 0.451 | 10.0% |
-| Colour contrast | 10% | 0.549 | **24.3%** |
+| Spatial HSV-value dispersion | 10% | 0.549 | **24.3%** |
 | Motion | 25% | 0.064 | **7.0%** |
 | Flashing | 15% | 0.210 | 13.9% |
 | Audio | 20% | 0.191 | 16.9% |
 
 Motion is nominally joint-heaviest at 25% and contributes **7%** — less than
-saturation, which is nominally weighted five times lower. Colour contrast is
+saturation, which is nominally weighted five times lower. HSV-value dispersion is
 nominally 10% and contributes **24%**. The cause is the ceilings: observed
 `motion_mean` reaches 0.086 against a ceiling of 1.0 (8.6% of range), while
 `color_contrast_mean` reaches 0.216 against 0.35 (62%). A weight only means
@@ -706,23 +706,22 @@ an extremely slow episode and may instead mean detection failed.
 - **`dynamic_range_db` is peak-to-mean**, not the peak-to-noise-floor that
   "dynamic range" usually means. It is 0.0 when the mean is ~0.
 
-### 8.8 Speech — WPM is a rate *while speaking*
+### 8.8 Timed-text rate and density
 
 ```python
 wpm     = total_words / (total_dialogue_sec / 60)
 density = total_dialogue_sec / duration_sec
 ```
 
-**This is the single most misread metric in CMAT.** `words_per_minute` divides
-by **dialogue time, not runtime**. It measures how fast characters talk when
-they talk — not how talkative the episode is. A near-silent episode with one
-rapid line can post a high WPM.
+The stored keys remain for compatibility, but the displayed estimands are
+**words per timed-text minute** and **timed-text density**. Intervals are
+limited to cues/ASR segments containing cleaned words and overlapping intervals
+are merged before duration is calculated. Caption display or ASR segment time
+is not assumed to be verified articulation time. Report the two together.
 
-Talkativeness is `speech_density` (0–1). Report the two together or neither.
-
-Also: captions are parsed for cue timings, so density inherits the caption
-file's timing quality. Under 0.5 s of total dialogue the result is reported as
-unavailable rather than as zero. **English only.**
+Both values inherit source timing and transcription choices. Under 0.5 s of
+word-containing timed text the result is unavailable rather than zero.
+**English only.**
 
 ### 8.9 Naming mismatch to watch
 
@@ -790,7 +789,7 @@ distinction.
 ### The headline accuracy figure
 
 ```
-transition-boundary F1 = 0.85 aggregate, range 0.75–0.91 across production styles
+transition-boundary F1 = 0.86 aggregate, range 0.75–0.91 across the two coded windows
 matched type-agnostically within ±2 s
 ```
 
@@ -804,16 +803,20 @@ Everything in that sentence is load-bearing:
   larger sample are outstanding.
 - Weakest on dissolve-heavy, low-contrast and visually noisy footage.
 
-**Which runs the aggregate covers** (confirmed 2026-08-14 by recomputing from
-the comparison CSVs; `local_hard_cut_f1` reproduces it):
+**Which runs the aggregate covers** (recomputed 2026-09-16 with the shipping
+scorer; `local_boundary_f1` reproduces it):
 
 | Episode | Detector | TP | FP | FN | F1 |
 |---|---|---|---|---|---|
-| A Charlie Brown Christmas 1965 | `content-t27-diss` | 32 | 10 | 11 | 0.753 |
-| Little Bear 1x01 | `content-t27-diss` | 71 | 4 | 10 | 0.910 |
-| **pooled** | `content-t27-diss` | **103** | **14** | **21** | **0.855** |
+| A Charlie Brown Christmas 1965 | `content-t27-solo` | 29 | 5 | 14 | 0.753 |
+| Little Bear 1x01 | `content-t27-solo` | 69 | 1 | 12 | 0.914 |
+| **pooled** | `content-t27-solo` | **98** | **6** | **26** | **0.860** |
 
-Two episodes, one detector — the shipped ContentDetector configuration. The
+Two windows, one detector — the shipped ContentDetector configuration without
+the experimental plateau pass. The solo artefacts are exact `hard_cut` row
+subsets of the historical combined artefacts, with derivation manifests. The
+combined `content-t27-diss` configuration remains F1 0.855 and is not evidence
+for ContentDetector alone. The
 range endpoints are those two episodes, not a distribution. TransNetV2
 (`transnet-t0.5-solo`) scores 0.902 / 0.942, pooled **0.928**, and is reported
 separately; the two detectors are never pooled.

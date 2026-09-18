@@ -31,6 +31,7 @@ from analyzer.vocab_complexity import (
     compute_diversity,
     compute_readability,
     compute_vocabulary,
+    load_norms,
 )
 
 # ---------------------------------------------------------------------------
@@ -101,6 +102,14 @@ def empty_norms() -> NormTables:
 # ---------------------------------------------------------------------------
 # _strip_non_speech unit tests  (no I/O, no spaCy)
 # ---------------------------------------------------------------------------
+
+
+def test_norm_tables_are_independently_optional(tmp_path):
+    norms = load_norms(tmp_path)
+    assert norms.aoa == {}
+    assert norms.concreteness == {}
+    assert norms.aoa_path == "not installed"
+    assert norms.conc_path == "not installed"
 
 def test_strip_bracket_cue():
     result = _strip_non_speech("[MUSIC PLAYING] Hello there.")

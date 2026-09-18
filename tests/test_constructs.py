@@ -180,9 +180,10 @@ def test_a_detector_added_to_the_registry_appears_as_a_method(monkeypatch):
     list of detectors. Adding a tool to the registry must be the only edit."""
     before = {m.key for m in C.methods_for("hard_cuts_per_min")}
 
-    invented = reg.ToolSpec(key="invented_detector", name="Invented detector",
-                            summary="only exists in this test",
-                            status=reg.EXPERIMENTAL)
+    invented = reg.ToolSpec(
+        key="invented_detector", name="Invented detector",
+        summary="only exists in this test", status=reg.EXPERIMENTAL,
+        estimands=("hard_cut_boundaries",))
     patched = replace(reg.TRANSITIONS, tools=[*reg.TRANSITIONS.tools, invented])
     monkeypatch.setattr(reg, "MEASUREMENTS",
                         [patched if m.key == "transitions" else m
@@ -190,6 +191,16 @@ def test_a_detector_added_to_the_registry_appears_as_a_method(monkeypatch):
 
     after = {m.key for m in C.methods_for("hard_cuts_per_min")}
     assert after - before == {"auto:transitions:invented_detector"}
+
+
+def test_transition_methods_are_filtered_by_the_estimand_the_tool_emits():
+    hard = {m.tool_key for m in C.methods_for("hard_cuts_per_min")
+            if m.kind == C.AUTOMATED}
+    all_boundaries = {m.tool_key for m in C.methods_for("transitions_per_min")
+                      if m.kind == C.AUTOMATED}
+
+    assert hard == {"pyscenedetect_content", "pyscenedetect_adaptive"}
+    assert all_boundaries == {"transnetv2"}
 
 
 def test_a_methods_status_comes_from_the_registry_not_from_this_module(monkeypatch):
@@ -286,7 +297,9 @@ def test_a_method_that_did_not_produce_the_cached_number_refuses(tmp_path):
     used = C.resolve("hard_cuts_per_min", "auto:transitions:pyscenedetect_content", ref)
     assert used.status == C.MEASURED and used.value == 12.5
 
-    other = C.resolve("hard_cuts_per_min", "auto:transitions:transnetv2", ref)
+    # TransNetV2 is deliberately not a method for hard cuts: it emits gradual
+    # as well as abrupt boundaries.  Ask for its actual all-boundary measure.
+    other = C.resolve("transitions_per_min", "auto:transitions:transnetv2", ref)
     assert other.status == C.METHOD_NOT_USED
     assert other.value is None
     assert "ContentDetector" in other.detail
@@ -432,13 +445,20 @@ def test_one_measure_is_comparable_with_itself_across_methods():
 
 
 def test_hand_coding_only_measures_declare_themselves_and_offer_no_comparison():
-    for key in ("transitions_per_min", "scene_changes_per_min_coded"):
+    for key in ("scene_changes_per_min_coded",):
         measure = C.get_measure(key)
         assert measure is not None
         assert measure.hand_coding_only
         assert not measure.has_automated_counterpart
         ok, _ = C.methods_comparable(key)
         assert ok is False
+
+    transitions = C.get_measure("transitions_per_min")
+    assert transitions is not None
+    assert not transitions.hand_coding_only
+    assert transitions.has_automated_counterpart
+    assert {m.tool_key for m in C.methods_for("transitions_per_min")
+            if m.kind == C.AUTOMATED} == {"transnetv2"}
 
 
 def test_the_comparability_split_is_read_from_validation_not_restated():

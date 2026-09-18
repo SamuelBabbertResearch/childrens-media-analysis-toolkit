@@ -16,6 +16,12 @@ import numpy as np
 from .schema import ColorSaturationMetrics, MotionMetrics, FlashingMetrics
 
 
+def sampling_plan(source_fps: float, requested_fps: float) -> tuple[int, float]:
+    """Integer frame interval and the temporal rate it actually realizes."""
+    interval = max(1, int(round(source_fps / requested_fps)))
+    return interval, source_fps / interval
+
+
 def _motion_value(
     previous: np.ndarray,
     current: np.ndarray,
@@ -67,8 +73,22 @@ def compute_frame_metrics(
     video_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
     total_frames = max(1, int(cap.get(cv2.CAP_PROP_FRAME_COUNT)))
 
-    # Decode every Nth frame; grab() the rest (fast, no pixel decode)
-    frame_interval = max(1, int(round(video_fps / sample_fps)))
+    # Decode the UNION of frames needed by the base and flashing rates.  The
+    # older implementation traversed the entire compressed stream a second
+    # time whenever flashing_sample_fps > sample_fps (the shipped 10 vs 2 fps
+    # default).  A union pass produces the identical two sample sequences
+    # while opening and traversing the video only once.
+    frame_interval, effective_sample_fps = sampling_plan(video_fps, sample_fps)
+    separate_flashing_rate = bool(
+        flashing_sample_fps and flashing_sample_fps > sample_fps)
+    if separate_flashing_rate:
+        flashing_interval, effective_flashing_fps = sampling_plan(
+            video_fps, float(flashing_sample_fps))
+        requested_flashing_fps = float(flashing_sample_fps)
+    else:
+        flashing_interval = frame_interval
+        effective_flashing_fps = effective_sample_fps
+        requested_flashing_fps = sample_fps
 
     saturation_values: list[float] = []
     contrast_values: list[float] = []    # spatial std-dev of V per frame
@@ -76,47 +96,64 @@ def compute_frame_metrics(
     flashing_events = 0
 
     prev_gray: np.ndarray | None = None
-    prev_luminance: float | None = None
+    prev_base_luminance: float | None = None
+    prev_flashing_luminance: float | None = None
 
     frame_idx = 0
     while True:
-        if frame_idx % frame_interval == 0:
+        base_sample = frame_idx % frame_interval == 0
+        flashing_sample = (
+            separate_flashing_rate
+            and frame_idx % flashing_interval == 0
+        )
+        if base_sample or flashing_sample:
             ret, frame = cap.read()
             if not ret:
                 break
 
-            # --- Color saturation (HSV S-channel) and contrast (std-dev of V-channel) ---
-            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-            s_mean = float(np.mean(hsv[:, :, 1])) / 255.0
-            saturation_values.append(s_mean)
-            v_std = float(np.std(hsv[:, :, 2])) / 255.0   # spatial spread of brightness
-            contrast_values.append(v_std)
+            gray: np.ndarray | None = None
+            luminance: float | None = None
 
-            # --- Luminance for flashing detection ---
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            luminance = float(np.mean(gray)) / 255.0
+            if base_sample:
+                # Color saturation (HSV S-channel) and per-frame contrast.
+                hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+                s_mean = float(np.mean(hsv[:, :, 1])) / 255.0
+                saturation_values.append(s_mean)
+                v_std = float(np.std(hsv[:, :, 2])) / 255.0
+                contrast_values.append(v_std)
 
-            is_flash = (
-                prev_luminance is not None
-                and abs(luminance - prev_luminance) > flashing_threshold
-            )
-            if is_flash:
-                flashing_events += 1
-            prev_luminance = luminance
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                luminance = float(np.mean(gray)) / 255.0
+                is_base_flash = (
+                    prev_base_luminance is not None
+                    and abs(luminance - prev_base_luminance)
+                    > flashing_threshold
+                )
+                if not separate_flashing_rate and is_base_flash:
+                    flashing_events += 1
+                prev_base_luminance = luminance
 
-            # --- Motion ---
-            motion = 0.0
-            if prev_gray is not None:
-                motion = _motion_value(prev_gray, gray, motion_method)
-                motion_values.append(motion)
+                motion = 0.0
+                if prev_gray is not None:
+                    motion = _motion_value(prev_gray, gray, motion_method)
+                    motion_values.append(motion)
+                prev_gray = gray
 
-            prev_gray = gray
+                if frame_cb:
+                    frame_cb(frame, s_mean, motion, luminance, is_base_flash)
+                if progress_cb:
+                    progress_cb(frame_idx / total_frames)
 
-            if frame_cb:
-                frame_cb(frame, s_mean, motion, luminance, is_flash)
-
-            if progress_cb:
-                progress_cb(frame_idx / total_frames)
+            if flashing_sample:
+                if gray is None:
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                if luminance is None:
+                    luminance = float(np.mean(gray)) / 255.0
+                if (prev_flashing_luminance is not None
+                        and abs(luminance - prev_flashing_luminance)
+                        > flashing_threshold):
+                    flashing_events += 1
+                prev_flashing_luminance = luminance
         else:
             ret = cap.grab()
             if not ret:
@@ -132,23 +169,30 @@ def compute_frame_metrics(
     con_arr = np.array(contrast_values)   if contrast_values   else np.array([0.0])
     mot_arr = np.array(motion_values)     if motion_values     else np.array([0.0])
 
-    if flashing_sample_fps and flashing_sample_fps > sample_fps:
-        flashing_events = _count_flashing_events(
-            video_path, video_fps, flashing_sample_fps, flashing_threshold
-        )
-
     return (
         ColorSaturationMetrics(
             mean=round(float(np.mean(sat_arr)), 4),
             temporal_var=round(float(np.var(sat_arr)), 4),
             contrast_mean=round(float(np.mean(con_arr)), 4),
+            source_fps=round(float(video_fps), 6),
+            requested_sample_fps=float(sample_fps),
+            effective_sample_fps=round(float(effective_sample_fps), 6),
+            frame_interval=frame_interval,
         ),
         MotionMetrics(
             mean=round(float(np.mean(mot_arr)), 4),
             peak=round(float(np.max(mot_arr)), 4),
+            source_fps=round(float(video_fps), 6),
+            requested_sample_fps=float(sample_fps),
+            effective_sample_fps=round(float(effective_sample_fps), 6),
+            frame_interval=frame_interval,
         ),
         FlashingMetrics(
             luminance_delta_events_per_min=round(flashing_events / duration_min, 3),
+            source_fps=round(float(video_fps), 6),
+            requested_sample_fps=float(requested_flashing_fps),
+            effective_sample_fps=round(float(effective_flashing_fps), 6),
+            frame_interval=flashing_interval,
         ),
     )
 
@@ -189,7 +233,7 @@ def compute_windowed_motion(
 
     video_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
     total_frames = max(1, int(cap.get(cv2.CAP_PROP_FRAME_COUNT)))
-    frame_interval = max(1, int(round(video_fps / sample_fps)))
+    frame_interval, effective_sample_fps = sampling_plan(video_fps, sample_fps)
     values: list[list[float]] = [[] for _ in range(n_windows)]
     previous_by_window: list[np.ndarray | None] = [None] * n_windows
 
@@ -231,6 +275,10 @@ def compute_windowed_motion(
         out.append(MotionMetrics(
             mean=round(float(np.mean(arr)), 4),
             peak=round(float(np.max(arr)), 4),
+            source_fps=round(float(video_fps), 6),
+            requested_sample_fps=float(sample_fps),
+            effective_sample_fps=round(float(effective_sample_fps), 6),
+            frame_interval=frame_interval,
         ))
     return out
 
@@ -240,14 +288,14 @@ def _count_flashing_events(
     video_fps: float,
     sample_fps: float,
     flashing_threshold: float,
-) -> int:
+) -> tuple[int, int, float]:
     """Count luminance jumps in a dedicated higher-rate pass."""
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         cap.release()
         raise RuntimeError(f"Could not open video file: {video_path}")
 
-    frame_interval = max(1, int(round(video_fps / sample_fps)))
+    frame_interval, effective_sample_fps = sampling_plan(video_fps, sample_fps)
     events = 0
     prev_luminance: float | None = None
     frame_idx = 0
@@ -269,4 +317,4 @@ def _count_flashing_events(
         frame_idx += 1
 
     cap.release()
-    return events
+    return events, frame_interval, effective_sample_fps

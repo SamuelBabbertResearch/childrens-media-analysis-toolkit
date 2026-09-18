@@ -68,10 +68,20 @@ def test_aggregate_to_dict_has_all_fields():
 
 def test_results_to_dataframe_columns():
     results = [_fake_result("ep1.mp4", 10, 0.3, 0.05, 2.0, 0.2)]
+    results[0].metrics.motion.source_fps = 24.0
+    results[0].metrics.motion.requested_sample_fps = 10.0
+    results[0].metrics.motion.effective_sample_fps = 12.0
+    results[0].metrics.motion.frame_interval = 2
+    results[0].metrics.flashing.source_fps = 24.0
+    results[0].metrics.sensory_load.input_variant = "audio_visual"
     df = results_to_dataframe(results)
     assert "file" in df.columns
     assert "sensory_load_score" in df.columns
     assert "cuts_per_min" in df.columns
+    assert df.loc[0, "frame_effective_sample_fps"] == 12.0
+    assert df.loc[0, "frame_interval"] == 2
+    assert df.loc[0, "flashing_source_fps"] == 24.0
+    assert df.loc[0, "ffc_input_variant"] == "audio_visual"
     assert len(df) == 1
 
 
@@ -90,6 +100,21 @@ def test_cache_save_and_load(tmp_path):
 
 def test_cache_miss_returns_none(tmp_path):
     assert load_cached(tmp_path, "NoShow", "ep") is None
+
+
+def test_cached_reads_are_isolated_and_saved_revisions_replace_the_memo(tmp_path):
+    """Memoizing JSON must not share mutable state or return an old save."""
+    first = EpisodeResult(file="first.mp4", duration_sec=10.0).to_dict()
+    save_cache(tmp_path, "MyShow", "ep", first)
+
+    loaded = load_cached(tmp_path, "MyShow", "ep")
+    loaded["metrics"]["speech"]["source"] = "changed by caller"
+    assert load_cached(tmp_path, "MyShow", "ep")["metrics"]["speech"][
+        "source"] == "none"
+
+    second = EpisodeResult(file="second.mp4", duration_sec=20.0).to_dict()
+    save_cache(tmp_path, "MyShow", "ep", second)
+    assert load_cached(tmp_path, "MyShow", "ep")["file"] == "second.mp4"
 
 
 def test_episode_result_from_dict_roundtrip():

@@ -29,6 +29,7 @@ whenever files move, a folder changes purpose, or a system is added.
 | change what a researcher can author on the canvas | `ui/constructs_tab.py`'s Edit panel. The palette offers **measures only** — that is what keeps the canvas typed and makes a nested composite impossible by construction |
 | change where node positions are stored | `recipes.save_view` / `load_view` / `delete_view` — `<recipe id>.view.json` beside the recipe. Never inside `content_hash()`, and deliberately allowed for the locked composite |
 | change how a metric is computed | the relevant `analyzer/metrics_*.py`, then `analyzer/measurements.py` |
+| review the methodological evidence or known validity limits of a metric | `METHODOLOGICAL_AUDIT_2026-09-16.md`, then the authoritative implementation and registry named there |
 | add a metric | `analyzer/schema.py`, its `metrics_*` module, `analyzer/measurements.py`, `ui/report.py`, `ui/settings.py` labels |
 | change what a screen looks like | `ui/theme.py` (tokens in `ui/tokens.py`) — read `ui/DESIGN.md` §0 first |
 | add or change a pipeline stage type | `NODE_TYPES` in `analyzer/pipeline_graph.py` — a dict entry, not a UI change |
@@ -179,3 +180,5 @@ wrong one — check which file you are in before changing a screen.
 | `README.md` | public-facing description |
 | `validation/CODEBOOK.md`, `validation/EVENT_CODEBOOK.md` | hand-coding definitions |
 | `FOR_PAPER.txt` | paper notes — **never committed** |
+
+September 17 local/upstream reconciliation and verification: [integration record](INTEGRATION_2026-09-17.md).

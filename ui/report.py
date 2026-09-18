@@ -179,7 +179,7 @@ def episode_html(result, percentile: dict | None = None,
         ("Saturation", c.saturation, cfg.get("saturation", 0.05)),
         ("Contrast",   c.contrast,   cfg.get("color_contrast", 0.10)),
         ("Motion",     c.motion,     cfg.get("motion", 0.25)),
-        ("Flashing",   c.flashing,   cfg.get("flashing", 0.15)),
+        ("Luminance change", c.flashing, cfg.get("flashing", 0.15)),
         ("Audio",      c.audio,      cfg.get("audio", 0.20)),
     ]
     rows = ['<table class="data-table" cellspacing="0" cellpadding="0" width="100%">'
@@ -203,6 +203,10 @@ def episode_html(result, percentile: dict | None = None,
             'above are the ones that actually produced the score — not the '
             'nominal weights in settings. A score composed this way is not '
             'directly comparable with one that included audio.</p>')
+    parts.append(
+        '<p class="note">FFC input variant: '
+        f'{_e((sl.input_variant or "legacy (not recorded)").replace("_", " "))}. '
+        'Treat each input variant as a different composite.</p>')
 
     # --- measured features --------------------------------------------------
     shot, pace = m.shot_length, m.scene_pacing
@@ -218,10 +222,11 @@ def episode_html(result, percentile: dict | None = None,
          "rhythm variability; higher is burstier"),
         ("Colour saturation", f"{col.mean:.3f}",
          f"temporal variance {col.temporal_var:.4f}"),
-        ("Colour contrast", f"{col.contrast_mean:.3f}",
+        ("Spatial HSV-value dispersion", f"{col.contrast_mean:.3f}",
          "spatial spread of brightness"),
-        ("Motion (mean)", f"{mot.mean:.4f}", f"peak {mot.peak:.4f}"),
-        ("Flashing events/min",
+        ("Sampled-frame grayscale change (mean)", f"{mot.mean:.4f}",
+         f"peak {mot.peak:.4f}"),
+        ("Whole-frame luminance-change events/min",
          f"{fla.luminance_delta_events_per_min:.2f}",
          "whole-frame luminance change"),
     ]))
@@ -231,11 +236,13 @@ def episode_html(result, percentile: dict | None = None,
     parts.append('<p class="section-title">Audio</p>')
     if au.available:
         parts.append(_props("Audio", [
-            ("RMS mean", f"{au.rms_mean:.4f}", ""),
-            ("RMS peak", f"{au.rms_peak:.4f}", ""),
+            ("Mean 1-s linear RMS amplitude (8 kHz mono)",
+             f"{au.rms_mean:.4f}", ""),
+            ("Peak 1-s linear RMS amplitude (8 kHz mono)",
+             f"{au.rms_peak:.4f}", ""),
             ("Temporal variance", f"{au.rms_temporal_var:.6f}",
              "volume variation over time"),
-            ("Dynamic range", f"{au.dynamic_range_db:.1f} dB",
+            ("Peak-to-mean 1-s RMS ratio", f"{au.dynamic_range_db:.1f} dB",
              "peak-to-mean ratio"),
         ]))
     else:
@@ -249,9 +256,9 @@ def episode_html(result, percentile: dict | None = None,
         src = {"srt": "SRT subtitle file", "vtt": "VTT subtitle file",
                "whisper": "Whisper transcription"}.get(sp.source, sp.source)
         parts.append(_props("Speech", [
-            ("Words per minute", f"{sp.words_per_minute:.1f}", ""),
-            ("Speech density", f"{sp.speech_density:.1%}",
-             "share of runtime containing dialogue"),
+            ("Words per timed-text minute", f"{sp.words_per_minute:.1f}", ""),
+            ("Timed-text density", f"{sp.speech_density:.1%}",
+             "share of runtime covered by word-containing timed text"),
             ("Total words", f"{sp.total_words:,}", ""),
             ("Source", src, "English-only metrics"),
         ]))
@@ -355,9 +362,9 @@ AGGREGATE_ROWS = (
     ("Cuts / min", "cuts_per_min", 2),
     ("Shot length mean (s)", "shot_length_mean_sec", 2),
     ("Colour saturation", "color_saturation_mean", 3),
-    ("Colour contrast", "color_contrast_mean", 3),
-    ("Motion", "motion_mean", 4),
-    ("Flashing events / min", "flashing_events_per_min", 2),
+    ("Spatial HSV-value dispersion", "color_contrast_mean", 3),
+    ("Sampled-frame grayscale change", "motion_mean", 4),
+    ("Whole-frame luminance-change events / min", "flashing_events_per_min", 2),
     ("Audio RMS", "audio_rms_mean", 4),
 )
 
@@ -467,9 +474,9 @@ COMPARE_EPISODE_ROWS = (
     ("Colour saturation", lambda m: m.color_saturation.mean, 3),
     # Contrast lives on the saturation block, not a block of its own — it is
     # the spatial std-dev of the V channel, added alongside saturation.
-    ("Colour contrast", lambda m: m.color_saturation.contrast_mean, 3),
-    ("Motion", lambda m: m.motion.mean, 4),
-    ("Flashing events / min",
+    ("Spatial HSV-value dispersion", lambda m: m.color_saturation.contrast_mean, 3),
+    ("Sampled-frame grayscale change", lambda m: m.motion.mean, 4),
+    ("Whole-frame luminance-change events / min",
      lambda m: m.flashing.luminance_delta_events_per_min, 2),
     ("Audio RMS", lambda m: m.audio.rms_mean if m.audio.available else None, 4),
 )

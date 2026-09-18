@@ -172,6 +172,10 @@ class AutomatedSource:
     measurement_key: str
     value_path: str
     available_path: str = ""
+    # When set, only registry tools declaring this exact estimand are methods
+    # for the measure.  The declaration remains in the registry; this module
+    # never restates a detector list.
+    estimand: str = ""
 
 
 @dataclass(frozen=True)
@@ -213,7 +217,7 @@ class Measure:
     automated: AutomatedSource | None = None
     hand: HandSource | None = None
     # Measures that must be reported together or not at all. `CLAUDE.md` §2.2:
-    # words per minute divides by dialogue time, not runtime, so alone it
+    # timed-text rate divides by word-bearing cue/segment time, not runtime, so alone it
     # invites the wrong reading. Declared here so the rule is data a screen can
     # obey, rather than prose a screen author has to have read.
     reported_with: tuple[str, ...] = ()
@@ -492,7 +496,9 @@ MEASURES: tuple[Measure, ...] = (
             "coding restricts to rows typed hard_cut so the two describe the "
             "same quantity."
         ),
-        automated=AutomatedSource("transitions", "metrics.scene_pacing.cuts_per_min"),
+        automated=AutomatedSource(
+            "transitions", "metrics.scene_pacing.cuts_per_min",
+            estimand="hard_cut_boundaries"),
         hand=HandSource("transitions", "hard_cuts_per_min"),
     ),
     Measure(
@@ -505,12 +511,14 @@ MEASURES: tuple[Measure, ...] = (
             "Every coded transition per minute — hard cuts, dissolves, fades, "
             "wipes and the rest, counted together."
         ),
+        automated=AutomatedSource(
+            "transitions", "metrics.scene_pacing.cuts_per_min",
+            estimand="shot_boundaries"),
         hand=HandSource("transitions", "transitions_per_min"),
         notes=(
-            "NO AUTOMATED COUNTERPART. The detectors do not produce a typed "
-            "transition inventory, so there is nothing to set this beside. It "
-            "is not a version of hard cuts per minute measured differently — "
-            "it counts different things, and will always read higher."
+            "The automated method emits untyped shot boundaries; hand coding "
+            "counts every coded transition type. Compare them as boundary "
+            "rates, never as transition-type classification."
         ),
     ),
     Measure(
@@ -620,13 +628,13 @@ MEASURES: tuple[Measure, ...] = (
     # --- Speech -------------------------------------------------------------
     Measure(
         key="words_per_minute",
-        name="Words per minute",
+        name="Words per timed-text minute",
         construct_key="speech",
         unit="words/min",
         definition=(
-            "Speech rate WHILE SPEAKING — total words divided by dialogue "
-            "time, not by runtime. It is how fast characters speak when they "
-            "speak, not how talkative an episode is."
+            "Caption or transcript words divided by the union of timed cue or "
+            "segment intervals, not by runtime. Caption-cue time is not assumed "
+            "to be verified articulation time."
         ),
         automated=AutomatedSource("speech", "metrics.speech.words_per_minute",
                                   available_path="metrics.speech.available"),
@@ -639,12 +647,12 @@ MEASURES: tuple[Measure, ...] = (
     ),
     Measure(
         key="speech_density",
-        name="Speech density",
+        name="Timed-text density",
         construct_key="speech",
         unit="fraction",
         definition=(
-            "Fraction of the episode's duration containing speech, 0–1. The "
-            "denominator words per minute does not use."
+            "Fraction of episode runtime covered by the union of caption cues "
+            "or transcript segments containing words, 0–1."
         ),
         automated=AutomatedSource("speech", "metrics.speech.speech_density",
                                   available_path="metrics.speech.available"),
@@ -678,13 +686,13 @@ MEASURES: tuple[Measure, ...] = (
     ),
     Measure(
         key="contrast_mean",
-        name="Colour contrast",
+        name="Spatial HSV-value dispersion",
         construct_key="colour",
         unit="fraction",
         definition=(
-            "SPATIAL spread of brightness WITHIN a frame — the standard "
-            "deviation of the V channel, averaged over sampled frames. It is "
-            "not change between frames, which the name invites."
+            "Within-frame standard deviation of the HSV V channel, averaged "
+            "over sampled frames. HSV V is max(R,G,B), not luminance, and this "
+            "is not a perceptual contrast measure."
         ),
         automated=AutomatedSource("color",
                                   "metrics.color_saturation.contrast_mean"),
@@ -693,7 +701,7 @@ MEASURES: tuple[Measure, ...] = (
     # --- Motion -------------------------------------------------------------
     Measure(
         key="motion_mean",
-        name="Motion",
+        name="Sampled-frame grayscale change",
         construct_key="motion",
         unit="fraction",
         definition=(
@@ -707,7 +715,7 @@ MEASURES: tuple[Measure, ...] = (
     # --- Luminance change ---------------------------------------------------
     Measure(
         key="flashing_events_per_min",
-        name="Flashing",
+        name="Whole-frame luminance-change events",
         construct_key="luminance_change",
         unit="events/min",
         definition=(
@@ -726,11 +734,12 @@ MEASURES: tuple[Measure, ...] = (
     # --- Loudness -----------------------------------------------------------
     Measure(
         key="audio_rms_mean",
-        name="Audio loudness",
+        name="Linear RMS amplitude",
         construct_key="loudness",
         unit="RMS",
         definition=(
-            "Mean per-window RMS loudness, linear 0–1. Absent, not zero, when "
+            "Mean per-window RMS amplitude, linear 0–1 after mono 8 kHz "
+            "resampling. It is not perceptual loudness. Absent, not zero, when "
             "the episode has no audio track or FFmpeg was unavailable."
         ),
         automated=AutomatedSource("audio", "metrics.audio.rms_mean",
@@ -864,6 +873,9 @@ def methods_for(measure_key: str) -> list[Method]:
         spec = reg.get_measurement(measure.automated.measurement_key)
         if spec is not None:
             for tool in spec.tools:
+                if measure.automated.estimand and \
+                        measure.automated.estimand not in tool.estimands:
+                    continue
                 out.append(Method(
                     key=f"auto:{spec.key}:{tool.key}",
                     label=tool.name,

@@ -64,8 +64,8 @@ DIALOG_H = 800
 FEATURE_UI: dict[str, tuple[str, str, int, float]] = {
     # feature: (label, unit shown after the value, decimals, single step)
     "cuts":   ("Cuts per minute", "cuts/min", 2, 1.0),
-    "motion": ("Motion mean", "", 4, 0.005),
-    "audio":  ("Audio RMS mean", "", 4, 0.005),
+    "motion": ("Sampled-frame grayscale change", "", 4, 0.005),
+    "audio":  ("Mean 1-s linear RMS amplitude", "", 4, 0.005),
 }
 
 LEVEL_CHOICES = (("", "Any"),) + tuple((lv, lv.capitalize()) for lv in LEVELS)
@@ -159,8 +159,8 @@ class FeatureMapDialog(QDialog):
 
     _COLUMNS = (
         ("cuts_per_min", "Candidate cuts/min"),
-        ("motion_mean", "Visual motion"),
-        ("audio_rms_mean", "Audio intensity\n(linear RMS)"),
+        ("motion_mean", "Sampled-frame\ngrayscale change"),
+        ("audio_rms_mean", "Mean 1-s linear\nRMS amplitude"),
     )
 
     def __init__(self, rows: list[dict[str, Any]], parent=None) -> None:

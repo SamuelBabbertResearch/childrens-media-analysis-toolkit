@@ -113,8 +113,18 @@ def results_to_dataframe(results: list[EpisodeResult]) -> "pd.DataFrame":
             "color_contrast_mean": _v(m.color_saturation.contrast_mean),
             "motion_mean": _v(m.motion.mean),
             "motion_peak": _v(m.motion.peak),
+            "frame_source_fps": _v(m.motion.source_fps),
+            "frame_requested_sample_fps": _v(m.motion.requested_sample_fps),
+            "frame_effective_sample_fps": _v(m.motion.effective_sample_fps),
+            "frame_interval": _v(m.motion.frame_interval),
             "flashing_events_per_min": _v(
                 m.flashing.luminance_delta_events_per_min),
+            "flashing_requested_sample_fps": _v(
+                m.flashing.requested_sample_fps),
+            "flashing_source_fps": _v(m.flashing.source_fps),
+            "flashing_effective_sample_fps": _v(
+                m.flashing.effective_sample_fps),
+            "flashing_frame_interval": _v(m.flashing.frame_interval),
             "audio_rms_mean": _v(m.audio.rms_mean, m.audio.available),
             "audio_rms_peak": _v(m.audio.rms_peak, m.audio.available),
             "audio_rms_temporal_var": _v(m.audio.rms_temporal_var,
@@ -146,6 +156,7 @@ def results_to_dataframe(results: list[EpisodeResult]) -> "pd.DataFrame":
             # earlier exports keep working. Same number, both columns.
             "sensory_load_score": _v(m.sensory_load.score),
             "sensory_load_audio_available": m.sensory_load.audio_available,
+            "ffc_input_variant": m.sensory_load.input_variant or "legacy",
             "sensory_load_pacing": _v(m.sensory_load.components.pacing),
             "sensory_load_saturation": _v(m.sensory_load.components.saturation),
             "sensory_load_contrast": _v(m.sensory_load.components.contrast),

@@ -480,6 +480,26 @@ _COMPOSITE_INPUTS: tuple[tuple[str, str, str, str], ...] = (
 # from the table above rather than restated — there is one mapping from a
 # measure to its range key and this is it.
 _RANGE_KEYS: dict[str, str] = {m: r for m, _w, r, _p in _COMPOSITE_INPUTS}
+_RANGE_KEYS["transitions_per_min"] = "cuts_per_min"
+
+
+def _composite_inputs(config: dict[str, Any]
+                      ) -> tuple[tuple[str, str, str, str], ...]:
+    """Composite inputs with a pacing measure matching the selected detector.
+
+    The stored engine field is retained for cache compatibility, but its
+    estimand differs: TransNetV2 emits all shot boundaries while the two
+    frame-difference tools emit abrupt boundaries.  A recipe must name the
+    quantity actually selected rather than hide that change behind one key.
+    """
+    tool, _params, _enabled = reg.selection(dict(config), "transitions")
+    pacing_measure = (
+        "hard_cuts_per_min"
+        if "hard_cut_boundaries" in tool.estimands
+        else "transitions_per_min"
+    )
+    return ((pacing_measure, *_COMPOSITE_INPUTS[0][1:]),
+            *_COMPOSITE_INPUTS[1:])
 
 
 def reference_range_for(measure_key: str,
@@ -599,7 +619,7 @@ def shipped_composite(config: dict[str, Any]) -> Recipe:
     ranges = config.get("normalization_reference_ranges") or {}
 
     bindings: list[MeasureBinding] = []
-    for measure_key, weight_key, range_key, missing in _COMPOSITE_INPUTS:
+    for measure_key, weight_key, range_key, missing in _composite_inputs(config):
         method = C.selected_method(measure_key, config)
         if method is None:
             continue                      # no method: leave it out, do not fake one

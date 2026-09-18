@@ -34,6 +34,7 @@ inventory; start that record at [STUDY_INDEX.md](STUDY_INDEX.md).
 | [STACK.md](docs/project/STACK.md) | frameworks, libraries, platform constraints, Qt facts that are not guessable |
 | [MEASUREMENT_MODEL.md](docs/project/MEASUREMENT_MODEL.md) | **the current phase** — constructs, measures, methods, recipes, versions, staleness. Partly built: **read the status line on a capability before assuming it is built.** §4.1–§4.3 built (`analyzer/constructs.py`, `analyzer/recipes.py`, the shipped composite); §4.4 and §4.7 partly; §4.5, §4.6 and §4.8–§4.10 not. The screens are `ui/recipes.py`, `ui/construct_editor.py` and the Constructs tab, which draws a recipe **and authors it** |
 | [ROADMAP.md](docs/project/ROADMAP.md) | positioning, priorities, and what is deliberately not being built |
+| [METHODOLOGICAL_AUDIT_2026-09-16.md](METHODOLOGICAL_AUDIT_2026-09-16.md) | measure-by-measure methodological review: what each formula supports, evidence limits, newly found estimand/configuration mismatches, and validation priorities |
 | [README.md](README.md) | public-facing description |
 | [design/README.md](design/README.md) | specifications and strategy notes — the pipeline north-star spec, migration strategy, UX audit, positioning. **Inputs, not authority**; never adopt a label, metric or number from them |
 
@@ -80,6 +81,7 @@ inventory; start that record at [STUDY_INDEX.md](STUDY_INDEX.md).
 | How do I define a construct of my own, and operationalize it? | **Constructs tab → Constructs…** to define it, then **Edit** on that tab to bind shipped measures to it. Measures are not user-definable, by rule; `ui/construct_editor.py`, `ui/constructs_tab.py` |
 | How was this operationalized, and can I cite it? | `analyzer/recipes.py` — a recipe pins its parameters and is cited as version + content hash; `docs/project/MEASUREMENT_MODEL.md` §4.2 |
 | **Can I trust this number?** | `docs/project/ARCHITECTURE.md` §9 — status per tool, and the F1 qualifiers. **Exactly one tool has been graded against human coding**; the rest are ungraded or have no detection step to grade |
+| What does the external evidence support for each measure? | `METHODOLOGICAL_AUDIT_2026-09-16.md` — separates reproducibility, criterion validity and construct validity |
 | Which build and which input produced this result? | `analyzer/version.py` — the one place CMAT says so; README — *Reproducibility and provenance* lists what every artefact records |
 | Is this sweep's best F1 a performance figure? | **No.** It is a resubstitution estimate, labelled as one in the result, the manifest and the Trials row; `docs/project/LEARNINGS.md` — *A grid maximum was published as a performance figure* |
 | Are the age presets developmental norms? | **No.** They are illustrative configurations with no recorded derivation; `docs/project/CEILINGS.md`, `docs/project/DECISIONS.md` — *Age-named presets are presented as illustrative configurations* |

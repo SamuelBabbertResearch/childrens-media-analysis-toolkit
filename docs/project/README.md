@@ -32,3 +32,7 @@ repository root.
 | [CHART_QUALITY_IMPROVEMENT_PLAN.md](CHART_QUALITY_IMPROVEMENT_PLAN.md) | current chart-quality work |
 
 The active study record begins at [../../STUDY_INDEX.md](../../STUDY_INDEX.md).
+
+The [methodological audit](../../METHODOLOGICAL_AUDIT_2026-09-16.md) records the September 16 measurement corrections and remaining validation needs.
+
+September 17 local/upstream reconciliation and verification: [integration record](INTEGRATION_2026-09-17.md).

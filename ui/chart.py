@@ -54,6 +54,49 @@ _EPISODE_ID = re.compile(
 )
 
 
+def _bar_series(axes, labels, values, *, bottoms=None, label="", color="",
+                horizontal=False):
+    """Add many bars as one collection instead of one Artist per bar.
+
+    ``Axes.bar`` creates a Python Rectangle for every episode and component.
+    The FFC chart therefore built 1,200 artists for 200 episodes.  A
+    PolyCollection keeps the same rectangular geometry, colours and legend
+    semantics with one artist per series.
+    """
+    import numpy as np
+    from matplotlib.collections import PolyCollection
+
+    count = len(values)
+    if not count:
+        (axes.set_yticks if horizontal else axes.set_xticks)([])
+        return []
+    x = np.arange(count, dtype=float)
+    low = np.asarray(bottoms if bottoms is not None else [0.0] * count,
+                     dtype=float)
+    high = low + np.asarray(values, dtype=float)
+    left, right = x - 0.4, x + 0.4
+    vertices = np.stack((
+        np.column_stack((left, low)),
+        np.column_stack((left, high)),
+        np.column_stack((right, high)),
+        np.column_stack((right, low)),
+    ), axis=1)
+    if horizontal:
+        vertices = vertices[:, :, ::-1]
+    collection = PolyCollection(
+        vertices, facecolors=color, edgecolors="white", linewidths=0.5,
+        label=label)
+    axes.add_collection(collection)
+    if horizontal:
+        axes.set_ylim(-0.5, count - 0.5)
+        axes.set_yticks(x, labels)
+    else:
+        axes.set_xlim(-0.5, count - 0.5)
+        axes.set_xticks(x, labels)
+    axes.autoscale_view(scalex=horizontal, scaley=not horizontal)
+    return high.tolist()
+
+
 class ChartDialog(QDialog):
     """Per-episode Formal-Feature Composite composition for one show."""
 
@@ -100,15 +143,9 @@ class ChartDialog(QDialog):
             values = [getattr(r.metrics.sensory_load.components, attribute)
                       * w.get(weight_key, 0.0)
                       for r, w in zip(ok, per_episode)]
-            if horizontal:
-                axes.barh(positions, values, left=bottoms, label=label,
-                          color=BAND_COLORS[index], edgecolor="white",
-                          linewidth=0.5)
-            else:
-                axes.bar(positions, values, bottom=bottoms, label=label,
-                         color=BAND_COLORS[index], edgecolor="white",
-                         linewidth=0.5)
-            bottoms = [b + v for b, v in zip(bottoms, values)]
+            bottoms = _bar_series(
+                axes, labels, values, bottoms=bottoms, label=label,
+                color=BAND_COLORS[index], horizontal=horizontal)
 
         score_limit = max(1.0, max(bottoms) * 1.15 if bottoms else 1.0)
         if horizontal:
@@ -130,7 +167,7 @@ class ChartDialog(QDialog):
         axes.legend(fontsize=8, ncol=6, frameon=False,
                     loc="upper center", bbox_to_anchor=(0.5, 1.12))
         if horizontal:
-            figure.subplots_adjust(bottom=0.13, top=0.87, left=0.36,
+            figure.subplots_adjust(bottom=0.19, top=0.87, left=0.36,
                                    right=0.98)
             _validation_footnote(figure, x=0.36)
         else:
@@ -223,9 +260,10 @@ def _axes(figure):
 
 
 class SpeechChartDialog(QDialog):
-    """Words per minute per episode, with speech density beside it.
+    """Words per timed-text minute per episode, with timed-text density.
 
-    The two are plotted together on purpose. WPM divides by dialogue time, so
+    The two are plotted together on purpose. WPM divides by the union of
+    word-bearing timed-text intervals, so
     a fast-talking episode with very little dialogue and a chatty one can sit
     at the same height; the density series is what tells them apart. A WPM
     chart on its own is the misreading `CLAUDE.md` §2.2 names.
@@ -236,7 +274,7 @@ class SpeechChartDialog(QDialog):
         self.setModal(False)
         self.resize(900, 520)
         body = ModalDialogFrame.install(
-            self, "Speech rate and density by episode",
+            self, "Timed-text rate and density by episode",
             buttons=("min", "max", "close"))
 
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
@@ -249,17 +287,17 @@ class SpeechChartDialog(QDialog):
         figure = Figure(figsize=(8.8, 4.6), dpi=100,
                         facecolor=COLORS["panel_bg"])
         axes = _axes(figure)
-        axes.bar(positions, [r["wpm"] for r in ordered],
-                 color=BAND_COLORS[0], edgecolor="white", linewidth=0.5,
-                 label="Words per minute (of dialogue time)")
+        _bar_series(
+            axes, labels, [r["wpm"] for r in ordered],
+            color=BAND_COLORS[0], label="Words per timed-text minute")
         _set_x_labels(axes, positions, labels)
-        axes.set_ylabel("Words per minute", fontsize=9)
+        axes.set_ylabel("Words per timed-text minute", fontsize=9)
 
         density = axes.twinx()
         density.plot(positions, [r["density"] for r in ordered], marker="o",
                      markersize=3.5, linewidth=1.2, color=BAND_COLORS[4],
-                     label="Speech density (fraction of runtime)")
-        density.set_ylabel("Speech density", fontsize=9)
+                     label="Timed-text density (fraction of runtime)")
+        density.set_ylabel("Timed-text density", fontsize=9)
         density.set_ylim(0, 1)
         density.spines["top"].set_visible(False)
         density.tick_params(axis="y", labelsize=8)
@@ -270,7 +308,7 @@ class SpeechChartDialog(QDialog):
             density.get_legend_handles_labels()[1]
         axes.legend(handles, labels_, fontsize=8, ncol=2, frameon=False,
                     loc="upper center", bbox_to_anchor=(0.5, 1.12))
-        figure.subplots_adjust(bottom=0.34, top=0.86, left=0.08, right=0.92)
+        figure.subplots_adjust(bottom=0.34, top=0.86, left=0.22, right=0.92)
         body.addWidget(FigureCanvasQTAgg(figure), 1)
 
 
@@ -323,10 +361,9 @@ class VocabChartDialog(QDialog):
             bottoms = [0.0] * len(rows)
             for index, (key, label) in enumerate(TIER_SERIES):
                 values = [(r.get(key) or 0.0) for r in rows]
-                axes.bar(positions, values, bottom=bottoms, label=label,
-                         color=BAND_COLORS[index], edgecolor="white",
-                         linewidth=0.5)
-                bottoms = [b + v for b, v in zip(bottoms, values)]
+                bottoms = _bar_series(
+                    axes, labels, values, bottoms=bottoms, label=label,
+                    color=BAND_COLORS[index])
             _set_x_labels(axes, positions, labels)
             axes.set_ylabel("Share of content words", fontsize=9)
             axes.set_ylim(0, 1)
@@ -339,9 +376,8 @@ class VocabChartDialog(QDialog):
             positions = list(range(len(present)))
             labels = _episode_labels(
                 [str(r["episode_id"]) for r in present])
-            axes.bar(positions,
-                     [r[key] for r in present], color=BAND_COLORS[0],
-                     edgecolor="white", linewidth=0.5)
+            _bar_series(
+                axes, labels, [r[key] for r in present], color=BAND_COLORS[0])
             _set_x_labels(axes, positions, labels)
             axes.set_ylabel(ylabel, fontsize=9)
             if not present:
@@ -349,5 +385,5 @@ class VocabChartDialog(QDialog):
                           transform=axes.transAxes, ha="center", fontsize=9,
                           color=COLORS["text_dim"])
 
-        figure.subplots_adjust(bottom=0.34, top=0.86, left=0.09, right=0.98)
+        figure.subplots_adjust(bottom=0.34, top=0.86, left=0.22, right=0.98)
         body.addWidget(FigureCanvasQTAgg(figure), 1)

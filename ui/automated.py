@@ -57,10 +57,7 @@ from PySide6.QtWidgets import (
     QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from analyzer.batch import analyze_show_batch
 from analyzer.cache import load_cached, save_cache
-from analyzer.engine import analyze_episode
-from analyzer.schema import EpisodeResult
 from analyzer.scope import Scope, library_scope, normalize
 from analyzer.show_index import list_episodes, show_key
 
@@ -98,6 +95,11 @@ class AnalysisWorker(QThread):
         self.progress.emit(name, ep_frac, (self._index + overall) / total)
 
     def _one(self, target: Path) -> list:
+        # OpenCV/PySceneDetect belong to the worker's first measurement, not
+        # application startup.  Their import cost is paid off the UI thread.
+        from analyzer.batch import analyze_show_batch
+        from analyzer.engine import analyze_episode
+
         if target.is_dir():
             return analyze_show_batch(
                 target, root=self._root, config=self._config,
@@ -111,6 +113,8 @@ class AnalysisWorker(QThread):
         return [result]
 
     def run(self) -> None:
+        from analyzer.schema import EpisodeResult
+
         started = time.monotonic()
         results: list = []
         try:

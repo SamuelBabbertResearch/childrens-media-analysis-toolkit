@@ -87,7 +87,7 @@ def test_the_flag_has_one_source_in_the_engine():
     """Each surface used to decide for itself, and most decided 'not at all'."""
     from analyzer.measurements import ungraded_measurements
     names = [name for name, _why in ungraded_measurements()]
-    assert "Flashing" in names, names
+    assert "Whole-frame luminance-change events" in names, names
 
 
 def test_the_episode_report_flags_a_result_with_no_recorded_tools():
@@ -102,7 +102,7 @@ def test_the_episode_report_flags_a_result_with_no_recorded_tools():
     assert not result.measurement_tools
     html = episode_html(result)
     assert "Not graded against hand coding" in html
-    assert "Flashing" in html
+    assert "Whole-frame luminance-change events" in html
 
 
 def test_the_comparison_flags_ungraded_measures():

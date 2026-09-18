@@ -41,6 +41,32 @@ def test_episode_result_json_is_valid():
     assert parsed["file"] == "test.mp4"
 
 
+def test_new_sampling_and_ffc_variant_fields_round_trip():
+    result = EpisodeResult(file="test.mp4")
+    result.metrics.motion.source_fps = 23.976
+    result.metrics.motion.requested_sample_fps = 2.0
+    result.metrics.motion.effective_sample_fps = 1.998
+    result.metrics.motion.frame_interval = 12
+    result.metrics.sensory_load.input_variant = "audio_visual"
+
+    loaded = EpisodeResult.from_dict(json.loads(result.to_json()))
+
+    assert loaded.metrics.motion.frame_interval == 12
+    assert loaded.metrics.motion.effective_sample_fps == 1.998
+    assert loaded.metrics.sensory_load.input_variant == "audio_visual"
+
+
+def test_cache_reader_ignores_fields_written_by_a_newer_build():
+    payload = EpisodeResult(file="test.mp4").to_dict()
+    payload["metrics"]["motion"]["future_field"] = "new"
+    payload["metrics"]["flashing"]["future_field"] = "new"
+    payload["metrics"]["audio"]["future_field"] = "new"
+
+    loaded = EpisodeResult.from_dict(payload)
+
+    assert loaded.file == "test.mp4"
+
+
 def test_show_aggregate_to_dict_has_required_keys():
     agg = ShowAggregate(show_name="TestShow", episode_count=3)
     d = agg.to_dict()

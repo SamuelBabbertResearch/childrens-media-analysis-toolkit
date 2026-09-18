@@ -20,8 +20,6 @@ from pathlib import Path
 from random import Random
 from typing import Any
 
-import pandas as pd
-
 from .show_index import VIDEO_EXTENSIONS
 from .version import CMAT_VERSION, git_commit
 
@@ -429,6 +427,8 @@ def scan_youtube_folder(root: Path, entry_id: str | None = None) -> list[Episode
 # ---------------------------------------------------------------------------
 
 def load_registry_csv(path: Path, entry_id: str | None = None) -> list[Episode]:
+    # pandas is a CSV-workflow dependency, not an application-startup one.
+    import pandas as pd
     df = pd.read_csv(path)
     required = {"episode"}
     missing = required - set(df.columns)
@@ -812,6 +812,7 @@ def write_outputs(
             "filepath": str(ep.filepath) if ep.filepath else "",
         })
     csv_path = output_dir / "selected.csv"
+    import pandas as pd
     pd.DataFrame(rows).to_csv(csv_path, index=False)
 
     # manifest.json

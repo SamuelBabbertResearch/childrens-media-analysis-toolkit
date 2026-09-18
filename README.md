@@ -203,13 +203,13 @@ reported in. The name is a label for that quantity and nothing more.
 
 | Metric | What is computed | Units | Notes and limits |
 |---|---|---|---|
-| **Shot-boundary rate** (`cuts_per_min`) | Boundaries reported by the selected detector, divided by runtime. Shipped detector: PySceneDetect `ContentDetector` at threshold 27. | boundaries/min | **Detected boundaries, not semantic scene changes** — a cut inside one continuous scene counts. Frame-differencing misses gradual transitions (dissolves) by construction: it cannot separate two shots blending from one shot panning. |
+| **Detector-defined boundary rate** (`cuts_per_min`, compatibility key) | Boundaries reported by the selected detector, divided by runtime. Content/Adaptive methods operationalize hard-cut boundaries; TransNetV2 operationalizes all shot-transition boundaries. | boundaries/min | These are distinct measures in recipes and must not be pooled. Detected boundaries are not semantic scene changes. |
 | **Shot length** | Mean and median interval between consecutive boundaries; coefficient of variation of those intervals. | seconds; CV unitless | Derived from the same boundaries, so it inherits their errors. |
-| **Motion** (`motion_mean`) | Mean absolute difference in grayscale pixel intensity between **consecutive sampled frames**, rescaled 0–255 — 0–1. | 0–1 | Measures **image change, not depicted movement**: a cut, a camera pan and a running character all raise it. **Depends on the sampling rate** (default 2 fps) — values measured at different rates are not comparable. An optional Farneback optical-flow method exists and is on a different, uncalibrated scale. |
+| **Sampled-frame grayscale change** (`motion_mean`) | Mean absolute difference in grayscale pixel intensity between **consecutive sampled frames**, rescaled 0–255 — 0–1. | 0–1 | Measures **image change, not depicted movement**: a cut, a camera pan and a running character all raise it. **Depends on the effective sampling rate** (requested default 2 fps); source FPS, integer interval, and realized rate travel with new results. The optional Farneback method is on a different, uncalibrated scale. |
 | **Color saturation** (`color_saturation_mean`) | Mean of the HSV **S** channel per frame, averaged over sampled frames. | 0–1 | Unstable on blown-out live-action grading. |
-| **Color contrast** (`color_contrast_mean`) | **Spatial** standard deviation of the HSV **V** channel within each frame, averaged over sampled frames. | 0–1 | **Within-frame brightness spread, not a perceptual contrast metric.** High for stark dark/light regions — slides, whiteboards — so it can be elevated on footage a viewer would call calm. |
-| **Flashing** (`flashing_events_per_min`) | Count of consecutive sampled frames whose **whole-frame mean** luminance differs by more than a threshold (default 0.1), at a dedicated rate (default 10 fps). | events/min | **NOT a photosensitivity safety assessment.** It implements neither the area threshold nor the red-flash criterion broadcast photosensitivity guidance specifies; a flash confined to part of the screen is diluted by the whole-frame mean; and it has never been graded against human coding. **Zero does not indicate safety.** Comparable only across episodes measured at the same rate and threshold. |
-| **Audio intensity** (`audio_rms_mean`, `audio_dynamic_range_db`) | Mean and peak of per-second **RMS amplitude**, and 20·log10(peak/mean), on the track downmixed to mono and **resampled to 8 kHz**. | linear 0–1; dB | **Linear amplitude, not perceptual loudness — not LUFS, not EBU R128.** Two files mastered to the same broadcast loudness can differ here. The 8 kHz resample discards high frequencies. |
+| **Spatial HSV-value dispersion** (`color_contrast_mean`) | **Spatial** standard deviation of the HSV **V** channel within each frame, averaged over sampled frames. | 0–1 | HSV V is `max(R,G,B)`, not luminance, and its dispersion is not a perceptual contrast metric. |
+| **Whole-frame luminance-change events** (`flashing_events_per_min`) | Count of consecutive sampled frames whose **whole-frame mean** luminance differs by more than a threshold (default 0.1), at a dedicated requested rate (default 10 fps). | events/min | **NOT a photosensitivity safety assessment.** It implements neither area nor red-flash criteria; zero does not indicate safety. Compare only identical thresholds and effective rates. |
+| **Linear RMS amplitude and peak-to-mean 1-s RMS ratio** (`audio_rms_mean`, `audio_dynamic_range_db`) | Mean and peak of one-second RMS windows (including the final non-empty partial window), and 20·log10(peak/mean), after mono downmix and **8 kHz** resampling. | linear 0–1; dB | Not a perceptual loudness measure, not LUFS, not EBU R128 loudness range, and not conventional programme dynamic range. |
 
 **Missing is not zero.** An episode with no audio track has `audio_available`
 false, empty audio columns, and `audio_unavailable_reason` distinguishing "no
@@ -227,12 +227,12 @@ A `0.0` in a CMAT export is a measured zero.
 
 | Metric | What it captures |
 |--------|-----------------|
-| **Words per minute** | Words divided by **dialogue time, not runtime** — how fast characters speak when they speak, not how talkative an episode is. Reported with speech density or not at all. Sourced from `.srt`/`.vtt` subtitle files; Whisper transcription used as a fallback when enabled. **A caption-derived count and a Whisper-derived count are different measurements** and the export records which one produced each row (`speech_source`); do not pool them without saying so. Caption files carry the captioner's choices — omitted song lyrics, bracketed sound descriptions — into the count. |
-| **Speech density** | Fraction of episode runtime containing dialogue. Separates talk-heavy shows from those with long musical or silent passages. |
+| **Words per timed-text minute** | Cleaned words divided by the union of word-containing caption-cue or Whisper-segment intervals, not runtime. Cue/segment time is not assumed to be verified articulation time. Always reported with timed-text density. Caption and Whisper results are different source-dependent measurements (`speech_source`) and should not be pooled without disclosure. |
+| **Timed-text density** | Fraction of runtime covered by the union of word-containing caption/ASR intervals. This describes the timed-text source, not independently observed speech. |
 | **Readability** | Flesch Reading Ease, Flesch-Kincaid Grade Level, Spache, Dale-Chall, Coleman-Liau, ARI — six formulas applied to the cleaned dialogue transcript. |
 | **Vocabulary frequency tiers** | Zipf-scale tier breakdown: Tier 1 (everyday words, ≥ 4.5), Tier 2 (academic/cross-domain, 3.0–4.5), Tier 3 (rare/domain-specific, < 3.0). |
-| **Age of Acquisition** | Mean age at which vocabulary words are typically learned, from Kuperman et al. norms. |
-| **Lexical diversity (MTLD)** | Measure of Textual Lexical Diversity — how widely the dialogue draws on the available vocabulary, robust to text length. |
+| **Adult-rated written-word AoA mean** | Token-weighted Kuperman retrospective ratings for covered content lemmas, always with coverage. It is not the age at which a viewer learned or understands the dialogue. |
+| **Content-lemma MTLD variant** | MTLD after lemmatizing and retaining NOUN/VERB/ADJ/ADV while excluding proper nouns. Published standard-token MTLD evidence does not directly validate this modified stream. |
 
 The **measurement set** draws on the Huston & Wright formal-features framework
 and Lang's Limited Capacity Model (LC4MP). Those frameworks motivate *which*
@@ -357,7 +357,7 @@ Once episodes are analyzed, click **Show Chart** from any show-level or full-ser
 | Control | Options |
 |---------|---------|
 | **X-axis** | Air Date (when ≥ 80 % of episodes have dates) · Episode Number |
-| **Y-axis** | FFC Score · Cuts per Minute · Color Saturation · Color Contrast · Motion · Flashing / min · Audio RMS |
+| **Y-axis** | FFC Score · Cuts per Minute · HSV Saturation · HSV-Value Dispersion · Sampled-Frame Change · Whole-Frame Luminance-Change Events / min · Linear RMS |
 | **Colour by** | Season · Era |
 
 **Era stratification** — Click **Edit Eras…** to define named date ranges (e.g. *Original Run 1992–1997*, *Revival 2003–2006*). Each era gets its own bar colour; episodes outside all defined ranges appear in gray. Eras are saved per-show to the local database and reload automatically the next time you open the chart.

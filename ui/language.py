@@ -8,10 +8,10 @@ a tab beside Automated coding rather than a screen inside it.
 
 TWO GUARDRAILS THIS SCREEN CARRIES
 
-1. **Words per minute is never shown without speech density.** WPM divides by
-   *dialogue time, not runtime*: it is how fast characters speak when they
-   speak, not how talkative an episode is. The two columns are adjacent and
-   the note says which is which, because WPM alone invites the wrong reading.
+1. **Words per timed-text minute is never shown without timed-text density.**
+   Its denominator is the union of word-containing caption/ASR intervals, not
+   verified articulation time. The adjacent density column prevents a rate
+   from being misread as how talkative an episode is.
 2. **Readability and vocabulary figures are relative indices, not grades.**
    Flesch-Kincaid was validated on written prose; the tier cut-offs are Zipf
    frequency bands. Both are labelled as comparisons between episodes measured
@@ -63,8 +63,8 @@ SPEECH_COLUMNS = (
     ("Show", 150, False),
     ("File", 220, False),
     ("Air date", 80, False),
-    ("Words per minute", 110, True),
-    ("Speech density", 100, True),
+    ("Words per timed-text minute", 150, True),
+    ("Timed-text density", 120, True),
     ("Total words", 90, True),
     ("Source", 70, False),
 )
@@ -224,7 +224,7 @@ class VocabWorker(QThread):
 # ---------------------------------------------------------------------------
 
 class SpeechView(QWidget):
-    """Words per minute and speech density for every cached episode.
+    """Words per timed-text minute and timed-text density for cached episodes.
 
     Reads the cache; measures nothing. An episode with no caption file and no
     transcript is *named* rather than silently absent, because an empty table
@@ -399,10 +399,10 @@ class SpeechView(QWidget):
 
     def _write_note(self, found: int, gap: int, hidden: int = 0) -> None:
         note = (
-            "Words per minute divides by DIALOGUE time, not runtime — it is "
-            "how fast characters speak when they speak. Speech density is the "
-            "fraction of the episode that carries dialogue; read the two "
-            "together.")
+            "Words per timed-text minute divides by the union of caption or "
+            "ASR intervals containing words, not runtime and not independently "
+            "verified articulation time. Timed-text density is that union as "
+            "a fraction of runtime; read the two together.")
         if not self._scope.is_library:
             note += (
                 f"\n\nShowing {self._scope.describe()}. "
@@ -430,7 +430,7 @@ class SpeechView(QWidget):
     def chart(self) -> None:
         if not self._rows:
             QMessageBox.information(
-                self, "Words per minute",
+                self, "Words per timed-text minute",
                 "Nothing to chart yet — press Refresh first.")
             return
         from ui.chart import SpeechChartDialog
@@ -486,9 +486,11 @@ class VocabularyView(QWidget):
         split.setSizes([140, 400])
 
         self._note = QLabel(
-            "Flesch-Kincaid was validated on written prose and the tier bands "
-            "are word-frequency cut-offs. Both compare episodes measured the "
-            "same way; neither is a statement about a reader.")
+            "All vocabulary results are exploratory in CMAT's timed-text "
+            "pipeline. Readability formulas were developed for written prose; "
+            "frequency tiers, norm lookups, and content-lemma MTLD depend on "
+            "CMAT's preprocessing. They compare source-matched episodes and "
+            "make no claim about a viewer.")
         self._note.setProperty("role", "dim")
         self._note.setWordWrap(True)
         lay.addWidget(self._note)
@@ -688,7 +690,7 @@ class VocabularyView(QWidget):
             ("vocab_aoa_mean", "{:.1f}"),
             ("div_mtld", "{:.0f}"),
         )
-        texts, sorts = [name, "ok"], {}
+        texts, sorts = [name, "exploratory"], {}
         for i, (key, fmt) in enumerate(fields, start=2):
             value = flat.get(key)
             texts.append(fmt.format(value) if value is not None else "")

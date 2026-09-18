@@ -19,7 +19,7 @@ stored as a form. Nothing here is a new data model — `analyzer/recipes.py` and
                                  └── Contrast         HSV mean
                   ─── Motion ─────── Motion           Frame differencing
                   ─── Luminance ──── Flashing         Luminance delta  ⚠
-                  ─── Loudness ───── Audio loudness   FFmpeg RMS
+                  ─── Loudness ───── Linear RMS amplitude   FFmpeg RMS
 
 Three columns: the construct the recipe operationalizes, the constructs that
 contribute to it, and the measures that stand in for those. The middle column

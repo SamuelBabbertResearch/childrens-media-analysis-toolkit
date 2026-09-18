@@ -544,17 +544,18 @@ def test_every_tk_only_screen_is_now_in_qt():
 
 
 def test_speech_is_never_reported_without_density():
-    """WPM divides by dialogue time, so alone it invites the wrong reading.
+    """Timed-text rate is never reported without its runtime density.
 
     CLAUDE.md §2.2: "Words per minute is reported with speech density, or not
     at all." Both the column and the explanation are pinned here.
     """
     from ui import language
     headers = [h for h, _w, _r in language.SPEECH_COLUMNS]
-    assert "Words per minute" in headers
-    assert "Speech density" in headers
+    assert "Words per timed-text minute" in headers
+    assert "Timed-text density" in headers
     note = inspect.getsource(language.SpeechView._write_note)
-    assert "DIALOGUE time, not runtime" in note
+    assert "not independently" in note
+    assert "articulation time" in note
 
 
 def test_the_sampler_uses_the_engine_s_own_explanations():
@@ -1040,6 +1041,21 @@ def test_chart_plots_components_not_the_composite_alone():
     weights = load_config().get("sensory_load_weights", {})
     for _label, _attr, weight_key in chart.COMPONENTS:
         assert weight_key in weights, weight_key
+
+
+def test_chart_bars_use_one_collection_per_series():
+    """Large episode sets must not create one Matplotlib artist per bar."""
+    from matplotlib.figure import Figure
+    from ui.chart import _bar_series
+
+    axes = Figure().add_subplot(111)
+    tops = _bar_series(
+        axes, [f"ep{i}" for i in range(200)], [0.2] * 200,
+        label="Pacing", color="#4e79a7")
+
+    assert len(tops) == 200
+    assert len(axes.collections) == 1
+    assert len(axes.patches) == 0
 
 
 # ---------------------------------------------------------------------------
