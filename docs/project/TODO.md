@@ -829,7 +829,3 @@ What the scale still needs, in order:
    alongside item 7 rather than acting on the audit as written.
 
 Mia: complete corrected Season 1 coding, confirm completion of wrong-set export before finalized use, and adjudicate noted wipes/frame disagreements. Package: .analysis/study_clips/curious_george_s2_s4_30s_skip65s_20260907/audio1_frame_coding/mia_season1_correction06_20260916.
-
-
-## Native window behavior fix — 2026-10-23
-Rebuild and qualify the local 1.3.2.dev1 app with standard native captions. Source real-desktop welcome-dismissal, maximize, restore and dragging checks pass; verify the rebuilt executable too. Preserve the compact app's local preferences/config and keep published assets immutable.

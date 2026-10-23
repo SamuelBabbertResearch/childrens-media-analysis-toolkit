@@ -97,8 +97,8 @@ whenever files move, a folder changes purpose, or a system is added.
 | `tokens.py` | design tokens; **no framework imports** — shared by both front-ends |
 | `theme.py` | fonts, the Qt stylesheet |
 | `main_window.py` | the shell: title bar, toolbar, tabs, Library, Full Series Aggregate, and the pipeline tab's actions. Owns **which** research context is current (`_scope`, `set_scope`); the toolbar's *Showing:* chooser sets it. `STAGE_TABS` / `STAGE_ACTIONS` map a stage to the screen that does its work; `SubViews` builds the screens-inside-a-tab switcher |
-| `modal.py` | `WindowTitleBar`, the dialog frame, `ConfirmDialog` |
-| `native_frame.py` | suppresses the Win32 frame's *drawing* while keeping snap, resize and the system menu |
+| `modal.py` | shared native dialog/content framing and `ConfirmDialog` |
+| `native_frame.py` | `apply_native_frame`: native Qt/platform captions and per-window button policy; no custom non-client hooks |
 | `pipeline_view.py` | the node canvas: nodes, wires, pan, zoom |
 | `inspector.py` | the pipeline inspector panel — the selected stage's derived status, details and next action |
 | `report.py` | episode, show and **comparison** results as HTML; **no Qt import**, so it is testable headless and reusable for PDF export and the static site |
@@ -188,3 +188,5 @@ Windows build/qualification: [RELEASE_1.3.0.md](RELEASE_1.3.0.md). Two-laptop wo
 Windows VLC cold-start correction and verified release: [RELEASE_1.3.1.md](RELEASE_1.3.1.md).
 
 Restored compact local app (unpublished 1.3.2.dev0): `dist/CMAT-compact/CMAT.exe`; verified build and layout reports: `build/ui-restore-20261023/qualification.json`, `build/ui-restore-20261023/restored-ui-150pct.png`. See the completed local restoration entry in [onboarding](onboarding.md).
+
+Native window-control fix (local 1.3.2.dev1): same `dist/CMAT-compact/CMAT.exe` launch path; prior build retained under `dist/CMAT-compact-backup-dev0-20261023`. Desktop interaction and package reports: `build/native-window-20261023/`.

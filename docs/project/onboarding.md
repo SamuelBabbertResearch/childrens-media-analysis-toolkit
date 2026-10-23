@@ -10,6 +10,39 @@ adult-only participant redesign, Clip Finder, and rating-scale entries follow.)
 
 ---
 
+## Completed native window behavior fix — 2026-10-23
+
+The local **1.3.2.dev1** app is installed at the same
+`dist/CMAT-compact/CMAT.exe` path, from source
+`3d0eb2b11701d9edd8fde6b889cecf975d7c4643`. The main window and all shared dialogs now use the
+actual native frame and caption controls. Custom-painted captions, non-client
+suppression and manual hit-testing are retired. Compact content styling,
+measurement/performance improvements and the bundled VLC correction remain.
+
+**Verified against real interactions:** on both source and the rebuilt
+executable, dismissing Welcome leaves usable maximize/restore and title-bar
+dragging. The frozen app's Welcome X button closed it; maximize/restore changed
+the native state, and dragging changed its observed screen origin. Then the
+existing idle local app was replaced, reopened with its preserved preferences,
+and its Welcome X and maximize button were exercised again. It is left open
+in the normal maximized work area. No research analysis was started.
+
+The full isolated suite passed **814 tests, 13 absent-media skips**. Source
+and frozen diagnostics pass, including the new welcome-close/maximize/restore
+sequence, VLC loading/playback, bundled FFmpeg, language and rendering. Synthetic
+metrics and readability match v1.3.1 exactly. All local user files were retained;
+config and preferences were checked byte-for-byte. The complete previous app
+is backed up at `dist/CMAT-compact-backup-dev0-20261023`.
+Executable SHA-256: `572c97263e3fc21fc56f742ac7e66b8f85c76cfedb4a1ab241ce7b4ed7420bbd`.
+
+Reports: `build/native-window-20261023/install-complete.json`,
+`staging-qualification.json`, `frozen-interaction-proof.json` and
+`source-interaction-proof.json`. This supersedes the earlier pending native
+rebuild note. Changes are local/unpublished; published v1.3.1 is immutable.
+Unrelated study work is preserved outside the local fix commits.
+
+---
+
 ## Completed local compact UI restoration — 2026-10-23
 
 The local **1.3.2.dev0** app is ready at `dist/CMAT-compact/CMAT.exe`, built
