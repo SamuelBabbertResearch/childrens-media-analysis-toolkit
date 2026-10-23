@@ -121,38 +121,36 @@ from analyzer.show_index import list_episodes, list_shows, show_key
 from ui.modal import ConfirmDialog
 from ui.recipes import EvaluationWorker
 from ui import theme
-# The grid and wire vocabulary stays shared with the Pipeline canvas. The
-# Constructs cards derive a larger local reading scale from those shared
-# values: this diagram carries dense method and parameter text, and fitting
-# the whole graph into one viewport made both its type and boxes too small.
+# Compact card geometry and type follow the original shared desktop scale.
+# Keep title wrapping and functional zoom controls independent of styling.
 from ui.pipeline_view import GRID, NODE_PAD, NODE_RADIUS, WIRE_W
 from ui.tokens import FONT_PX, color
 
-TARGET_W = 280
-CONSTRUCT_W = 230
-MEASURE_W = 340
-CARD_PAD = NODE_PAD + 4
-CARD_RADIUS = NODE_RADIUS + 2
-CARD_GAP = 16
-LANE_GAP = 26
-COL_GAP = 170
+TARGET_W = 200
+CONSTRUCT_W = 170
+MEASURE_W = 250
+CARD_PAD = NODE_PAD
+CARD_RADIUS = NODE_RADIUS
+CARD_GAP = 10
+LANE_GAP = 18
+COL_GAP = 150
 
 PANEL_W = 320
 
 WIRE_MIN, WIRE_MAX = 1.0, 7.0
 
 NODE_FONT_PX = {
-    "body": FONT_PX["body"] + 3,
-    "small": FONT_PX["small"] + 3,
-    "tiny": FONT_PX["tiny"] + 2,
+    "body": FONT_PX["body"],
+    "small": FONT_PX["small"],
+    "tiny": FONT_PX["tiny"],
 }
-TITLE_LINE_H = NODE_FONT_PX["body"] + 7
-BODY_LINE_H = NODE_FONT_PX["small"] + 6
-META_LINE_H = NODE_FONT_PX["tiny"] + 6
+TITLE_LINE_H = NODE_FONT_PX["body"] + 5
+BODY_LINE_H = NODE_FONT_PX["small"] + 3
+META_LINE_H = NODE_FONT_PX["tiny"] + 5
 
 
 def _node_font(role: str, bold: bool = False) -> QFont:
-    """Constructs-canvas type derived from, but larger than, the UI scale."""
+    """Constructs-canvas type follows the shared compact UI scale."""
     font = theme.font(role, bold=bold)
     font.setPixelSize(NODE_FONT_PX[role])
     return font
@@ -773,18 +771,13 @@ class DiagramView(QGraphicsView):
                 for key, item in self._nodes.items()}
 
     def fit(self) -> None:
-        """Show the diagram at a readable 100%; overflow remains pannable.
-
-        Fitting the complete FFC graph into the viewport reduced the 17 px
-        node titles to single-digit rendered sizes on ordinary windows. The
-        canvas already supports panning and wheel zoom, so preserving readable
-        text is more useful than showing every node at once.
-        """
+        """Fit the compact diagram initially; explicit zoom stays available."""
         rect = self._scene.itemsBoundingRect()
         if rect.isEmpty():
             return
-        self.reset_zoom()
-        self.centerOn(rect.center())
+        self.fitInView(rect.adjusted(-20, -20, 20, 20), Qt.KeepAspectRatio)
+        self._zoom = self.transform().m11()
+        self.zoom_changed.emit(self._zoom)
 
     def to_image(self) -> QImage:
         """The diagram as a picture, for a methods-section figure.
@@ -921,16 +914,20 @@ class ConstructsTab(QWidget):
         bar.row.addWidget(self._btn_duplicate)
 
         bar.row.addStretch(1)
-        bar.row.addWidget(self._btn_zoom_out)
-        bar.row.addWidget(self._zoom_label)
-        bar.row.addWidget(self._btn_zoom_in)
-        bar.row.addWidget(self._btn_zoom_reset)
         lay.addWidget(bar)
 
         self._headline = QLabel("")
         self._headline.setWordWrap(True)
         self._headline.setContentsMargins(8, 4, 8, 4)
-        lay.addWidget(self._headline)
+        # Keep functional zoom without letting the combined toolbar set the
+        # minimum width of every tab, even when Constructs is not showing.
+        context_row = QHBoxLayout()
+        context_row.addWidget(self._headline, 1)
+        context_row.addWidget(self._btn_zoom_out)
+        context_row.addWidget(self._zoom_label)
+        context_row.addWidget(self._btn_zoom_in)
+        context_row.addWidget(self._btn_zoom_reset)
+        lay.addLayout(context_row)
 
         # A SPLITTER, not a fixed side panel. The panel was first given a
         # maximum width, which Qt honoured while its contents needed more than

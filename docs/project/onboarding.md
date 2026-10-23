@@ -2081,3 +2081,7 @@ For current status read the top of this file.
 
 ## Windows VLC startup correction — 2026-10-23
 The v1.3.1 source configures bundled native discovery before every Qt VLC import. The package diagnostic now exercises cold availability first and verifies the loaded native DLL path. No separate VLC installation is required. Rebuild and fresh-extraction qualification are in progress; see RELEASE_1.3.1.md. Later local study handoffs remain outside this release.
+
+
+## Local compact UI restoration — 2026-10-23
+Samuel requested reversal of the cosmetic refresh after a Windows screenshot showed oversized UI and off-screen controls. The local 1.3.2.dev0 source restores v1.3.0 colors, gradients, type/control sizes and diagram dimensions; scientific/performance changes and VLC startup correction remain. Functional zoom and label wrapping remain, with zoom moved beside the context line and initial diagram fitting restored. Library paths elide without hiding the full tooltip or accessibility text. Full verification and a local rebuild are in progress; v1.3.1 remains the published release.

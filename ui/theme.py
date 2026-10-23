@@ -106,11 +106,12 @@ QLabel[role="faint"]   {{ color: {c['text_faint']}; font-size: {pt['small']}px; 
 
 /* ------------------------------------------------------------ toolbar -- */
 QToolBar {{
-    background: {c['toolbar_top']};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['toolbar_top']}, stop:1 {c['toolbar_bottom']});
     border: none;
-    border-bottom: 1px solid {c['hairline']};
-    spacing: 8px;
-    padding: 6px 10px;
+    border-bottom: 1px solid {c['panel_border']};
+    spacing: 6px;
+    padding: 4px 8px;
 }}
 /* The title strip paints itself; the toolbar hosting it must add nothing. */
 QToolBar#titleBar {{
@@ -122,12 +123,14 @@ QToolBar#titleBar {{
 /* Per-tab controls, one step lighter than the main toolbar so the hierarchy
    reads: window chrome, then tab strip, then this. */
 QFrame[subbar="true"] {{
-    background: {c['subbar_top']};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['subbar_top']}, stop:1 {c['subbar_bottom']});
     border: none;
-    border-bottom: 1px solid {c['hairline']};
+    border-bottom: 1px solid {c['panel_border']};
 }}
 QStatusBar {{
-    background: {c['statusbar_top']};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['statusbar_top']}, stop:1 {c['statusbar_bottom']});
     border-top: 1px solid {c['statusbar_line']};
     color: {c['statusbar_fg']};
     font-size: {pt['small']}px;
@@ -145,41 +148,49 @@ QStatusBar::item {{ border: none; }}
    border-top-color, which lightens the whole edge and reads as a button
    missing its top rather than a lit one. */
 QPushButton {{
-    background: {c['control_top']};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['control_top']}, stop:1 {c['control_bottom']});
     border: 1px solid {c['control_border']};
     border-radius: {m['radius']}px;
     color: {c['control_fg']};
     font-weight: 500;
-    padding: 0 10px;
+    padding: 0 8px;
     min-height: {m['control_h']}px;
     max-height: {m['control_h']}px;
 }}
 QPushButton:hover {{
-    background: {c['control_hover_top']};
-    border-color: {c['control_border_dark']};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['control_hover_top']}, stop:1 {c['control_hover_bottom']});
 }}
 QPushButton:pressed {{
-    background: {c['control_pressed_top']};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['control_pressed_top']}, stop:1 {c['control_pressed_bottom']});
 }}
 QPushButton:disabled {{
-    background: {c['control_disabled_top']};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['control_disabled_top']},
+                stop:1 {c['control_disabled_bottom']});
     color: {c['text_disabled']};
     border-color: {c['hairline']};
 }}
-QPushButton:focus {{ border: 2px solid {c['accent']}; }}
+QPushButton:focus {{ border: 1px solid {c['accent']}; }}
 /* One default button per window, as the period convention had it. More than
    one and it stops meaning "this is the action you probably want". */
 QPushButton[primary="true"] {{
-    background: {c['accent']};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['aqua_top']}, stop:1 {c['aqua_bottom']});
     border: 1px solid {c['aqua_border']};
     color: {c['text_on_accent']};
     font-weight: bold;
 }}
 QPushButton[primary="true"]:hover {{
-    background: {c['accent_dark']};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #55a8e8, stop:1 #1470d4);
 }}
 QPushButton[primary="true"]:pressed {{
-    background: {c['aqua_pressed_top']};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['aqua_pressed_top']},
+                stop:1 {c['aqua_pressed_bottom']});
 }}
 QPushButton[primary="true"]:disabled {{
     background: {c['control_disabled_bottom']};
@@ -191,9 +202,10 @@ QPushButton[primary="true"]:disabled {{
    is the pressed face plus bold — the platform's own "this one is current",
    and no second accent. */
 QPushButton[segment="true"]:checked {{
-    background: {c['accent_fill_bottom']};
-    border: 1px solid {c['accent_glow']};
-    color: {c['accent_dark']};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['control_pressed_top']},
+                stop:1 {c['control_pressed_bottom']});
+    border: 1px solid {c['control_border']};
     font-weight: bold;
 }}
 
@@ -201,10 +213,9 @@ QPushButton[segment="true"]:checked {{
 QMenuBar {{
     background: {c['menu_bg']};
     border-bottom: 1px solid {c['menu_line']};
-    padding: 3px 8px;
+    padding: 2px 8px;
 }}
-QMenuBar::item {{ padding: 3px 6px; margin: 0 4px 0 0;
-                  border-radius: {m['radius_tight']}px; }}
+QMenuBar::item {{ padding: 1px 4px; margin: 0 6px 0 0; border-radius: 2px; }}
 QMenuBar::item:selected {{
     background: {c['accent']};
     color: {c['text_on_accent']};
@@ -212,10 +223,9 @@ QMenuBar::item:selected {{
 QMenu {{
     background: {c['panel_bg']};
     border: 1px solid {c['mw_border']};
-    padding: 4px;
+    padding: 2px;
 }}
-QMenu::item {{ padding: 6px 24px 6px 20px;
-               border-radius: {m['radius_tight']}px; }}
+QMenu::item {{ padding: 4px 22px 4px 18px; }}
 QMenu::item:selected {{
     background: {c['accent']};
     color: {c['text_on_accent']};
@@ -228,24 +238,27 @@ QMenu::separator {{
 
 /* --------------------------------------------------------------- tabs -- */
 QTabWidget::pane {{
-    border: none;
-    border-top: 1px solid {c['hairline']};
+    border: 1px solid {c['panel_border']};
     background: {c['panel_bg']};
     top: -1px;
 }}
 QTabBar {{
-    background: {c['tabstrip_top']};
-    padding-left: 8px;
-    padding-top: 2px;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['tabstrip_top']}, stop:1 {c['tabstrip_bottom']});
+    padding-left: 6px;
+    padding-top: 3px;
 }}
 QTabBar::tab {{
-    background: {c['tab_inactive_top']};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['tab_inactive_top']},
+                stop:1 {c['tab_inactive_bottom']});
     color: {c['tab_fg']};
-    border: none;
-    border-bottom: 2px solid {c['tabstrip_top']};
-    border-radius: {m['radius_tight']}px;
+    border: 1px solid {c['panel_border']};
+    border-bottom: none;
+    border-top-left-radius: 3px;
+    border-top-right-radius: 3px;
     padding: {m['tab_pad_y']}px {m['tab_pad_x']}px;
-    margin-right: 2px;
+    margin-right: 1px;
 }}
 QTabBar::tab:hover {{ background: {c['tab_active']}; }}
 /* The accent rule along the top edge is what marks the active tab; the
@@ -254,23 +267,26 @@ QTabBar::tab:selected {{
     background: {c['panel_bg']};
     color: {c['text']};
     font-weight: bold;
-    border-bottom: 2px solid {c['accent']};
+    border-top: 2px solid {c['accent']};
+    margin-bottom: -1px;
+    padding-bottom: {m['tab_pad_y'] + 1}px;
 }}
 
 /* ------------------------------------------------- inputs and combos -- */
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit {{
     background: {c['panel_bg']};
     border: 1px solid {c['control_border']};
+    border-top-color: {c['control_border_dark']};
     border-radius: {m['radius_tight']}px;
-    padding: 0 7px;
+    padding: 0 4px;
     min-height: {m['control_h']}px;
     max-height: {m['control_h']}px;
     selection-background-color: {c['accent']};
     selection-color: {c['text_on_accent']};
 }}
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus,
-QComboBox:focus, QPlainTextEdit:focus {{ border: 2px solid {c['accent']}; }}
-QComboBox::drop-down {{ border: none; width: 22px; }}
+QComboBox:focus, QPlainTextEdit:focus {{ border: 1px solid {c['accent']}; }}
+QComboBox::drop-down {{ border: none; width: 16px; }}
 QComboBox QAbstractItemView {{
     background: {c['panel_bg']};
     border: 1px solid {c['mw_border']};
@@ -288,8 +304,8 @@ QTreeView, QTableView, QListView, QTreeWidget, QTableWidget {{
     background-color: {c['mw_bg']};
     gridline-color: {c['table_gridline']};
     border: 1px solid {c['mw_border']};
-    selection-background-color: {c['row_selected_bg']};
-    selection-color: {c['text']};
+    selection-background-color: {c['accent']};
+    selection-color: {c['text_on_accent']};
     outline: none;
     font-size: {pt['grid']}px;
 }}
@@ -302,7 +318,7 @@ QTreeWidget::item, QTableWidget::item {{
        episodes fit on screen, which moved away from the reference rather than
        towards it. `border: none` from that directive is kept — that one was a
        real fix, and is what stops the cell rule doubling. */
-    padding: 0 7px;
+    padding: 0 4px;
     min-height: {m['row_h']}px;
     border: none;
     color: {c['text']};
@@ -316,12 +332,8 @@ QTreeView::item:hover, QTableView::item:hover {{
     background: {c['row_hover']};
 }}
 QTreeView::item:selected, QTableView::item:selected,
-QTreeWidget::item:selected,
+QListView::item:selected, QTreeWidget::item:selected,
 QTableWidget::item:selected {{
-    background-color: {c['row_selected_bg']};
-    color: {c['text']};
-}}
-QListView::item:selected {{
     background-color: {c['accent']};
     color: {c['text_on_accent']};
 }}
@@ -331,10 +343,8 @@ QHeaderView::section {{
     background-color: {c['mw_header_bg']};
     color: {c['text']};
     font-weight: bold;
-    border: none;
-    border-right: 1px solid {c['mw_border']};
-    border-bottom: 1px solid {c['mw_border']};
-    padding: 5px 8px;
+    border: 1px solid {c['mw_border']};
+    padding: 4px 8px;
 }}
 QHeaderView::section:hover {{ background-color: {c['panel_header']}; }}
 
@@ -342,13 +352,13 @@ QHeaderView::section:hover {{ background-color: {c['panel_header']}; }}
 QFrame[panel="true"] {{
     background: {c['panel_bg']};
     border: 1px solid {c['panel_border']};
-    border-radius: {m['radius']}px;
+    border-radius: 2px;
 }}
 QLabel[panelHeader="true"] {{
     background: {c['panel_header']};
     border-bottom: 1px solid {c['panel_border']};
     color: {c['control_fg']};
-    padding: 5px 8px;
+    padding: 3px 6px;
     font-weight: bold;
 }}
 /* Monospace, inset, so a long path reads as a value rather than prose. */
@@ -358,8 +368,9 @@ QLabel[pathDisplay="true"] {{
     color: {c['path_text']};
     background: {c['panel_bg']};
     border: 1px solid {c['control_border']};
-    border-radius: {m['radius_tight']}px;
-    padding: 3px 7px;
+    border-top-color: {c['control_border_dark']};
+    border-radius: 2px;
+    padding: 1px 6px;
 }}
 
 /* --------------------------------------------------------- progress -- */
@@ -368,26 +379,29 @@ QLabel[pathDisplay="true"] {{
 QProgressBar {{
     background: {c['panel_bg']};
     border: 1px solid {c['control_border']};
+    border-top-color: {c['control_border_dark']};
     border-radius: {m['radius_tight']}px;
     min-height: 12px;
     max-height: 12px;
     text-align: center;
 }}
 QProgressBar::chunk {{
-    background: {c['accent']};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['aqua_top']}, stop:1 {c['aqua_bottom']});
     border-radius: {m['radius_tight'] - 1}px;
     margin: 1px;
 }}
 
 /* ---------------------------------------------------------- scrollbars -- */
-QScrollBar:vertical   {{ background: transparent; width: 10px;
+/* The period scrollbar was a slim track, not a modern 12-15px gutter. */
+QScrollBar:vertical   {{ background: transparent; width: 9px;
                          margin: 0; border: none; }}
-QScrollBar:horizontal {{ background: transparent; height: 10px;
+QScrollBar:horizontal {{ background: transparent; height: 9px;
                          margin: 0; border: none; }}
 QScrollBar::handle:vertical, QScrollBar::handle:horizontal {{
     background: {c['scroll_handle']};
     border: none;
-    border-radius: 5px;
+    border-radius: 4px;
     min-height: 28px;
     min-width: 28px;
     margin: 2px;
@@ -399,9 +413,9 @@ QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
 /* --------------------------------------------------------- containers -- */
 QGroupBox {{
     border: 1px solid {c['mw_border']};
-    border-radius: {m['radius']}px;
-    margin-top: 10px;
-    padding-top: 8px;
+    border-radius: 3px;
+    margin-top: 8px;
+    padding-top: 6px;
     background: {c['panel_bg']};
 }}
 QGroupBox::title {{
@@ -425,14 +439,15 @@ QTextBrowser {{
    palette of its own — it is a small window. */
 QWidget[dialogContent="true"] {{ background: {c['dialog_content_bg']}; }}
 QWidget[actionBar="true"] {{
-    background: {c['action_bar_top']};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 {c['action_bar_top']}, stop:1 {c['action_bar_bottom']});
     border-top: 1px solid {c['dialog_seam']};
 }}
 QLabel[confirmQuestion="true"] {{
-    font-size: {pt['heading']}px; font-weight: bold; color: {c['text']};
+    font-size: {pt['heading']}px; font-weight: bold; color: #000000;
 }}
 QLabel[wizardTitle="true"] {{
-    font-size: {pt['title']}px; font-weight: bold; color: {c['text']};
+    font-size: {pt['title']}px; font-weight: bold; color: #000000;
 }}
 QLabel[wizardSubtitle="true"] {{
     font-size: {pt['small']}px; color: {c['text_dim']};
@@ -441,6 +456,7 @@ QLabel[wizardSubtitle="true"] {{
 QScrollArea[listView="true"] {{
     background: {c['panel_bg']};
     border: 1px solid {c['panel_border']};
+    border-top-color: {c['list_sunken_edge']};
     border-radius: {m['radius_tight']}px;
 }}
 QWidget[listHost="true"] {{ background: {c['panel_bg']}; }}
@@ -491,11 +507,11 @@ QWidget[dialogContent="true"] QLineEdit {{
 /* Values from ui/reference/pipeline.css: .inspector-panel, .inspector-title,
    .inspector-subtitle, .info-banner, .inspector-table, .zoom-toolbar. */
 QWidget#inspectorPanel {{
-    background: {c['inspector_bg']};
+    background: {c['panel_bg']};
     border-top: 1px solid {c['panel_border']};
 }}
 QLabel#inspectorTitle {{ font-size: {pt['title']}px; font-weight: bold;
-                         color: {c['text']}; }}
+                         color: #000000; }}
 QLabel#inspectorSubtitle {{ font-size: {pt['small']}px;
                             color: {c['text_dim']}; }}
 QLabel#inspectorBanner {{
@@ -532,7 +548,8 @@ QLabel[kvVal="true"] {{
 }}
 /* The floating zoom pill sits over the canvas. */
 QWidget#zoomPill {{
-    background: {c['panel_bg']};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #ffffff, stop:1 #e5e5e5);
     border: 1px solid {c['control_border']};
     border-radius: {m['radius']}px;
 }}
@@ -546,7 +563,7 @@ QPushButton[zoom="true"] {{
     min-height: 0;
     max-height: 20px;
 }}
-QPushButton[zoom="true"]:hover {{ background: {c['row_hover']}; }}
+QPushButton[zoom="true"]:hover {{ background: rgba(0, 0, 0, 20); }}
 QLabel#zoomDisplay {{
     color: {c['text_dim']};
     font-size: {pt['tiny']}px;

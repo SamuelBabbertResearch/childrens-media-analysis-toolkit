@@ -2166,3 +2166,7 @@ reproducible when a diagram is discussed or saved.
 **Rejected.** Automatically shrinking the graph to fit the viewport; an
 icon-only control with no accessible label; storing zoom as part of a recipe
 or treating it as a measurement setting.
+
+
+### Restore the compact desktop styling — 2026-10-23
+**Decision.** Supersede the September cosmetic refresh at Samuel's explicit request. Restore the v1.3.0 palette, gradients, compact shared type/control sizes and diagram geometry. Keep scientific corrections, performance work, neutral FFC coloring, title wrapping, functional zoom and the VLC cold-start fix. Fit the compact Constructs graph initially; put its zoom controls beside the context line so an inactive tab does not force every screen wider. Elide long library paths with full-path tooltips. **Reason.** A real Windows screenshot showed oversized controls and off-screen content; previous rendering checks used shorter paths and did not establish usable width under scaling. **Rejected.** Reverting the engine or reproducing known clipping/loading defects to recover an older appearance. This is a local 1.3.2.dev0 build; the published v1.3.1 artifact stays immutable.

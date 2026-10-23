@@ -27,7 +27,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QObject, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QAction, QFont, QIcon, QKeySequence,
     QPainter, QPixmap, QShortcut, QStandardItem, QStandardItemModel,
@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView, QButtonGroup, QComboBox, QDialog, QFileDialog, QFrame,
     QHBoxLayout, QHeaderView,
     QInputDialog, QLabel, QMainWindow, QMenu, QMenuBar, QMessageBox,
-    QPushButton, QSplitter, QStackedWidget, QTabWidget,
+    QPushButton, QSizePolicy, QSplitter, QStackedWidget, QTabWidget,
     QTextBrowser, QToolBar, QTreeView, QVBoxLayout, QWidget,
 )
 
@@ -207,6 +207,38 @@ class Panel(QFrame):
     def add_header_widget(self, widget: QWidget) -> None:
         widget.setStyleSheet(widget.styleSheet() + ";border:none;")
         self._header_row.addWidget(widget)
+
+
+class PathLabel(QLabel):
+    """A long library path must not push workflow controls off the window."""
+
+    def __init__(self, text: str) -> None:
+        super().__init__()
+        self._full_text = ""
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.setMinimumWidth(80)
+        self.setText(text)
+
+    def setText(self, text: str) -> None:
+        self._full_text = text
+        self.setToolTip(text)
+        self.setAccessibleName(text)
+        self._update_text()
+
+    def _update_text(self) -> None:
+        super().setText(self.fontMetrics().elidedText(
+            self._full_text, Qt.ElideMiddle, max(0, self.contentsRect().width() - 16)))
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._update_text()
+
+    def sizeHint(self) -> QSize:
+        return QSize(min(320, self.fontMetrics().horizontalAdvance(self._full_text) + 16),
+                     super().sizeHint().height())
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(80, super().minimumSizeHint().height())
 
 
 class SubToolBar(QFrame):
@@ -748,7 +780,7 @@ class MainWindow(QMainWindow):
         choose.clicked.connect(self.choose_root)
         tb.addWidget(choose)
 
-        self._root_label = QLabel("(none chosen)")
+        self._root_label = PathLabel("(none chosen)")
         self._root_label.setProperty("pathDisplay", "true")
         self._root_label.setTextFormat(Qt.PlainText)
         tb.addWidget(self._root_label)

@@ -2254,3 +2254,7 @@ The Qt availability probe and player constructor imported python-vlc before the 
 
 ## Release verification needs native execution — 2026-10-23
 The initial restricted source diagnostic loaded VLC but FFmpeg could not generate its scratch clip; restricted tests also hit environment failures. The same exact isolated source passed with native execution enabled (812 passed, 13 absent-media skips). The rebuilt and freshly extracted Windows executable then passed cold bundled-library loading, playback, and artifact equality checks. Do not interpret a sandbox restriction as a release regression, or use a preparation-only mock as proof that a cold executable can find its native libraries.
+
+
+## A rendering pass did not prove that the window fits — 2026-10-23
+The refreshed interface passed synthetic rendering but overflowed on the researcher's scaled display with a long folder path. The Constructs toolbar also set a wide minimum for every tab, including Library. Restoring compact styling alone retained that constraint. Separate functional zoom from the first toolbar row and elide the path with full tooltip/accessibility text. Verify actual window/control bounds at a display-scaled width as well as rendering individual views. The classic Tk path label already consumes remaining space rather than setting the toolbar width.
