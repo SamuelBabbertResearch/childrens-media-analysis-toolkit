@@ -2250,3 +2250,7 @@ before publishing. Source tests cannot detect this missing-file build defect.
 
 ## VLC cold imports must configure discovery first — 2026-10-23
 The Qt availability probe and player constructor imported python-vlc before the bundled-path setup in _libvlc. Native DLL loading occurs at import time. All Qt imports now go through one preparation helper, and tests exercise the availability entry point on a cold import. Frozen qualification must run that probe first and inspect the actual loaded DLL path so earlier initialization or installed VLC cannot mask the defect.
+
+
+## Release verification needs native execution — 2026-10-23
+The initial restricted source diagnostic loaded VLC but FFmpeg could not generate its scratch clip; restricted tests also hit environment failures. The same exact isolated source passed with native execution enabled (812 passed, 13 absent-media skips). The rebuilt and freshly extracted Windows executable then passed cold bundled-library loading, playback, and artifact equality checks. Do not interpret a sandbox restriction as a release regression, or use a preparation-only mock as proof that a cold executable can find its native libraries.

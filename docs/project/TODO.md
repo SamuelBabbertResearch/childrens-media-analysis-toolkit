@@ -10,7 +10,7 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
 Review and merge `codex/integrate-liu-september-updates` into `master`, then
 update both laptops before creating new work branches. Follow
 [CONTRIBUTING.md](../../CONTRIBUTING.md). A release tag does not update master.
-The v1.3.0 Windows release is published; packaging checks and its resource-file
+The v1.3.1 Windows VLC correction is published and verified; see [release notes](RELEASE_1.3.1.md). The v1.3.0 Windows release is published; packaging checks and its resource-file
 correction are documented in
 [RELEASE_1.3.0.md](RELEASE_1.3.0.md).
 
@@ -829,6 +829,3 @@ What the scale still needs, in order:
    alongside item 7 rather than acting on the audit as written.
 
 Mia: complete corrected Season 1 coding, confirm completion of wrong-set export before finalized use, and adjudicate noted wipes/frame disagreements. Package: .analysis/study_clips/curious_george_s2_s4_30s_skip65s_20260907/audio1_frame_coding/mia_season1_correction06_20260916.
-
-## Windows VLC release — 2026-10-23
-Qualify and publish v1.3.1 from an exact source commit, verify cold bundled-VLC loading from a fresh ZIP extraction, then reply to the startup report with the verified release link. Study Runner work remains separate.
