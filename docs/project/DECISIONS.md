@@ -2178,3 +2178,7 @@ or treating it as a measurement setting.
 
 ### Include videos directly in the selected root — 2026-10-23
 The shared folder discovery includes the root itself when it contains supported videos, as well as existing nested show/category layouts. Preserve the sampler cache key `.` and use the folder name as the existing folder group label; do not infer programme metadata. Qt backfills its derived index on root opening and measurement completion, matching the classic front-end recovery path. No relocation or remeasurement of stimuli.
+
+
+### Direct choices for the two hand-coding tasks — 2026-10-23
+At Samuel's request, Human coding starts with Hand Code Cuts and Hand Code Fantastical Events. Put task selectors first and active-view actions on their own toolbar. Keep detector comparison and coder agreement as separate secondary views. Cut coding writes the established `_manual.csv` schema; events write `_events.csv`; pipeline entry points choose the corresponding mode. Shared player timestamp behavior and engine parsers remain authoritative.

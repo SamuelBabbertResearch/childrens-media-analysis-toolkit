@@ -427,3 +427,45 @@ def test_the_worklist_row_follows_a_save(window, tmp_path):
     assert _rows(code.worklist) == [("S01 E01.mp4", "1 event")]
     # And the file on disk is what the engine reads back.
     assert event_sheet_status(episodes[0], window._test_vdir)["n_events"] == 1
+
+
+@pytest.mark.parametrize("label,attr,suffix,field,value", [
+    ("Hand Code Cuts", "cuts", "_manual.csv", "type", "hard_cut"),
+    ("Hand Code Fantastical Events", "code", "_events.csv", "event_type", "physical"),
+])
+def test_direct_coding_choices_write_the_correct_engine_sheet(
+        window, tmp_path, label, attr, suffix, field, value):
+    from analyzer.validation import parse_manual_csv
+    from analyzer.event_coding import parse_event_csv
+    from ui.main_window import STAGE_TABS
+
+    root, episodes = _library(tmp_path, ["Choice test"])
+    window.set_root(root)
+    tab = window._handcoding
+    view = getattr(tab, attr)
+    player = _StubPlayer()
+    player.stamp_at = 12.345
+    view._player = player
+    tab._views._buttons[label].click()
+    assert tab._stack.currentWidget() is view
+    assert tab._views.current() == label
+    assert tab.validate._btn_detect.isHidden()
+    assert tab.validate._btn_compare.isHidden()
+    view.set_target(episodes[0])
+    view._btn_open.click()
+    assert player.opened == episodes
+    view._btn_mark.click()
+    view._btn_save.click()
+    sheet = window._test_vdir / (episodes[0].stem + suffix)
+    parser = parse_manual_csv if attr == "cuts" else parse_event_csv
+    records = parser(sheet)
+    assert len(records) == 1
+    assert records[0][field] == value
+    assert records[0]["timestamp_sec"] == 12.345
+    other_suffix = "_events.csv" if attr == "cuts" else "_manual.csv"
+    assert not (window._test_vdir / (episodes[0].stem + other_suffix)).exists()
+    view._read_sheet(sheet)
+    assert len(view._events) == 1
+    assert view._events[0][field] == value
+    stage = "handcode_transitions" if attr == "cuts" else "handcode_events"
+    assert STAGE_TABS[stage] == ("Human coding", label)

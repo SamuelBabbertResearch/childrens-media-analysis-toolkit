@@ -2156,3 +2156,7 @@ Local 1.3.2.dev2 includes direct-root videos in shared discovery (cache key `.`)
 
 ### Direct-root recovery verified and installed — 2026-10-23
 Supersedes the pending package note above. Installed local 1.3.2.dev2 from source 0dd2a3a at dist/CMAT-compact/CMAT.exe (SHA256 9a0530d242bab374eca0e6866f35079d290a5f9c6c534dd2e1059a396879bf15). Full isolated suite: 817 passed, 13 absent-media skips. Frozen cold-VLC, playback, native-frame and direct-root Library/Index checks passed; synthetic metrics/language equal dev1. Actual four-result project recovered from 0 to 4 Index rows, with all four original cache hashes unchanged and no reanalysis. Real desktop Library showed 4/4 analyzed; Index showed all four records and matching values. Prior app/settings preserved in dist/CMAT-compact-backup-dev1-20261023. CMAT left open on Index. Evidence: build/root-videos-20261023/{install-complete,recovery-proof,staging-qualification}.json and desktop-index.txt. No publication or email.
+
+
+## Direct hand-coding choices — 2026-10-23
+Local 1.3.2.dev3 presents Hand Code Cuts and Hand Code Fantastical Events first, with view-specific actions in a separate second toolbar. Qt cut coding now uses the same player/stamping path and the existing transition CSV/parser; fantastical coding retains its event schema. Pipeline stages route to their matching mode. Classic Tk labels match; its existing editor already supports both schemas. Targeted checks: 108 passed. Isolated full suite and frozen build/install pending; see build/coding-choices-20261023.

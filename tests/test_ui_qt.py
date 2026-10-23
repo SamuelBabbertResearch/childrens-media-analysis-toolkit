@@ -408,7 +408,8 @@ def test_stage_routes_name_sub_views_that_exist():
     from ui.language import LanguageTab
     from ui.main_window import STAGE_TABS
     known = {
-        "Human coding": {"Code", "Validate tool", "Agreement"},
+        "Human coding": {"Hand Code Cuts", "Hand Code Fantastical Events",
+                         "Validate tool", "Agreement"},
         "Language": {"Speech", "Vocabulary"},
     }
     for title, view in STAGE_TABS.values():

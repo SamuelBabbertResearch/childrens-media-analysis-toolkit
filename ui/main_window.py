@@ -29,7 +29,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
-    QAction, QFont, QIcon, QKeySequence,
+    QAction, QFont, QFontMetrics, QIcon, QKeySequence,
     QPainter, QPixmap, QShortcut, QStandardItem, QStandardItemModel,
 )
 from PySide6.QtWidgets import (
@@ -88,8 +88,8 @@ STAGE_TABS: dict[str, tuple[str, str | None]] = {
     "automated": ("Automated coding", None),
     "language": ("Language", "Speech"),
     "measurement": ("Automated coding", None),
-    "handcode_transitions": ("Human coding", "Code"),
-    "handcode_events": ("Human coding", "Code"),
+    "handcode_transitions": ("Human coding", "Hand Code Cuts"),
+    "handcode_events": ("Human coding", "Hand Code Fantastical Events"),
     "validation": ("Human coding", "Validate tool"),
     "results": ("Index", None),
 }
@@ -275,6 +275,11 @@ class SubViews(QObject):
         button = QPushButton(name)
         button.setCheckable(True)
         button.setProperty("segment", "true")
+        # The selected segment is bold; reserve its width before selection so
+        # a long workflow name does not lose its final characters.
+        selected_font = QFont(button.font())
+        selected_font.setBold(True)
+        button.setMinimumWidth(QFontMetrics(selected_font).horizontalAdvance(name) + 24)
         index = self._stack.count()
         self._stack.addWidget(widget)
         self._group.addButton(button, index)

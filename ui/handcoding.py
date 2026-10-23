@@ -4,7 +4,9 @@ ui/handcoding.py — the Human coding tab: Code, Validate tool, Agreement.
 Three screens over one idea: a person's coding is a measurement, and it is
 also the only thing the automated measure can be graded against.
 
-**Code** — mark an event at the playhead, give it a type, and the row is
+**Hand Code Cuts / Hand Code Fantastical Events** — separate entry points
+for transition and event sheets, using the same frame-accurate player.
+Mark an event at the playhead, give it a type, and the row is
 written to the same CSV `code_events.py` reads: the columns come from
 `analyzer.event_coding`, so a sheet coded here is a sheet the command line can
 score and publish, and neither can quietly change the format on the other.
@@ -226,10 +228,14 @@ class Worklist(QWidget):
 class CodeView(QWidget):
     """Play an episode, mark events, save the sheet."""
 
-    def __init__(self, window, bar) -> None:
+    def __init__(self, window, bar, kind="events") -> None:
         super().__init__()
+        self._transitions = kind == "transitions"
+        self._columns = (["timestamp_hms", "timestamp_sec", "type",
+                          "scene_relation", "notes"] if self._transitions else COLUMNS)
         self._window = window
         self._episode: Path | None = None
+        self._pending_episode: Path | None = None
         self._sheet: Path | None = None
         self._player = None
         self._events: list[dict] = []
@@ -291,15 +297,18 @@ class CodeView(QWidget):
         # left" belongs with the sheet it is about.
         right_side = QSplitter(Qt.Vertical)
         right_side.setChildrenCollapsible(False)
-        self.worklist = Worklist(event_coding_state)
+        self.worklist = Worklist(transition_coding_state if self._transitions
+                                 else event_coding_state)
         self.worklist.episode_chosen.connect(self._open_from_worklist)
         right_side.addWidget(self.worklist)
 
-        right = Panel("Coded events")
+        right = Panel("Coded cuts / transitions" if self._transitions
+                      else "Coded fantastical events")
         self._table = QTreeWidget()
-        self._table.setColumnCount(5)
+        self._table.setColumnCount(4 if self._transitions else 5)
         self._table.setHeaderLabels(
-            ["Time", "Type", "Relevance", "Repeat", "Note"])
+            ["Time", "Type", "Scene relation", "Note"] if self._transitions
+            else ["Time", "Type", "Relevance", "Repeat", "Note"])
         self._table.setRootIsDecorated(False)
         self._table.setUniformRowHeights(True)
         self._table.setProperty("inPanel", "true")
@@ -310,7 +319,7 @@ class CodeView(QWidget):
         self._table.itemDoubleClicked.connect(self._seek_to_event)
         right.body_layout.addWidget(self._table)
 
-        self._btn_delete = QPushButton("Delete Event")
+        self._btn_delete = QPushButton("Delete selected mark")
         self._btn_delete.clicked.connect(self._delete_event)
         right.add_header_widget(self._btn_delete)
         right_side.addWidget(right)
@@ -325,6 +334,11 @@ class CodeView(QWidget):
         bl.setContentsMargins(8, 8, 8, 8)
         bl.setSpacing(6)
         bl.addWidget(Ambox(
+            "Hand Code Cuts",
+            "Open an episode, pause at a cut, then press Mark Cut. "
+            "Other transition types are available in Type. Save Sheet keeps "
+            "your coding; detector comparison is a separate step."
+        ) if self._transitions else Ambox(
             "This is a human judgement",
             "Whether something is impossible, whether it matters to the "
             "story, and whether it is a repeat are properties of the story, "
@@ -341,12 +355,22 @@ class CodeView(QWidget):
         rl.setSpacing(6)
 
         self._type = QComboBox()
-        for key, description in EVENT_TYPES:
+        from analyzer.validation import TRANSITION_TYPES
+        choices = ([("hard_cut", "Hard cut")] +
+                   [(k, k.replace("_", " ")) for k in sorted(TRANSITION_TYPES)
+                    if k != "hard_cut"] if self._transitions else EVENT_TYPES)
+        for key, description in choices:
             self._type.addItem(key, key)
             self._type.setItemData(self._type.count() - 1, description,
                                    Qt.ToolTipRole)
         rl.addWidget(QLabel("Type:"))
         rl.addWidget(self._type)
+
+        if self._transitions:
+            self._relation = QComboBox()
+            self._relation.addItems(["", "within", "change"])
+            rl.addWidget(QLabel("Scene relation:"))
+            rl.addWidget(self._relation)
 
         self._relevance = QComboBox()
         self._relevance.addItems(RELEVANCE)
@@ -357,12 +381,22 @@ class CodeView(QWidget):
         self._repeat.addItems(REPEAT)
         rl.addWidget(QLabel("Repeat:"))
         rl.addWidget(self._repeat)
+        if self._transitions:
+            # These belong only to the fantastical-event schema.
+            self._relevance.hide()
+            self._repeat.hide()
+            for i in range(rl.count()):
+                widget = rl.itemAt(i).widget()
+                if isinstance(widget, QLabel) and widget.text() in ("Relevance:", "Repeat:"):
+                    widget.hide()
 
         self._note = QLineEdit()
-        self._note.setPlaceholderText("note (required for other_impossible)")
+        self._note.setPlaceholderText("Optional note" if self._transitions
+                                     else "note (required for other_impossible)")
         rl.addWidget(self._note, 1)
 
-        self._btn_mark = QPushButton("Mark at playhead")
+        self._btn_mark = QPushButton("Mark Cut" if self._transitions
+                                     else "Mark Fantastical Event")
         self._btn_mark.setProperty("primary", "true")
         self._btn_mark.setEnabled(False)
         self._btn_mark.setToolTip(
@@ -374,6 +408,11 @@ class CodeView(QWidget):
             "while playing is a smoothed estimate for feel; it is never "
             "what gets written to the sheet.")
         self._btn_mark.clicked.connect(self._mark)
+        if self._transitions:
+            self._type.currentIndexChanged.connect(
+                lambda: self._btn_mark.setText(
+                    "Mark Cut" if self._type.currentData() == "hard_cut"
+                    else "Mark Transition"))
         rl.addWidget(self._btn_mark)
         return row
 
@@ -381,7 +420,7 @@ class CodeView(QWidget):
     def set_target(self, path: Path | None) -> None:
         """The Library selection, when it names a file rather than a folder."""
         if path is not None and path.is_file():
-            self._episode = path
+            self._pending_episode = path
             self._target.setText(f"Ready: {path.name}")
         self._sync()
 
@@ -391,14 +430,15 @@ class CodeView(QWidget):
             self.worklist.set_scope(scope)
 
     def _open_episode(self) -> None:
-        if self._episode is None:
+        episode = self._pending_episode
+        if episode is None:
             chosen, _ = QFileDialog.getOpenFileName(
                 self, "Open episode", str(self._window._root or ""),
                 "Video (*.mp4 *.mkv *.avi *.mov)")
             if not chosen:
                 return
-            self._episode = Path(chosen)
-        self._load_episode(self._episode)
+            episode = Path(chosen)
+        self._open_from_worklist(episode)
 
     def _open_from_worklist(self, episode: Path) -> None:
         """Switch episodes from the worklist, without losing unsaved marks."""
@@ -427,8 +467,11 @@ class CodeView(QWidget):
         episode's file under the second episode's name.
         """
         self._episode = episode
+        self._pending_episode = episode
         self._player.open(episode)
-        existing = find_event_sheet(episode, get_validation_dir())
+        from analyzer.validation import find_manual
+        existing = (find_manual(episode, get_validation_dir()) if self._transitions
+                    else find_event_sheet(episode, get_validation_dir()))
         if existing is not None:
             # Found wherever a coder filed it — the same lookup code_events.py
             # scores from, so the screen and the command line open one sheet.
@@ -437,7 +480,7 @@ class CodeView(QWidget):
             self._events = []
             self._dirty = False
             self._sheet = (get_validation_dir()
-                           / f"{episode.stem}_events.csv")
+                           / f"{episode.stem}{'_manual' if self._transitions else '_events'}.csv")
             self._refill()
         self._target.setText(f"{episode.name} — sheet: {self._sheet.name}")
         if hasattr(self, "worklist"):
@@ -458,6 +501,11 @@ class CodeView(QWidget):
             return
         relevance = self._relevance.currentText()
         repeat = self._repeat.currentText()
+        if self._transitions:
+            relation = self._relation.currentText() if etype == "hard_cut" else ""
+            self._player.stamp(lambda seconds: self._append_transition(
+                seconds, etype, relation, note))
+            return
         # player.stamp() pauses first if playing, so the timestamp is read
         # from libvlc's exact paused clock rather than its coarse live one
         # (up to ~0.5s stale) — see ui/player.py's VideoPlayer.stamp(). Every
@@ -465,6 +513,15 @@ class CodeView(QWidget):
         # changes in the meantime can leak into a mark still settling.
         self._player.stamp(lambda seconds: self._append_event(
             seconds, etype, relevance, repeat, note))
+
+    def _append_transition(self, seconds, kind, relation, note):
+        self._events.append({"timestamp_sec": round(seconds, 3),
+                             "timestamp_hms": player_mod.sec_to_hms(seconds),
+                             "type": kind, "scene_relation": relation, "notes": note})
+        self._events.sort(key=lambda e: e["timestamp_sec"])
+        self._note.clear()
+        self._dirty = True
+        self._refill()
 
     def _append_event(self, seconds: float, etype: str, relevance: str,
                        repeat: str, note: str) -> None:
@@ -499,10 +556,13 @@ class CodeView(QWidget):
     def _refill(self) -> None:
         self._table.clear()
         for event in self._events:
-            self._table.addTopLevelItem(QTreeWidgetItem([
+            values = ([event["timestamp_hms"], event["type"],
+                       event.get("scene_relation", ""), event["notes"]]
+                      if self._transitions else [
                 event["timestamp_hms"], event["event_type"],
                 event["narrative_relevance"], event["repeat"],
-                event["notes"]]))
+                event["notes"]])
+            self._table.addTopLevelItem(QTreeWidgetItem(values))
         head = self._table.header()
         for col in range(4):
             head.setSectionResizeMode(col, QHeaderView.ResizeToContents)
@@ -517,8 +577,18 @@ class CodeView(QWidget):
             self._read_sheet(Path(chosen))
 
     def _read_sheet(self, path: Path) -> None:
+        with path.open(newline="", encoding="utf-8-sig") as fh:
+            headers = csv.DictReader(fh).fieldnames or []
+        expected = "type" if self._transitions else "event_type"
+        if expected not in headers:
+            QMessageBox.warning(self, "Different coding sheet",
+                                "Choose a cut/transition sheet for Hand Code Cuts "
+                                "or an event sheet for Hand Code Fantastical Events.")
+            return
         warnings: list[str] = []
-        self._events = parse_event_csv(path, warn_cb=warnings.append)
+        from analyzer.validation import parse_manual_csv
+        self._events = (parse_manual_csv(path, warn_cb=warnings.append)
+                        if self._transitions else parse_event_csv(path, warn_cb=warnings.append))
         self._sheet = path
         self._dirty = False
         self._refill()
@@ -532,20 +602,20 @@ class CodeView(QWidget):
             return
         self._sheet.parent.mkdir(parents=True, exist_ok=True)
         with self._sheet.open("w", newline="", encoding="utf-8") as fh:
-            writer = csv.DictWriter(fh, fieldnames=COLUMNS)
+            writer = csv.DictWriter(fh, fieldnames=self._columns)
             writer.writeheader()
             for event in self._events:
                 writer.writerow({
                     k: ("" if event.get(k) is None else event.get(k, ""))
-                    for k in COLUMNS})
+                    for k in self._columns})
         self._dirty = False
         if hasattr(self, "worklist"):
             self.worklist.refresh()      # the row that just changed
         self._sync()
         self._window.statusBar().showMessage(
-            f"Saved {len(self._events)} event"
+            f"Saved {len(self._events)} mark"
             f"{'s' if len(self._events) != 1 else ''} to {self._sheet.name}. "
-            f"code_events.py can score and publish this sheet.", 8000)
+            f"Your hand coding is saved.", 8000)
 
     def _sync(self) -> None:
         has_video = self._player is not None and self._episode is not None
@@ -1192,19 +1262,23 @@ class HandCodingTab(QWidget):
         lay.setSpacing(0)
 
         self._bar = SubToolBar()
+        self._actions = SubToolBar()
         self._stack = QStackedWidget()
         self._views = SubViews(self._bar, self._stack)
         self._bar.row.addSpacing(8)
 
-        self.code = CodeView(window, self._bar)
-        self.validate = ValidateView(window, self._bar)
-        self.agreement = AgreementView(window, self._bar)
-        self._views.add("Code", self.code)
+        self.cuts = CodeView(window, self._actions, kind="transitions")
+        self.code = CodeView(window, self._actions)
+        self.validate = ValidateView(window, self._actions)
+        self.agreement = AgreementView(window, self._actions)
+        self._views.add("Hand Code Cuts", self.cuts)
+        self._views.add("Hand Code Fantastical Events", self.code)
         self._views.add("Validate tool", self.validate)
         self._views.add("Agreement", self.agreement)
 
         self._bar.row.addStretch(1)
         lay.addWidget(self._bar)
+        lay.addWidget(self._actions)
         lay.addWidget(self._stack, 1)
 
         self._views.changed.connect(self._sync_controls)
@@ -1212,13 +1286,17 @@ class HandCodingTab(QWidget):
 
     def _sync_controls(self) -> None:
         current = self._stack.currentWidget()
-        for view in (self.code, self.validate, self.agreement):
+        for view in (self.cuts, self.code, self.validate, self.agreement):
             for widget in view.controls:
                 widget.setVisible(view is current)
+            player = getattr(view, "_player", None)
+            if view is not current and player is not None and player.is_playing():
+                player.toggle()
 
     def set_target(self, path: Path | None) -> None:
         """The Library selection reaches both screens that use an episode."""
         self.code.set_target(path)
+        self.cuts.set_target(path)
         self.validate.set_target(path)
 
     def set_scope(self, scope) -> None:
@@ -1228,7 +1306,8 @@ class HandCodingTab(QWidget):
         which are not episodes and are not drawn by a sample.
         """
         self.code.set_scope(scope)
+        self.cuts.set_scope(scope)
         self.validate.set_scope(scope)
 
     def show_view(self, name: str) -> None:
-        self._views.show(name)
+        self._views.show("Hand Code Fantastical Events" if name == "Code" else name)

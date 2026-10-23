@@ -149,6 +149,43 @@ def run(report_path: str) -> int:
                 or cache_file.read_bytes() != cache_bytes):
             raise RuntimeError("Direct-root cached results did not reach Library/Index intact")
         checks["root_video_library_and_index"] = True
+        from ui import handcoding
+        from analyzer.validation import parse_manual_csv
+        from analyzer.event_coding import parse_event_csv
+        old_validation_dir = handcoding.get_validation_dir
+        handcoding.get_validation_dir = lambda: scratch / "coding"
+        try:
+            tab = window._handcoding
+            window._tabs.setCurrentWidget(tab)
+            for label, view, parser, key, expected in [
+                ("Hand Code Cuts", tab.cuts, parse_manual_csv, "type", "hard_cut"),
+                ("Hand Code Fantastical Events", tab.code, parse_event_csv,
+                 "event_type", "physical"),
+            ]:
+                tab._views._buttons[label].click()
+                view._load_episode(video)
+                # Pin the clock for deterministic serialization; the separate
+                # VLC playback check below establishes actual decoding.
+                stamp = view._player.stamp
+                view._player.stamp = lambda callback: callback(1.25)
+                try:
+                    view._btn_mark.click()
+                    view._btn_save.click()
+                finally:
+                    view._player.stamp = stamp
+                records = parser(view._sheet)
+                if (tab._stack.currentWidget() is not view or len(records) != 1
+                        or records[0][key] != expected
+                        or records[0]["timestamp_sec"] != 1.25
+                        or not tab.validate._btn_detect.isHidden()):
+                    raise RuntimeError(f"Coding choice failed: {label}")
+                app.processEvents()
+                window.grab().save(str(scratch / (key + "-coding.png")))
+                view._player.close()
+            checks["direct_coding_choices_and_sheets"] = True
+        finally:
+            handcoding.get_validation_dir = old_validation_dir
+        window._tabs.setCurrentWidget(window._library_page)
         window.grab().save(str(scratch / "main-window.png"))
         constructs = window._constructs
         window._tabs.setCurrentWidget(constructs)
