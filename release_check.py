@@ -153,6 +153,7 @@ def run(report_path: str) -> int:
         constructs = window._constructs
         window._tabs.setCurrentWidget(constructs)
         app.processEvents()
+        constructs._btn_zoom_reset.click()
         constructs._btn_zoom_in.click()
         if constructs._zoom_label.text() != "115%":
             raise RuntimeError("Constructs zoom-in control did not update the view")
