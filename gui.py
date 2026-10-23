@@ -774,17 +774,17 @@ class App(tk.Tk):
     def _choose_folder(self) -> None:
         messagebox.showinfo(
             "Choose Root Folder",
-            "Select the folder that CONTAINS your show folders.\n\n"
+            "Select a folder containing videos or show folders.\n\n"
             "Example:\n"
             "  Child Development Television Index Project\\   <-- select this\n"
             "      Little Bear\\\n"
             "          episode01.mp4\n"
             "      Another Show\\\n"
             "          episode01.mp4\n\n"
-            "Do NOT navigate into a show folder — select its parent.",
+            "Videos directly in the selected folder are included too.",
         )
         folder = filedialog.askdirectory(
-            title="Select the ROOT folder (the one containing show sub-folders)"
+            title="Select the folder containing videos or show folders"
         )
         if folder:
             self._set_root_folder(Path(folder), remember=True)

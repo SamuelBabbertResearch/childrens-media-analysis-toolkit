@@ -829,3 +829,7 @@ What the scale still needs, in order:
    alongside item 7 rather than acting on the audit as written.
 
 Mia: complete corrected Season 1 coding, confirm completion of wrong-set export before finalized use, and adjudicate noted wipes/frame disagreements. Package: .analysis/study_clips/curious_george_s2_s4_30s_skip65s_20260907/audio1_frame_coding/mia_season1_correction06_20260916.
+
+
+## Direct-root result visibility — 2026-10-23
+Verify and install local 1.3.2.dev2, then confirm the four cached BUBBLES stimuli appear in Library and Index with original cache hashes unchanged. No reanalysis is required. Published v1.3.1 remains unchanged.

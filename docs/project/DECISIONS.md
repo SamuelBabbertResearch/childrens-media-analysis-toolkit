@@ -2174,3 +2174,7 @@ or treating it as a measurement setting.
 
 ### Use the standard native Windows frame — 2026-10-23
 **Decision.** Retire custom-painted captions and Win32 non-client hooks for the main window and all dialogs. `ui.native_frame.apply_native_frame` configures actual Qt/native caption controls and preserves window type/modality. The shared dialog helper keeps each caller's close/minimize/maximize policy. **Reason.** Samuel reported failed title dragging and maximize/restore after closing the welcome dialog. A real desktop check reproduced stuck dragging; the native-frame source window then passed welcome dismissal, maximize, restore and dragging. Rendering tests had not established those interactions. This supersedes the 2026-08-10 custom-frame decision. Compact content styling remains. Local version: 1.3.2.dev1; no publication or email requested.
+
+
+### Include videos directly in the selected root — 2026-10-23
+The shared folder discovery includes the root itself when it contains supported videos, as well as existing nested show/category layouts. Preserve the sampler cache key `.` and use the folder name as the existing folder group label; do not infer programme metadata. Qt backfills its derived index on root opening and measurement completion, matching the classic front-end recovery path. No relocation or remeasurement of stimuli.

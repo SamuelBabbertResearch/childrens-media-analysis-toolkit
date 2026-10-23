@@ -2148,3 +2148,7 @@ Samuel requested reversal of the cosmetic refresh after a Windows screenshot sho
 
 ## Native window behavior correction in progress — 2026-10-23
 The compact local app still used the historical custom non-client frame. Samuel reported stuck dragging and maximize/restore after dismissing the startup popup. The source now uses actual native frames for main/dialog windows through one helper, retaining compact content and per-dialog caption policies. A real desktop source check confirmed welcome dismissal, maximize/restore and title dragging. Regression tests cover modal release and caption state; packaged checks now include the welcome-close path. Local 1.3.2.dev1 rebuild and executable interaction verification remain pending. Unrelated study edits remain outside this work.
+
+
+## Direct-root stimuli recovery — 2026-10-23
+Local 1.3.2.dev2 includes direct-root videos in shared discovery (cache key `.`), alongside nested shows/categories. Qt now backfills Index from cache on opening a root and after measurement completion/cancellation. Root group selection stores its actual folder path. Existing raw caches are never rewritten by this recovery. Regression checks exercise reopening, completed-run refresh, sample scope, mixed layouts, and season-like root names. Replacement package and real four-result recovery verification are pending; see build/root-videos-20261023.

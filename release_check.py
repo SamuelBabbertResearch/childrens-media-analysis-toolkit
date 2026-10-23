@@ -125,6 +125,30 @@ def run(report_path: str) -> int:
         if window.isMaximized() or not window.isEnabled():
             raise RuntimeError("Main window did not restore after popup close")
         checks["window_controls_after_welcome"] = True
+        # Exercise the flat-folder cache → Library → SQLite → Index path in
+        # the actual package, without measuring again or using personal data.
+        from analyzer.cache import cache_path, save_cache
+        from analyzer.db import get_db, query_episodes
+        save_cache(scratch, ".", video.stem, result.to_dict())
+        cache_file = cache_path(scratch, ".", video.stem)
+        cache_bytes = cache_file.read_bytes()
+        window.set_root(scratch)
+        window._on_analysis_finished()
+        head = window._model.item(0)
+        conn = get_db(scratch)
+        try:
+            indexed = query_episodes(conn)
+        finally:
+            conn.close()
+        if (window._model.rowCount() != 1 or head.rowCount() != 1
+                or window._show_dir_for(head) != scratch
+                or head.child(0, 1).text() != "Analyzed"
+                or window._index._table.topLevelItemCount() != 1
+                or len(indexed) != 1
+                or indexed[0]["cuts_per_min"] != result.metrics.scene_pacing.cuts_per_min
+                or cache_file.read_bytes() != cache_bytes):
+            raise RuntimeError("Direct-root cached results did not reach Library/Index intact")
+        checks["root_video_library_and_index"] = True
         window.grab().save(str(scratch / "main-window.png"))
         constructs = window._constructs
         window._tabs.setCurrentWidget(constructs)

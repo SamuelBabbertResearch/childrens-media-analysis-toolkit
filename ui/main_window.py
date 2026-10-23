@@ -2112,11 +2112,11 @@ class MainWindow(QMainWindow):
     def choose_root(self) -> None:
         QMessageBox.information(
             self, "Choose Root Folder",
-            "Select the folder that CONTAINS your show folders.\n\n"
+            "Select a folder containing videos or show folders.\n\n"
             "  Project/\n      Little Bear/\n          episode01.mp4\n\n"
-            "Do NOT navigate into a show folder — select its parent.")
+            "Videos directly in the selected folder are included too.")
         chosen = QFileDialog.getExistingDirectory(
-            self, "Select the ROOT folder (the one containing show folders)")
+            self, "Select the folder containing videos or show folders")
         if chosen:
             self.set_root(Path(chosen))
             set_pref("last_root_folder", chosen)
@@ -2150,6 +2150,7 @@ class MainWindow(QMainWindow):
         self._handcoding.set_scope(self._scope)
         self._language.set_scope(self._scope)
         self._constructs.set_scope(self._scope)
+        self.rescore_index()
         self.populate()
         # Pipelines live under the root (<root>/.analysis/pipelines), so the
         # list has to be rebuilt when the root changes. Without this the tab
@@ -2399,12 +2400,9 @@ class MainWindow(QMainWindow):
     def _sync_scope_note(self, shown: int) -> None:
         """The line beside the chooser: what this scope is, in one sentence.
 
-        *shown* is how many episodes the tree ended up with, which is not
-        always how many the sample drew. The Library lists `.mp4` only
-        (`show_index.list_episodes`) while the sampler draws six extensions,
-        so a draw can legitimately contain a file this screen cannot show. It
-        says so rather than displaying a count that disagrees with the rows
-        underneath it — see `LEARNINGS.md` on numbers that display correctly.
+        *shown* is how many episodes the tree ended up with. A sample may
+        refer to files outside the current library's discoverable folders;
+        report that discrepancy without inventing a file-extension cause.
         """
         if not hasattr(self, "_scope_note"):
             return
@@ -2416,8 +2414,7 @@ class MainWindow(QMainWindow):
             parts.append(f"{len(self._scope.missing)} no longer on disk")
         unlistable = len(self._scope.episodes) - shown
         if unlistable > 0:
-            parts.append(f"{unlistable} not shown here — the Library lists "
-                         f".mp4 files only")
+            parts.append(f"{unlistable} outside the listed library folders")
         self._scope_note.setText(" — ".join(parts))
 
     def _release_columns(self) -> None:
@@ -2474,6 +2471,7 @@ class MainWindow(QMainWindow):
                          f"{analyzed}/{len(eps)} analyzed" if eps else "empty",
                          f"{len(eps)} ep." if eps else "—",
                          _fmt_added(show_dir), bold=True, icon=FOLDER)
+        head[0].setData(str(show_dir), Qt.UserRole + 1)
         for r in rows:
             head[0].appendRow(r)
         if parent is None:
@@ -2484,8 +2482,8 @@ class MainWindow(QMainWindow):
 
     def _on_analysis_finished(self) -> None:
         """Re-read the library so new results show without a manual refresh."""
+        self.rescore_index()
         self.populate()
-        self._index.refresh()
 
     def _show_indexed_episode(self, file_path: str) -> None:
         """Double-clicking an indexed row opens its report in the Library."""
@@ -2800,6 +2798,9 @@ class MainWindow(QMainWindow):
         """
         if self._root is None:
             return None
+        stored = item.data(Qt.UserRole + 1)
+        if stored:
+            return Path(stored)
         names = []
         node = item
         while node is not None:

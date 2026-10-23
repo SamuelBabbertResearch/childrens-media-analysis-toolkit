@@ -2265,3 +2265,7 @@ The refreshed interface passed synthetic rendering but overflowed on the researc
 
 ## A drawn title bar was not working window management — 2026-10-23
 The compact UI rollback retained an older custom frame hook. It mixed screen-coordinate scaling with custom hit-testing, and a real user could neither drag reliably nor use maximize/restore after dismissing startup. Synthetic screenshots and programmatic startup survival did not detect it. Replaced the custom non-client path with the platform's real frame across both main and dialog entry points. Real desktop testing after welcome dismissal confirmed native maximize, restore and movement from (20,20) to (50,59). Tests must exercise modal dismissal and window controls; drag claims need actual desktop input. The classic Tk front-end already uses its ordinary platform frame.
+
+
+## Measurement success did not establish result discoverability — 2026-10-23
+The sampler accepted direct-root stimuli and saved four successful caches under `.analysis`, but Library discovery walked subfolders only. Qt also refreshed Index without importing the new cache rows. The screen incorrectly blamed extensions despite all four files being MP4. Fix shared discovery and both index synchronization entry points; store actual group paths instead of reconstructing them from labels. Verify cache bytes, emitted SQLite rows, scope filtering and the frozen views. Classic Tk already backfills Index and stores row paths, and benefits from the shared discovery fix.
