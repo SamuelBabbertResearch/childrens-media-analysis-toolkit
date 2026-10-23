@@ -833,3 +833,7 @@ Mia: complete corrected Season 1 coding, confirm completion of wrong-set export 
 
 ## Direct-root result visibility — 2026-10-23
 Verify and install local 1.3.2.dev2, then confirm the four cached BUBBLES stimuli appear in Library and Index with original cache hashes unchanged. No reanalysis is required. Published v1.3.1 remains unchanged.
+
+
+### Direct-root result visibility completed — 2026-10-23
+The dev2 build/install/recovery item above is complete: 817 passed, 13 absent-media skips; frozen package checks passed; all four actual caches unchanged, four Library entries and four Index records verified. Local correction only; published v1.3.1 unchanged.
