@@ -250,7 +250,8 @@ def test_the_note_accounts_for_every_drawn_episode(window, tmp_path):
     assert len(_library_rows(window)) == 1
     note = window._scope_note.text()
     assert "2 episodes this sample drew" in note
-    assert "1 not shown here" in note
+    assert "1 outside the listed library folders" in note
+    assert ".mp4 files only" not in note
 
 
 def test_a_drawn_mkv_now_appears_in_the_library(window, tmp_path):
