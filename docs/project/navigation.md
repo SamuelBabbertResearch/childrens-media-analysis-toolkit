@@ -186,3 +186,5 @@ September 17 local/upstream reconciliation and verification: [integration record
 Windows build/qualification: [RELEASE_1.3.0.md](RELEASE_1.3.0.md). Two-laptop workflow: [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 Windows VLC cold-start correction and verified release: [RELEASE_1.3.1.md](RELEASE_1.3.1.md).
+
+Restored compact local app (unpublished 1.3.2.dev0): `dist/CMAT-compact/CMAT.exe`; verified build and layout reports: `build/ui-restore-20261023/qualification.json`, `build/ui-restore-20261023/restored-ui-150pct.png`. See the completed local restoration entry in [onboarding](onboarding.md).

@@ -2258,3 +2258,6 @@ The initial restricted source diagnostic loaded VLC but FFmpeg could not generat
 
 ## A rendering pass did not prove that the window fits — 2026-10-23
 The refreshed interface passed synthetic rendering but overflowed on the researcher's scaled display with a long folder path. The Constructs toolbar also set a wide minimum for every tab, including Library. Restoring compact styling alone retained that constraint. Separate functional zoom from the first toolbar row and elide the path with full tooltip/accessibility text. Verify actual window/control bounds at a display-scaled width as well as rendering individual views. The classic Tk path label already consumes remaining space rather than setting the toolbar width.
+
+
+2026-10-23 — The first window-bound regression ran before the offscreen Qt session had any real fonts and reported a spurious large minimum width. Explicitly loaded the actual Windows UI/monospace fonts for width checks; the real-font regression and full isolated suite passed. Packaged UI rendering also used real fonts at 150% scaling.

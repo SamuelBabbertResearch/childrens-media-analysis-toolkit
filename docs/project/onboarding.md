@@ -10,6 +10,32 @@ adult-only participant redesign, Clip Finder, and rating-scale entries follow.)
 
 ---
 
+## Completed local compact UI restoration — 2026-10-23
+
+The local **1.3.2.dev0** app is ready at `dist/CMAT-compact/CMAT.exe`, built
+from `eb037e8035d03fbf43e7ef182ba823d44d2ffece`. It restores the pre-refresh palette, gradients,
+compact shared type/control sizes and diagram geometry, retaining functional
+zoom, title wrapping, scientific/performance changes and bundled VLC discovery.
+Long paths elide with complete tooltip/accessibility text. Zoom controls no
+longer make an inactive Constructs tab force Library beyond the window width.
+Real-font window bounds checked at 1280 logical px, including 150% scaling.
+
+Verification: **811 passed, 13 absent-media skips** in the isolated full suite;
+source and freshly copied frozen diagnostics passed, including cold bundled
+VLC loading, bundled FFmpeg, synthetic playback/analysis, readability formulas,
+rendering and zoom controls. Raw metrics and readability match both the source
+and v1.3.1 exactly. Ordinary offscreen startup stayed alive for 15 seconds.
+Local folder preferences and config were carried from the prior local app only
+after synthetic qualification. No actual research library was opened by tests.
+Executable SHA-256: `8a29fc3829522ab6977a39ac6eb8960a3a12480f5772cbe033df7a574ce26a40`.
+
+This is a local, unpublished revision; the GitHub release remains v1.3.1.
+These checks do not establish separate clean-PC or audible-playback validation.
+The earlier pending local-build note is superseded. Unrelated study changes are
+still uncommitted and preserved; the two local restoration commits are not pushed.
+
+---
+
 ## Published Windows release — 2026-10-23
 
 [v1.3.1](https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/releases/tag/v1.3.1) fixes bundled VLC discovery before cold imports and completes the existing interface integration. Source/tag: `v1.3.1` / `d85f8bd63e6e8da9898b09b9d7a84e9e48c4038d` on `codex/integrate-liu-september-updates`; master is unchanged. The isolated source suite passed **812 tests**, with **13 absent-media skips**. Source and fresh-extraction frozen diagnostics passed: bundled VLC DLL path, bundled FFmpeg, synthetic analysis, all readability formulas, interface/chart/Clip Finder rendering, Constructs zoom, and synthetic VLC playback. Source and frozen metrics/readability matched exactly; ordinary offscreen startup remained running for 15 seconds. The archive passed CRC/integrity checks and contains no personal preferences, research library, pipelines, or private paper notes.
