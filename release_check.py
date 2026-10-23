@@ -25,6 +25,21 @@ def run(report_path: str) -> int:
     try:
         from analyzer.version import CMAT_VERSION, EXPORT_SCHEMA
         report.update(version=CMAT_VERSION, export_schema=EXPORT_SCHEMA)
+        # Exercise the normal cold availability entry point before any window
+        # or other check can initialize VLC and mask native discovery errors.
+        if "vlc" in sys.modules:
+            raise RuntimeError("VLC was imported before the cold-start check")
+        from ui.player import _import_vlc, _libvlc, available
+        ok, detail = available()
+        if not ok:
+            raise RuntimeError(f"Bundled VLC unavailable on cold start: {detail}")
+        vlc = _import_vlc()
+        loaded_library = Path(vlc.dll._name).resolve()
+        if report["frozen"]:
+            expected_library = Path(sys._MEIPASS) / "vlc" / "libvlc.dll"
+            if loaded_library != expected_library.resolve():
+                raise RuntimeError(f"VLC loaded outside bundle: {loaded_library}")
+        checks["vlc_cold_start"] = {"library": str(loaded_library)}
         from analyzer.ffmpeg_path import ffmpeg_exe
         ffmpeg = ffmpeg_exe()
         checks["ffmpeg"] = str(ffmpeg)
@@ -77,6 +92,17 @@ def run(report_path: str) -> int:
         window.show()
         app.processEvents()
         window.grab().save(str(scratch / "main-window.png"))
+        constructs = window._constructs
+        window._tabs.setCurrentWidget(constructs)
+        app.processEvents()
+        constructs._btn_zoom_in.click()
+        if constructs._zoom_label.text() != "115%":
+            raise RuntimeError("Constructs zoom-in control did not update the view")
+        constructs._btn_zoom_reset.click()
+        if constructs._zoom_label.text() != "100%":
+            raise RuntimeError("Constructs reset did not restore 100%")
+        window.grab().save(str(scratch / "constructs.png"))
+        checks["constructs_zoom"] = True
         window.hide()
         checks["main_window"] = True
         from ui.chart import ChartDialog, SpeechChartDialog
@@ -93,10 +119,6 @@ def run(report_path: str) -> int:
             dialog.close()
             checks[name] = True
 
-        from ui.player import _libvlc, available
-        ok, detail = available()
-        if not ok:
-            raise RuntimeError(f"Bundled VLC unavailable: {detail}")
         instance = _libvlc()
         media = instance.media_new(str(video))
         media.add_option(":vout=dummy")

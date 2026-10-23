@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 from analyzer.trials import (
     KIND_EXPLANATIONS, KIND_LABELS, discover_trials, get_validation_dir,
 )
+from ui.tokens import color
 
 COLUMNS = ("Kind", "Episode or sample", "Detector", "Date", "Result",
            "Episodes", "Published")
@@ -96,7 +97,7 @@ class TrialsTab(QWidget):
         self._detail_panel = Panel("Trial detail")
         detail = QWidget()
         detail.setAttribute(Qt.WA_StyledBackground, True)
-        detail.setStyleSheet("background:#ffffff;")
+        detail.setStyleSheet(f"background:{color('panel_bg')};")
         self._grid = QGridLayout(detail)
         self._grid.setContentsMargins(8, 8, 8, 8)
         self._grid.setSpacing(0)

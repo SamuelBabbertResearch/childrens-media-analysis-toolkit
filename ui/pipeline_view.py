@@ -27,18 +27,21 @@ from PySide6.QtWidgets import (
 
 from analyzer.pipeline_graph import PipelineDoc, node_type
 from ui import theme
-from ui.tokens import color
+from ui.tokens import FONT_PX, color
 
 # --- reference geometry (ui/reference/pipeline.css) --------------------------
-NODE_W = 210          # .node width
-NODE_PAD = 8          # .node padding
-NODE_RADIUS = 4       # .node border-radius
-PORT_D = 8            # .port width/height
+NODE_W = 224          # room for a clear title and compact research metadata
+NODE_PAD = 10
+NODE_RADIUS = 8
+PORT_D = 9
 GRID = 16             # .canvas-container background-size
 WIRE_W = 1.5          # .connector-svg path stroke-width
 HEADER_RULE = 4       # .node-header padding-bottom
 PILL_MARGIN_X = 12    # .zoom-toolbar right
 PILL_MARGIN_Y = 10    # .zoom-toolbar bottom
+TITLE_LINE_H = FONT_PX["body"] + 6
+BODY_LINE_H = FONT_PX["small"] + 5
+META_LINE_H = FONT_PX["tiny"] + 5
 
 # NodeType.icon names a KIND of stage; these are the reference's glyphs for
 # each. Unknown kinds fall back to a neutral mark rather than a stray letter.
@@ -76,9 +79,9 @@ class NodeItem(QGraphicsItem):
         self.setPos(node.x, node.y)
 
         shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(8)
-        shadow.setOffset(0, 2)
-        shadow.setColor(QColor(0, 0, 0, 56))   # rgba(0,0,0,.22)
+        shadow.setBlurRadius(14)
+        shadow.setOffset(0, 3)
+        shadow.setColor(QColor(31, 41, 51, 32))
         self.setGraphicsEffect(shadow)
 
     # -- geometry ---------------------------------------------------------
@@ -86,8 +89,9 @@ class NodeItem(QGraphicsItem):
         fm_desc = theme.font("small")
         lines = self._wrapped(self._type.description, fm_desc)
         media = self._wrapped(self.media_line, fm_desc) if self.media_line else []
-        return (NODE_PAD * 2 + 16 + HEADER_RULE + 1
-                + len(lines) * 14 + len(media) * 14 + 14)
+        return (NODE_PAD * 2 + TITLE_LINE_H + HEADER_RULE + 1
+                + len(lines) * BODY_LINE_H + len(media) * BODY_LINE_H
+                + META_LINE_H)
 
     def _wrapped(self, text: str, font: QFont) -> list[str]:
         from PySide6.QtGui import QFontMetrics
@@ -145,11 +149,14 @@ class NodeItem(QGraphicsItem):
         p.setFont(theme.font("body", bold=True))
         p.setPen(QColor(color("aqua_bottom")))
         icon = ICON_GLYPH.get(self._type.icon, "•")
-        p.drawText(QRectF(x, y, 14, 14), Qt.AlignCenter, icon)
-        p.setPen(QColor("#111111"))
-        p.drawText(QRectF(x + 18, y, NODE_W - x - 18 - NODE_PAD, 14),
+        p.drawText(QRectF(x, y, TITLE_LINE_H, TITLE_LINE_H),
+                   Qt.AlignCenter, icon)
+        p.setPen(QColor(color("text")))
+        p.drawText(QRectF(x + TITLE_LINE_H + 4, y,
+                          NODE_W - x - TITLE_LINE_H - 4 - NODE_PAD,
+                          TITLE_LINE_H),
                    Qt.AlignVCenter | Qt.AlignLeft, self.node.title)
-        y += 14 + HEADER_RULE
+        y += TITLE_LINE_H + HEADER_RULE
         p.setPen(QPen(QColor(color("node_rule")), 1))
         p.drawLine(QPointF(x, y), QPointF(NODE_W - NODE_PAD, y))
         y += 3
@@ -157,24 +164,24 @@ class NodeItem(QGraphicsItem):
         p.setFont(theme.font("small"))
         p.setPen(QColor(color("text_dim")))
         for line in self._wrapped(self._type.description, theme.font("small")):
-            p.drawText(QRectF(x, y, NODE_W - NODE_PAD * 2, 14),
+            p.drawText(QRectF(x, y, NODE_W - NODE_PAD * 2, BODY_LINE_H),
                        Qt.AlignVCenter | Qt.AlignLeft, line)
-            y += 14
+            y += BODY_LINE_H
 
         # The media, in ordinary text rather than the dim description colour:
         # it is this node's own content, not boilerplate about the stage type.
         if self.media_line:
-            p.setPen(QColor("#111111"))
+            p.setPen(QColor(color("text")))
             for line in self._wrapped(self.media_line, theme.font("small")):
-                p.drawText(QRectF(x, y, NODE_W - NODE_PAD * 2, 14),
+                p.drawText(QRectF(x, y, NODE_W - NODE_PAD * 2, BODY_LINE_H),
                            Qt.AlignVCenter | Qt.AlignLeft, line)
-                y += 14
+                y += BODY_LINE_H
 
         status_font = theme.font("tiny")
         status_font.setItalic(True)
         p.setFont(status_font)
         p.setPen(QColor(color("node_status")))
-        p.drawText(QRectF(x, y, NODE_W - NODE_PAD * 2, 14),
+        p.drawText(QRectF(x, y, NODE_W - NODE_PAD * 2, META_LINE_H),
                    Qt.AlignVCenter | Qt.AlignLeft, self.status_line)
 
         # Ports, one per side the type actually has.

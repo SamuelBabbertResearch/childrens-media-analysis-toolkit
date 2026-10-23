@@ -7,6 +7,29 @@ Format: **what went wrong** · why · how to avoid it.
 
 ---
 
+## A directory timestamp is not a sufficient cache revision on Windows
+
+**What went wrong.** The full suite run after the 2026-09-17 typography change
+failed
+`tests/test_scope.py::test_library_scan_cache_invalidates_when_directory_changes`,
+and the isolated rerun failed again. `list_episodes()` saw `one.mp4`, then
+continued returning only that file after `two.mkv` was created.
+
+**Why.** `_scan_directory()` is cached by the directory path plus
+`st_mtime_ns` and `st_ctime_ns`. On this Windows filesystem, creating the
+second file immediately after the first did not advance either timestamp, so
+the cache key did not change and the old listing remained plausible. The
+typography diff did not touch the analyzer or this test.
+
+**How to avoid it.** Do not treat directory metadata alone as a guaranteed
+content revision. Use explicit invalidation at writers, a bounded freshness
+policy, or another key that can observe membership changes, and keep the test
+that performs two immediate writes. This was recorded rather than repaired in
+the typography session so a cache-correctness change receives its own scope
+and verification.
+
+---
+
 ## The shape most of these share
 
 Read this before adding to the list, and before believing a piece of work is
@@ -2224,3 +2247,6 @@ imports included the formulas, not their word lists. `build.spec` now collects
 `textstat` data explicitly. The package check exercises all six readability
 formulas with the bundled CMU dictionary and must pass from a fresh extraction
 before publishing. Source tests cannot detect this missing-file build defect.
+
+## VLC cold imports must configure discovery first — 2026-10-23
+The Qt availability probe and player constructor imported python-vlc before the bundled-path setup in _libvlc. Native DLL loading occurs at import time. All Qt imports now go through one preparation helper, and tests exercise the availability entry point on a cold import. Frozen qualification must run that probe first and inspect the actual loaded DLL path so earlier initialization or installed VLC cannot mask the defect.

@@ -4,15 +4,27 @@ Previously-on, for a session starting with zero memory. Read this, then
 `TODO.md`, then `DECISIONS.md` and `LEARNINGS.md`. [INDEX.md](../../INDEX.md)
 points at everything else, including the separate provenance-bound study record.
 
-**Last updated:** 2026-09-18 (integration of local work and methodological audit; the
+**Last updated:** 2026-09-18 (combined interface refresh and Windows release; the
 2026-09-04 research-credibility audit, Formal-Feature Composite terminology,
 adult-only participant redesign, Clip Finder, and rating-scale entries follow.)
 
 ---
 
+## What changed on 2026-09-18: v1.3.1 interface integration
+
+The integration branch now includes Dr. Liu's `3f7903a` and `6221971`, including
+larger type, the shared visual refresh, and Constructs zoom controls. Chart
+conflicts preserve local horizontal layouts and unique labels while adopting
+the new palette and wrapped validation notes. Both documentation histories are
+retained under `docs/project/`. Long Constructs titles now wrap after real-font
+visual inspection exposed clipping. See [v1.3.1 notes](RELEASE_1.3.1.md).
+Publishing this release does not merge the integration branch into `master`.
+
+---
+
 ## What changed on 2026-09-18: Windows release packaging
 
-Version 1.3.0 is published as the latest GitHub release with a verified Windows
+Version 1.3.0 was published as a GitHub release with a verified Windows
 ZIP, checksum, and source tag `7781d60`. See
 [release build notes](RELEASE_1.3.0.md) for the synthetic package checks and
 resource-file fix. `cmat_qt.py` now supports the opt-in `--check-package`
@@ -37,6 +49,48 @@ website.
 
 ---
 
+## What changed on 2026-09-17: modern scientific-desktop visual refresh
+
+The Qt interface keeps the same workflow, information density, native Windows
+behaviour, one-accent rule, and stimulus-only guardrail, but the finish is now
+flat and contemporary: neutral surfaces, quieter seams, 30 px controls, 29 px
+data rows, underline-selected workspace tabs, stronger focus borders, light
+selection washes in numeric views, cleaner pipeline nodes, and a coordinated
+categorical chart palette. `ui/tokens.py` remains the single source of visual
+values and `ui/theme.py` remains their Qt translation.
+
+After the first live review, the Qt type scale increased to 14 logical px for
+body, table, and grid text, 12 px for secondary text, and 11 px for the
+smallest annotations. The Classic Desktop UI moved from 9 pt to 10 pt body and
+table type. Report and recipe HTML now read those tokens instead of restating
+smaller sizes, and the Pipeline and Constructs canvases derive their line
+boxes from the same scale so larger text is not clipped. Focused theme,
+document, recipe, Pipeline, and Constructs verification passed (218 tests).
+The complete suite reached 797 passed, 13 skipped, and one unrelated failure:
+the directory-listing cache can miss a file created before this Windows
+filesystem advances the directory's mtime/ctime. The isolated test fails
+repeatedly; it is recorded in `TODO.md` and `LEARNINGS.md` for a separate cache
+session. No analyzer code changed in the readability work.
+
+The analysis report follows the same surface and table treatment. Its FFC
+number is blue rather than green: a green score looked favorable even though
+the FFC is neither a quality rating nor a viewer-effect measure. No workflow,
+metric, stored value, or export changed.
+
+`ui/DESIGN.md` now states how the modern token layer relates to the older
+extracted mockups. Targeted UI, pipeline, report, provenance, and participant
+scale verification passed (237 tests). The complete suite finished at **796
+passed, 13 skipped**; skips require the absent Little Bear media fixtures.
+
+The Constructs canvas also has explicit **Zoom out**, percentage, **Zoom in**,
+and **Reset zoom** controls. They uniformly scale the graph without changing
+recipe layout or measurement data; mouse-wheel zoom uses the same 30–250%
+limits. The readout is kept in sync with both input paths, and 100% remains the
+readable reference scale. Focused Constructs/Qt verification now passes **133
+tests**.
+
+---
+
 ## What changed on 2026-09-16: methodological audit implementation
 
 The audit recommendations are implemented where current evidence permits.
@@ -54,8 +108,10 @@ figure remains the combined ContentDetector-plus-plateau configuration and is
 not attributed to ContentDetector alone.
 
 An isolated Python 3.12 `.venv` now contains the full requirements, PySide6
-6.8.3, `en_core_web_sm`, and bundled CMUdict data. Verification finished at
-**790 passed, 13 skipped**; skips require absent Little Bear media.
+6.8.3, `en_core_web_sm`, and bundled CMUdict data. Verification at the time of
+the methodological implementation finished at **790 passed, 13 skipped**;
+skips require absent Little Bear media. The current suite count is recorded in
+the newer entry above.
 
 ### Audit record before implementation
 
@@ -2014,3 +2070,6 @@ record of what "picking it up cold" looked like that day, not as live status.
 For current status read the top of this file.
 
 2026-09-16 — Mia coding package correction: agent confused newer set with Seasons 2–4 shortlist; user clarified Season 1. Preserved Downloads MIA01_coding_2026-09-16T19-30-26-989Z.json unchanged and source mapping under audio1_frame_coding/mia_received_wrong_set_20260916. All completion flags false; do not treat as finalized. Built separate mia_season1_correction06_20260916 from authoritative correction-06 selection with all 12 S01 IDs and checksum-verified historical media, including CUTS_2 replacement. New package/storage keys prevent cross-set import. Reviewed wrong-set coding: AUDIO_2 additional promising pair (8 hard cuts each; motion .0684/.0680; RMS .02930/.04849); AUDIO_1 four cuts each. Two Slide Cut notes visually confirmed as wipes, retained raw and documented separately. M03 visual cut begins566 rather than SB01 552. Added wipe/slide to simplified options, review flags remain separate. No participant selection or frozen calibration changes. See preserved export REVIEW.md.
+
+## Windows VLC startup correction — 2026-10-23
+The v1.3.1 source configures bundled native discovery before every Qt VLC import. The package diagnostic now exercises cold availability first and verifies the loaded native DLL path. No separate VLC installation is required. Rebuild and fresh-extraction qualification are in progress; see RELEASE_1.3.1.md. Later local study handoffs remain outside this release.

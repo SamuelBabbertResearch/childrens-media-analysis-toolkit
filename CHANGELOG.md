@@ -1,5 +1,20 @@
 # Update history
 
+## v1.3.1 — Windows VLC startup fix and interface update, 2026-10-23
+
+- Fixes Windows startup loading of bundled VLC: configure `_internal/vlc` before importing python-vlc from the availability probe or player constructor. No separate VLC installation is required.
+- Checks cold VLC discovery and the actual loaded bundled DLL before other package diagnostics.
+- Integrates Dr. Liu's commits `3f7903a` and `6221971`: larger text and controls,
+  a refreshed shared theme, coordinated chart colors, and larger Constructs cards.
+- Adds labelled Constructs zoom controls with a percentage display and reset.
+- Wraps long Constructs titles and measurement units to keep them fully visible.
+- Preserves the v1.3.0 chart layouts, unique episode labels, clip tools, and
+  packaging resource fixes. Analysis calculations and export schema are unchanged.
+- Extends the packaged diagnostic to exercise the Constructs zoom buttons.
+
+[Windows release and assets](https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/releases/tag/v1.3.1)
+· [Build and verification notes](docs/project/RELEASE_1.3.1.md)
+
 ## v1.3.0 — Windows release, 2026-09-18
 
 - Packages the integrated September update described below as a 64-bit Windows

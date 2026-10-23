@@ -1,6 +1,6 @@
 # Children's Media Analysis Toolkit (CMAT)
 
-**Version 1.3.0:** [Download the Windows release](https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/releases/tag/v1.3.0)
+**Version 1.3.1:** [Download the Windows release](https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/releases/tag/v1.3.1)
 with the integrated methodological corrections, performance improvements,
 charts, and clip tools. See [what changed](CHANGELOG.md).
 
@@ -262,8 +262,8 @@ that reason. See [CEILINGS.md](docs/project/CEILINGS.md).
 
 ## Download & Install (Windows)
 
-1. Go to the [v1.3.0 Windows release](https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/releases/tag/v1.3.0)
-2. Download `CMAT-v1.3.0-windows.zip`
+1. Go to the [v1.3.1 Windows release](https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/releases/tag/v1.3.1)
+2. Download `CMAT-v1.3.1-windows.zip`
 3. Unzip anywhere (e.g. `C:\CMAT\`)
 4. Double-click `CMAT.exe`
 
@@ -800,7 +800,7 @@ copy config.json dist\CMAT\config.json
 Before publishing, run the opt-in packaged check and inspect its JSON report:
 `CMAT.exe --check-package report.json`. It uses synthetic temporary media to
 check analysis, language resources, Qt screens, and bundled VLC playback.
-See [release build notes](docs/project/RELEASE_1.3.0.md).
+See [release build notes](docs/project/RELEASE_1.3.1.md).
 
 ---
 
