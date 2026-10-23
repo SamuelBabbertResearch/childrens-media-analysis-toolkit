@@ -11,6 +11,17 @@ gaps are called out where they occur.
 
 ---
 
+## Standard Windows window management — 2026-10-23
+
+The main window and every dialog use the actual native title bar and frame.
+`ui.native_frame.apply_native_frame` is the shared configuration point for
+caption controls; the platform owns dragging, resizing, maximize/restore,
+minimize, system menus and snapping. No non-client event hooks, frame
+suppression or custom-painted caption controls are installed. This supersedes
+the historical custom-frame implementation described below. Compact content
+styling is independent of the native caption. Verify real interactions after
+dismissing the startup dialog; a rendered image is insufficient.
+
 ## Restored compact styling — 2026-10-23
 
 At the researcher's request, the cosmetic refresh from `3f7903a` and the
@@ -310,7 +321,7 @@ front-ends move together — do not introduce a second value.
   look.
 - **`inset` shadows are not supported.** Simulate a sunken edge with
   `border-top-color` darker than the other three, which Qt does honour.
-- **The custom title bar is built** (`ui/native_frame.py`, `TitleBar`), and the
+- **Historical custom title bar (superseded 2026-10-23):** the
   way it is built is the point. The usual route — `Qt.FramelessWindowHint` —
   strips `WS_THICKFRAME` and `WS_CAPTION`, and with them Aero Snap, edge
   resizing, the drop shadow, the maximise animation, Win+Arrow, and the

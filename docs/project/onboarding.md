@@ -2111,3 +2111,7 @@ The v1.3.1 source configures bundled native discovery before every Qt VLC import
 
 ## Local compact UI restoration — 2026-10-23
 Samuel requested reversal of the cosmetic refresh after a Windows screenshot showed oversized UI and off-screen controls. The local 1.3.2.dev0 source restores v1.3.0 colors, gradients, type/control sizes and diagram dimensions; scientific/performance changes and VLC startup correction remain. Functional zoom and label wrapping remain, with zoom moved beside the context line and initial diagram fitting restored. Library paths elide without hiding the full tooltip or accessibility text. Full verification and a local rebuild are in progress; v1.3.1 remains the published release.
+
+
+## Native window behavior correction in progress — 2026-10-23
+The compact local app still used the historical custom non-client frame. Samuel reported stuck dragging and maximize/restore after dismissing the startup popup. The source now uses actual native frames for main/dialog windows through one helper, retaining compact content and per-dialog caption policies. A real desktop source check confirmed welcome dismissal, maximize/restore and title dragging. Regression tests cover modal release and caption state; packaged checks now include the welcome-close path. Local 1.3.2.dev1 rebuild and executable interaction verification remain pending. Unrelated study edits remain outside this work.

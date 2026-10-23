@@ -2261,3 +2261,7 @@ The refreshed interface passed synthetic rendering but overflowed on the researc
 
 
 2026-10-23 — The first window-bound regression ran before the offscreen Qt session had any real fonts and reported a spurious large minimum width. Explicitly loaded the actual Windows UI/monospace fonts for width checks; the real-font regression and full isolated suite passed. Packaged UI rendering also used real fonts at 150% scaling.
+
+
+## A drawn title bar was not working window management — 2026-10-23
+The compact UI rollback retained an older custom frame hook. It mixed screen-coordinate scaling with custom hit-testing, and a real user could neither drag reliably nor use maximize/restore after dismissing startup. Synthetic screenshots and programmatic startup survival did not detect it. Replaced the custom non-client path with the platform's real frame across both main and dialog entry points. Real desktop testing after welcome dismissal confirmed native maximize, restore and movement from (20,20) to (50,59). Tests must exercise modal dismissal and window controls; drag claims need actual desktop input. The classic Tk front-end already uses its ordinary platform frame.

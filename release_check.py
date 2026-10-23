@@ -74,6 +74,7 @@ def run(report_path: str) -> int:
         checks["whisper_import"] = faster_whisper.__version__
 
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtCore import Qt, QTimer
         from PySide6.QtWidgets import QApplication
         from PySide6.QtGui import QFontDatabase
         from ui import theme
@@ -91,6 +92,39 @@ def run(report_path: str) -> int:
             main_window.get_pref = old_pref
         window.show()
         app.processEvents()
+        # Exercise the startup modal's close path, which rendering a main
+        # window alone cannot qualify. Never save personal prefs in a check.
+        from ui import welcome
+        old_set_pref = welcome.set_pref
+        dismissed = []
+
+        def close_welcome():
+            popup = app.activeModalWidget()
+            dismissed.append(isinstance(popup, welcome.WelcomeDialog))
+            if popup is not None:
+                popup.close()
+
+        welcome.set_pref = lambda *args, **kwargs: None
+        try:
+            QTimer.singleShot(0, close_welcome)
+            window.show_welcome()
+        finally:
+            welcome.set_pref = old_set_pref
+        if dismissed != [True] or app.activeModalWidget() is not None:
+            raise RuntimeError("Startup dialog did not release its parent")
+        flags = window.windowFlags()
+        if (flags & Qt.FramelessWindowHint
+                or not flags & Qt.WindowMaximizeButtonHint):
+            raise RuntimeError("Native main-window caption controls are missing")
+        window.showMaximized()
+        app.processEvents()
+        if not window.isMaximized():
+            raise RuntimeError("Main window did not maximize after popup close")
+        window.showNormal()
+        app.processEvents()
+        if window.isMaximized() or not window.isEnabled():
+            raise RuntimeError("Main window did not restore after popup close")
+        checks["window_controls_after_welcome"] = True
         window.grab().save(str(scratch / "main-window.png"))
         constructs = window._constructs
         window._tabs.setCurrentWidget(constructs)

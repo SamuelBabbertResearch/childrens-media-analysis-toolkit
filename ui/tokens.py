@@ -169,12 +169,8 @@ COLORS: dict[str, str] = {
     "dialog_seam":   "#b0b0b0",
     "action_bar_top":    "#e2e2e2",
     "action_bar_bottom": "#d0d0d0",
-    # The application draws its own title bar (ui/native_frame.py) while the
-    # window keeps its real Win32 frame styles, so snap, edge resizing, the
-    # system menu and the maximise animation still come from Windows.
-    # The caption CONTROLS are Windows' own — minimise, maximise, close, left
-    # to right — not the reference's three round lights. This is a Windows
-    # application; see the note at the top of ui/modal.py.
+    # Legacy caption-paint values remain for compatibility; active windows
+    # use the platform's own frame and caption controls (ui/native_frame.py).
     "titlebar_top":    "#e6e6e6",
     "titlebar_bottom": "#d1d1d1",
     "titlebar_line":   "#a6a6a6",

@@ -35,7 +35,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QAbstractItemView, QButtonGroup, QComboBox, QDialog, QFileDialog, QFrame,
     QHBoxLayout, QHeaderView,
-    QInputDialog, QLabel, QMainWindow, QMenu, QMenuBar, QMessageBox,
+    QInputDialog, QLabel, QMainWindow, QMenu, QMessageBox,
     QPushButton, QSizePolicy, QSplitter, QStackedWidget, QTabWidget,
     QTextBrowser, QToolBar, QTreeView, QVBoxLayout, QWidget,
 )
@@ -58,7 +58,7 @@ from analyzer.pipeline_graph import (
     NODE_TYPES, default_doc, delete_doc, duplicate_doc, list_docs,
     node_type, save_doc, unique_name,
 )
-from ui.modal import ConfirmDialog, WindowTitleBar
+from ui.modal import ConfirmDialog
 from ui.pipeline_view import Canvas, ZoomPill
 from ui.welcome import WelcomeDialog
 from ui.inspector import Inspector
@@ -345,37 +345,10 @@ class MainWindow(QMainWindow):
     # ---- chrome ----
 
     def _build_title_bar(self) -> None:
-        """Attach the reference's title strip, or keep the native frame.
-
-        The strip is only installed if the Win32 hook attaches. Everywhere else
-        — another platform, an older Windows, a ctypes failure — the window
-        keeps its ordinary title bar, which is a worse match for the reference
-        and a much better outcome than a window that cannot be moved.
-        """
-        self._title_bar = WindowTitleBar(self)
-        self._menubar = QMenuBar()
-        attached = native_frame.install(
-            self, METRICS["titlebar_h"], self._title_bar.is_caption)
-        if not attached:
-            self._title_bar = None
-            # Drop the strip's menu bar too. It is only ever parented in the
-            # holder below, so keeping it here left `_build_menu` filling a
-            # QMenuBar that is never added to the window — no File menu, no
-            # Help menu, on any platform where the Win32 hook does not attach.
-            # Falling back to None sends `_build_menu` to self.menuBar().
-            self._menubar = None
-            return
-
-        # The strip has to sit ABOVE the menu bar, and QMainWindow keeps the
-        # menu bar topmost no matter where a toolbar is added. So the two are
-        # stacked into one widget and installed as the menu area together.
-        holder = QWidget()
-        v = QVBoxLayout(holder)
-        v.setContentsMargins(0, 0, 0, 0)
-        v.setSpacing(0)
-        v.addWidget(self._title_bar)
-        v.addWidget(self._menubar)
-        self.setMenuWidget(holder)
+        """Use the real platform caption for move, resize and window buttons."""
+        native_frame.apply_native_frame(self)
+        self._title_bar = None
+        self._menubar = None
 
     def _build_menu(self) -> None:
         bar = getattr(self, "_menubar", None) or self.menuBar()
