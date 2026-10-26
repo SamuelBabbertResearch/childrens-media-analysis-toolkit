@@ -27,16 +27,16 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QObject, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
-    QAction, QFont, QIcon, QKeySequence,
+    QAction, QFont, QFontMetrics, QIcon, QKeySequence,
     QPainter, QPixmap, QShortcut, QStandardItem, QStandardItemModel,
 )
 from PySide6.QtWidgets import (
     QAbstractItemView, QButtonGroup, QComboBox, QDialog, QFileDialog, QFrame,
     QHBoxLayout, QHeaderView,
-    QInputDialog, QLabel, QMainWindow, QMenu, QMenuBar, QMessageBox,
-    QPushButton, QSplitter, QStackedWidget, QTabWidget,
+    QInputDialog, QLabel, QMainWindow, QMenu, QMessageBox,
+    QPushButton, QSizePolicy, QSplitter, QStackedWidget, QTabWidget,
     QTextBrowser, QToolBar, QTreeView, QVBoxLayout, QWidget,
 )
 
@@ -58,7 +58,7 @@ from analyzer.pipeline_graph import (
     NODE_TYPES, default_doc, delete_doc, duplicate_doc, list_docs,
     node_type, save_doc, unique_name,
 )
-from ui.modal import ConfirmDialog, WindowTitleBar
+from ui.modal import ConfirmDialog
 from ui.pipeline_view import Canvas, ZoomPill
 from ui.welcome import WelcomeDialog
 from ui.inspector import Inspector
@@ -88,8 +88,8 @@ STAGE_TABS: dict[str, tuple[str, str | None]] = {
     "automated": ("Automated coding", None),
     "language": ("Language", "Speech"),
     "measurement": ("Automated coding", None),
-    "handcode_transitions": ("Human coding", "Code"),
-    "handcode_events": ("Human coding", "Code"),
+    "handcode_transitions": ("Human coding", "Hand Code Cuts"),
+    "handcode_events": ("Human coding", "Hand Code Fantastical Events"),
     "validation": ("Human coding", "Validate tool"),
     "results": ("Index", None),
 }
@@ -209,6 +209,38 @@ class Panel(QFrame):
         self._header_row.addWidget(widget)
 
 
+class PathLabel(QLabel):
+    """A long library path must not push workflow controls off the window."""
+
+    def __init__(self, text: str) -> None:
+        super().__init__()
+        self._full_text = ""
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.setMinimumWidth(80)
+        self.setText(text)
+
+    def setText(self, text: str) -> None:
+        self._full_text = text
+        self.setToolTip(text)
+        self.setAccessibleName(text)
+        self._update_text()
+
+    def _update_text(self) -> None:
+        super().setText(self.fontMetrics().elidedText(
+            self._full_text, Qt.ElideMiddle, max(0, self.contentsRect().width() - 16)))
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._update_text()
+
+    def sizeHint(self) -> QSize:
+        return QSize(min(320, self.fontMetrics().horizontalAdvance(self._full_text) + 16),
+                     super().sizeHint().height())
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(80, super().minimumSizeHint().height())
+
+
 class SubToolBar(QFrame):
     """Per-tab controls, sitting directly under the tab strip."""
 
@@ -243,6 +275,11 @@ class SubViews(QObject):
         button = QPushButton(name)
         button.setCheckable(True)
         button.setProperty("segment", "true")
+        # The selected segment is bold; reserve its width before selection so
+        # a long workflow name does not lose its final characters.
+        selected_font = QFont(button.font())
+        selected_font.setBold(True)
+        button.setMinimumWidth(QFontMetrics(selected_font).horizontalAdvance(name) + 24)
         index = self._stack.count()
         self._stack.addWidget(widget)
         self._group.addButton(button, index)
@@ -313,37 +350,10 @@ class MainWindow(QMainWindow):
     # ---- chrome ----
 
     def _build_title_bar(self) -> None:
-        """Attach the reference's title strip, or keep the native frame.
-
-        The strip is only installed if the Win32 hook attaches. Everywhere else
-        — another platform, an older Windows, a ctypes failure — the window
-        keeps its ordinary title bar, which is a worse match for the reference
-        and a much better outcome than a window that cannot be moved.
-        """
-        self._title_bar = WindowTitleBar(self)
-        self._menubar = QMenuBar()
-        attached = native_frame.install(
-            self, METRICS["titlebar_h"], self._title_bar.is_caption)
-        if not attached:
-            self._title_bar = None
-            # Drop the strip's menu bar too. It is only ever parented in the
-            # holder below, so keeping it here left `_build_menu` filling a
-            # QMenuBar that is never added to the window — no File menu, no
-            # Help menu, on any platform where the Win32 hook does not attach.
-            # Falling back to None sends `_build_menu` to self.menuBar().
-            self._menubar = None
-            return
-
-        # The strip has to sit ABOVE the menu bar, and QMainWindow keeps the
-        # menu bar topmost no matter where a toolbar is added. So the two are
-        # stacked into one widget and installed as the menu area together.
-        holder = QWidget()
-        v = QVBoxLayout(holder)
-        v.setContentsMargins(0, 0, 0, 0)
-        v.setSpacing(0)
-        v.addWidget(self._title_bar)
-        v.addWidget(self._menubar)
-        self.setMenuWidget(holder)
+        """Use the real platform caption for move, resize and window buttons."""
+        native_frame.apply_native_frame(self)
+        self._title_bar = None
+        self._menubar = None
 
     def _build_menu(self) -> None:
         bar = getattr(self, "_menubar", None) or self.menuBar()
@@ -748,7 +758,7 @@ class MainWindow(QMainWindow):
         choose.clicked.connect(self.choose_root)
         tb.addWidget(choose)
 
-        self._root_label = QLabel("(none chosen)")
+        self._root_label = PathLabel("(none chosen)")
         self._root_label.setProperty("pathDisplay", "true")
         self._root_label.setTextFormat(Qt.PlainText)
         tb.addWidget(self._root_label)
@@ -2107,11 +2117,11 @@ class MainWindow(QMainWindow):
     def choose_root(self) -> None:
         QMessageBox.information(
             self, "Choose Root Folder",
-            "Select the folder that CONTAINS your show folders.\n\n"
+            "Select a folder containing videos or show folders.\n\n"
             "  Project/\n      Little Bear/\n          episode01.mp4\n\n"
-            "Do NOT navigate into a show folder — select its parent.")
+            "Videos directly in the selected folder are included too.")
         chosen = QFileDialog.getExistingDirectory(
-            self, "Select the ROOT folder (the one containing show folders)")
+            self, "Select the folder containing videos or show folders")
         if chosen:
             self.set_root(Path(chosen))
             set_pref("last_root_folder", chosen)
@@ -2145,6 +2155,7 @@ class MainWindow(QMainWindow):
         self._handcoding.set_scope(self._scope)
         self._language.set_scope(self._scope)
         self._constructs.set_scope(self._scope)
+        self.rescore_index()
         self.populate()
         # Pipelines live under the root (<root>/.analysis/pipelines), so the
         # list has to be rebuilt when the root changes. Without this the tab
@@ -2394,12 +2405,9 @@ class MainWindow(QMainWindow):
     def _sync_scope_note(self, shown: int) -> None:
         """The line beside the chooser: what this scope is, in one sentence.
 
-        *shown* is how many episodes the tree ended up with, which is not
-        always how many the sample drew. The Library lists `.mp4` only
-        (`show_index.list_episodes`) while the sampler draws six extensions,
-        so a draw can legitimately contain a file this screen cannot show. It
-        says so rather than displaying a count that disagrees with the rows
-        underneath it — see `LEARNINGS.md` on numbers that display correctly.
+        *shown* is how many episodes the tree ended up with. A sample may
+        refer to files outside the current library's discoverable folders;
+        report that discrepancy without inventing a file-extension cause.
         """
         if not hasattr(self, "_scope_note"):
             return
@@ -2411,8 +2419,7 @@ class MainWindow(QMainWindow):
             parts.append(f"{len(self._scope.missing)} no longer on disk")
         unlistable = len(self._scope.episodes) - shown
         if unlistable > 0:
-            parts.append(f"{unlistable} not shown here — the Library lists "
-                         f".mp4 files only")
+            parts.append(f"{unlistable} outside the listed library folders")
         self._scope_note.setText(" — ".join(parts))
 
     def _release_columns(self) -> None:
@@ -2469,6 +2476,7 @@ class MainWindow(QMainWindow):
                          f"{analyzed}/{len(eps)} analyzed" if eps else "empty",
                          f"{len(eps)} ep." if eps else "—",
                          _fmt_added(show_dir), bold=True, icon=FOLDER)
+        head[0].setData(str(show_dir), Qt.UserRole + 1)
         for r in rows:
             head[0].appendRow(r)
         if parent is None:
@@ -2479,8 +2487,8 @@ class MainWindow(QMainWindow):
 
     def _on_analysis_finished(self) -> None:
         """Re-read the library so new results show without a manual refresh."""
+        self.rescore_index()
         self.populate()
-        self._index.refresh()
 
     def _show_indexed_episode(self, file_path: str) -> None:
         """Double-clicking an indexed row opens its report in the Library."""
@@ -2795,6 +2803,9 @@ class MainWindow(QMainWindow):
         """
         if self._root is None:
             return None
+        stored = item.data(Qt.UserRole + 1)
+        if stored:
+            return Path(stored)
         names = []
         node = item
         while node is not None:

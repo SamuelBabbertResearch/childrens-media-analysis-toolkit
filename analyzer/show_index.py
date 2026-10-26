@@ -2,6 +2,7 @@
 
 Supports one level of category folders:
   Root/
+    stimulus.mp4      ← videos directly in the root are included too
     ShowName/          ← flat show (videos directly inside)
       ep.mp4
     CategoryName/      ← category (no direct videos, but contains show sub-dirs)
@@ -93,7 +94,7 @@ def display_show_name(root: Path, show_dir: Path) -> tuple[str, int | None]:
     used as the show name so all seasons appear under one show in the index.
     Returns (show_dir.name, None) for normal (non-season) folders.
     """
-    season_num = parse_season_folder(show_dir.name)
+    season_num = None if show_dir == root else parse_season_folder(show_dir.name)
     if season_num is not None:
         parent = show_dir.parent
         # parent == root when the user set root to the show folder itself
@@ -108,7 +109,7 @@ def db_show_key(root: Path, show_dir: Path) -> str:
     folders are grouped under their parent show so all seasons share metadata,
     era definitions, and show-level index rows.
     """
-    if parse_season_folder(show_dir.name) is not None:
+    if show_dir != root and parse_season_folder(show_dir.name) is not None:
         parent = show_dir.parent
         if parent == root:
             return parent.name
@@ -128,6 +129,8 @@ def list_top_level(root: Path) -> list[tuple[str, Path]]:
     or 'category' for directories that contain show sub-directories.
     """
     result: list[tuple[str, Path]] = []
+    if _has_video(root):
+        result.append(("show", root))
     for name, is_dir, _is_file in sorted(_entries(root)):
         if not is_dir or name.startswith("."):
             continue
@@ -144,6 +147,8 @@ def list_top_level(root: Path) -> list[tuple[str, Path]]:
 def list_shows(root: Path) -> list[Path]:
     """Return all show directories under root (including those inside categories)."""
     shows: list[Path] = []
+    if _has_video(root):
+        shows.append(root)
     for name, is_dir, _is_file in sorted(_entries(root)):
         if not is_dir or name.startswith("."):
             continue
@@ -171,6 +176,7 @@ def show_key(root: Path, show_dir: Path) -> str:
 
     For flat shows: 'ShowName'
     For categorized shows: 'CategoryName/ShowName'
+    For videos directly in root: '.' (preserves existing sampler cache keys)
     """
     return show_dir.relative_to(root).as_posix()
 

@@ -5,6 +5,28 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
 
 ---
 
+## Current release integration — 2026-10-26
+
+v1.3.2 is published and verified. Review and merge [PR #16](https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/pull/16) into master under CONTRIBUTING.md, then update both laptops. Source/tag f30148f; see RELEASE_1.3.2.md. The private researcher report is complete and stays outside GitHub assets.
+
+## Shared baseline after the v1.3.0 release
+
+Review and merge `codex/integrate-liu-september-updates` into `master`, then
+update both laptops before creating new work branches. Follow
+[CONTRIBUTING.md](../../CONTRIBUTING.md). A release tag does not update master.
+The v1.3.1 Windows VLC correction is published and verified; see [release notes](RELEASE_1.3.1.md). The v1.3.0 Windows release is published; packaging checks and its resource-file
+correction are documented in
+[RELEASE_1.3.0.md](RELEASE_1.3.0.md).
+
+## Integration checkpoint — 2026-09-17
+
+Local edits and Dr. Liu's September 16–17 changes have been reconciled and
+tested on `codex/integrate-liu-september-updates`; see the [integration record](INTEGRATION_2026-09-17.md).
+Full suite: **804 passed, 13 skipped** for absent media. Source publication
+targets the integration branch; [update notes](../../CHANGELOG.md) list its
+contents and downloads. A new Windows package is not included in this source
+push. The methodological follow-ups below remain separate work.
+
 ## Current phase — the measurement model
 
 **Agreed 2026-08-16.** The pipeline is built and intuitive enough; the work now
@@ -19,6 +41,62 @@ this, and this does not licence expanding into it.
 legacy `sensory_load` storage keys remain compatibility identifiers only; see
 `DECISIONS.md` and `onboarding.md`. The CLI accepts `ffc_score` and `avg_ffc`
 as user-facing sort aliases.
+
+**Needs an elevated shell — not doable from a normal session.** Four
+ACL-locked `pytest-tmp*` directories sit inside the real `.analysis/`, left by
+a test on 2026-08-17. `build_site.py` now skips them with a warning instead of
+dying, so nothing is blocked, but they should be removed. In an **Administrator
+PowerShell**, from the project root:
+
+```
+Get-ChildItem .analysis -Filter 'pytest-tmp*' -Directory -Force | ForEach-Object {
+  takeown /F $_.FullName /R /D Y
+  icacls  $_.FullName /grant "$($env:USERNAME):(F)" /T /C
+  Remove-Item $_.FullName -Recurse -Force
+}
+```
+
+See `LEARNINGS.md` for why they exist and what to stop doing in tests.
+
+**Re-analyse Little Bear so its composite can be published again.** It has an
+`aggregate.json` and `aggregate.csv` but no per-episode JSONs, so the site
+cannot re-derive its FFC and now withholds it (`DECISIONS.md`). Running the
+episodes back through CMAT would restore it and make the index complete on one
+basis. Everything else about the show — component metrics, 62 transcripts —
+publishes normally.
+
+**Superseded 2026-09-07: the site was republished.** The note below recorded
+that the live figures predated the 2026-08-15 ceiling retune. They no longer
+do; the rebuild was published, moving every composite (+2.7% to +19.3%, and
+Little Bear withheld rather than restated). Kept for the record:
+
+**The live site's numbers were stale and it had not been republished.**
+`_site/` is a clone of the Pages repo, and rebuilding it moves **every**
+published composite: the live figures predate the 2026-08-14 ceiling retune.
+Deltas run +2.7% to +19.3% for twelve shows, and Little Bear reads -56.6%.
+Component metrics are unchanged; only the 0-1 rescaling moved. The rebuild
+also drops five junk pages that are live now (`ghibili`, `jordan-peterson`,
+`my-neighbor-totoro`, `season-1`, `season-2`) and the `pipelines` page.
+**Not published — this is Samuel's call**, because it restates every number in
+a public research dataset and wants a dated note on the site saying so.
+
+**Little Bear cannot be re-derived.** It has an `aggregate.json` and
+`aggregate.csv` but no per-episode JSONs, so `build()` republishes its stored
+composite under unknown ceilings while every other show is re-scored against
+current `config.json`. Re-analysing the episodes would close it. Until then it
+is the one published figure whose provenance does not match the others, and
+that is worth a footnote before anyone quotes it.
+
+**The public Index caught up 2026-09-07.** `build_site.py` was the last place
+still showing "load" to a reader: two column headers, and a methodology
+disclaimer phrased as "not a validated measure of viewer sensory load". All
+gone; `index.json` now publishes `ffc_mean` rather than `sensory_load_mean`,
+and the Download page has a *Field names* section explaining that the per-show
+`aggregate.json` / `aggregate.csv` still carry the engine's legacy key family.
+See `DECISIONS.md`. **The engine rename is still not done and is a session of
+its own** — `analyzer/metrics_sensory.py`, the `sensory_load_*` schema keys,
+`config.json`'s `sensory_load_weights`, and every cached result under
+`.analysis/`.
 
 **Research-credibility audit completed 2026-09-04.** Statuses, sweep-bias
 labelling, preset framing, provenance, missing-data semantics and citations
@@ -44,7 +122,7 @@ session of its own:
 
 **Methodological audit findings (superseded by the implementation record below),
 2026-09-16.** Read
-[`METHODOLOGICAL_AUDIT_2026-09-16.md`](METHODOLOGICAL_AUDIT_2026-09-16.md)
+[`METHODOLOGICAL_AUDIT_2026-09-16.md`](../../METHODOLOGICAL_AUDIT_2026-09-16.md)
 before changing a measure. It found four issues that precede new substantive
 data collection, in this order; each is a separate session:
 
@@ -753,3 +831,18 @@ What the scale still needs, in order:
    `gui_sampler.py`, `gui_pipeline.py`), which item 9 retires. Its findings
    may be fixed, may have moved, or may never have applied to Qt. Do this
    alongside item 7 rather than acting on the audit as written.
+
+Mia: complete corrected Season 1 coding, confirm completion of wrong-set export before finalized use, and adjudicate noted wipes/frame disagreements. Package: .analysis/study_clips/curious_george_s2_s4_30s_skip65s_20260907/audio1_frame_coding/mia_season1_correction06_20260916.
+
+
+## Direct-root result visibility — 2026-10-23
+Verify and install local 1.3.2.dev2, then confirm the four cached BUBBLES stimuli appear in Library and Index with original cache hashes unchanged. No reanalysis is required. Published v1.3.1 remains unchanged.
+
+
+### Direct-root result visibility completed — 2026-10-23
+The dev2 build/install/recovery item above is complete: 817 passed, 13 absent-media skips; frozen package checks passed; all four actual caches unchanged, four Library entries and four Index records verified. Local correction only; published v1.3.1 unchanged.
+
+
+
+
+Local deployment note (2026-10-25): the verified dev3 app is now also installed at the actual OneDrive/CMAT/CMAT.exe launch target; both coding choices verified there. Use onboarding.md for the canonical local app and backup paths.

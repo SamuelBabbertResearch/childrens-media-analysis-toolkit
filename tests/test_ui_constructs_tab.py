@@ -155,30 +155,10 @@ def test_the_columns_are_ordered_left_to_right(tab):
                for m in measures for c in constructs)
 
 
-def test_canvas_opens_at_a_readable_scale_with_large_cards(tab):
-    """The complete FFC must scroll, not shrink its text to fit at once."""
-    from ui import tokens
-    from ui.constructs_tab import (
-        CONSTRUCT_W, MEASURE_W, NODE_FONT_PX, TARGET_W, ConstructItem,
-        MeasureItem, TargetItem,
-    )
-    from ui.pipeline_view import NODE_W
-
-    assert tab._view.transform().m11() == pytest.approx(1.0)
-    assert tab._view._zoom == pytest.approx(1.0)
-    assert NODE_FONT_PX["body"] >= tokens.FONT_PX["body"] + 3
-    assert NODE_FONT_PX["small"] >= tokens.FONT_PX["small"] + 3
-    assert TARGET_W > NODE_W
-    assert CONSTRUCT_W > NODE_W
-    assert MEASURE_W > TARGET_W
-    assert _items(tab, TargetItem)[0].boundingRect().width() == TARGET_W
-    assert _items(tab, ConstructItem)[0].boundingRect().width() == CONSTRUCT_W
-    assert _items(tab, MeasureItem)[0].boundingRect().width() == MEASURE_W
-
-
 def test_constructs_zoom_controls_scale_and_clamp_the_canvas(tab):
     """Toolbar zoom changes the view transform without changing the graph."""
     view = tab._view
+    view.reset_zoom()
     assert tab._zoom_label.text() == "100%"
 
     view.zoom_in()
@@ -201,6 +181,39 @@ def test_constructs_zoom_controls_scale_and_clamp_the_canvas(tab):
     assert view._zoom == pytest.approx(1.0)
     assert view.transform().m11() == pytest.approx(1.0)
     assert tab._zoom_label.text() == "100%"
+
+
+def test_long_diagram_titles_fit_the_cards_with_real_fonts(qapp, library, config):
+    """Compact cards must retain full measurement names and units in exports."""
+    from PySide6.QtGui import QFontDatabase, QFontMetricsF
+    from ui.constructs_tab import (
+        CARD_PAD, ConstructsTab, MeasureItem, TargetItem, _node_font,
+    )
+    for name in ("segoeui.ttf", "segoeuib.ttf"):
+        path = Path("C:/Windows/Fonts") / name
+        if path.exists():
+            QFontDatabase.addApplicationFont(str(path))
+    if not QFontDatabase.families():
+        pytest.skip("No real fonts available for text-width checks")
+    t = ConstructsTab(_FakeWindow(library, config))
+    try:
+        t.set_scope(S.library_scope())
+        t.refresh()
+        metrics = QFontMetricsF(_node_font("body", bold=True))
+        measures = _items(t, MeasureItem)
+        assert measures
+        assert any(len(item._title_lines) > 1 for item in measures)
+        for item in measures + _items(t, TargetItem):
+            width = item.boundingRect().width() - 2 * CARD_PAD
+            assert all(metrics.horizontalAdvance(line) <= width
+                       for line in item._title_lines)
+        for item in measures:
+            expected = item._measure.name
+            if item._unit():
+                expected += f" ({item._unit()})"
+            assert " ".join(item._title_lines) == expected
+    finally:
+        t.deleteLater()
 
 
 def test_a_constructs_edge_carries_the_sum_of_its_measures(tab):

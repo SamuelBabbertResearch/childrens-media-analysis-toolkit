@@ -2086,3 +2086,198 @@ the CSV is readable without this file.
 **The general form.** A default value is a lie the moment it reaches an
 output. `0.0` is the most dangerous default a measurement can have, because it
 is inside the plausible range.
+
+---
+
+## A test wrote into the real `.analysis/` and permanently blocked the site build
+
+**Found 2026-09-07, while sweeping "sensory load" off the public Index.**
+`python build_site.py` dies before it renders anything:
+
+```
+PermissionError: [WinError 5] Access is denied:
+  '.../.analysis/pytest-tmp'
+```
+
+`_sync_manifest()` scans every directory under `.analysis/` looking for
+analyzed shows, and `pytest-tmp` — created 2026-08-17, presumably by a test
+exercising the read-only-file handling in `_clear_site()` — has had its ACL
+stripped so hard that even `Get-Acl` on it returns *unauthorized*. It cannot be
+listed, read, or removed without taking ownership.
+
+**Why this is the interesting part.** `CLAUDE.md` §6 already says *never write
+into the working copy's data from a test*, and the reason given there is that
+`Shows/`, `validation/` and the pipeline documents are real research data. The
+damage here is not to the data. The test wrote a directory that was harmless in
+itself, then left it in a state that **disabled the publishing path entirely,
+three weeks later, for someone doing unrelated work** — and the failure surfaces
+as a `PermissionError` deep inside a manifest scan, which reads like a machine
+problem rather than a test artefact. Nothing in the traceback says "a test did
+this".
+
+**Avoid.** A test that needs a directory under a CMAT analysis root builds it
+under `tmp_path`, and points the code at that root; it never adds a sibling to
+the real one. A test that deliberately creates an unreadable or read-only path
+restores the permissions in a fixture teardown that runs on failure too, or it
+does not create the path at all.
+
+**Fixed 2026-09-07** by making the scan warn and skip an unreadable directory
+instead of aborting. The four `pytest-tmp*` directories remain — `takeown`
+fails as the current user — so they still need an elevated shell.
+
+**The general form.** The rule against tests touching real data is usually
+argued from corruption — a wrong number written where a real one belongs. This
+was the other failure mode: a test left the *environment* in a state no
+subsequent run could recover from, and the cost was paid by a later session
+that had no way to connect the symptom to the cause.
+
+---
+
+## A crash masked a silent bug for three weeks, and fixing the crash published it
+
+**Found 2026-09-07, immediately after the fix above.** The first successful
+`build_site.py` run in three weeks auto-added ten entries to
+`site_manifest.json` — `.analysis`, `recipes`, `constructs`,
+`study_workflow/qualification`, `study_clips/…`, the Clip Finder's run folders
+— and published each as an empty "uncategorized" show. None are programmes.
+They are CMAT's own internal stores, and they live under an analysis root
+because that is where CMAT keeps its working data.
+
+The cause: `_has_episode_json()` returned true for a directory containing *any*
+non-aggregate `.json`, while the comment three lines below it said *"Only treat
+as a show if the parent already has an aggregate"*. The comment described the
+right rule; the code implemented a looser one. `build()` then printed
+`no aggregate found` for every one of those entries — the manifest and the
+aggregate lookup openly disagreeing about what a show is, in the same run,
+in adjacent lines of output.
+
+**It had already shipped.** Five pages that were never programmes were
+live on OpenChildrensMediaIndex.org — `ghibili`, `jordan-peterson`,
+`my-neighbor-totoro`, `season-1`, `season-2` — and a stale `pipelines` entry
+sat in the committed `site_manifest.json`, named after a directory
+`CLAUDE.md` §2.3 says must never be committed at all. (The `pipelines` *page*
+was only ever built locally; it was never pushed to the Pages repo, so it was
+not public. The manifest entry was.) Nothing on the site or in the build log
+called any of them anything but a show with no data yet.
+
+**Avoid.** When a comment states a rule, check the code beside it implements
+*that* rule — a looser predicate under a stricter comment reads as correct to
+every reviewer including the person who wrote it. And prefer a positive test
+that a valid artefact exists (`aggregate.json` is present) over a blocklist of
+names to exclude: the blocklist in `_SKIP` had eleven entries and still missed
+every one of these, because it can only exclude what someone thought of.
+
+**The general form.** A build that has been failing loudly is not a build in a
+known state. Everything downstream of the crash has been *unverified*, not
+*working*, for as long as the crash lasted — so fixing a blocker is the moment
+to inspect what the blocker was hiding, against the artefact, before shipping
+the result. Here the crash was three weeks old and the bug it masked was
+older.
+
+---
+
+## One show key, three resolvers, and only the site could see the difference
+
+**Found 2026-09-07**, while checking why a rebuild wanted to *delete*
+`data/little-bear/aggregate.csv` from the published dataset.
+
+`build_site.py` asked "where did CMAT write this show's results?" in three
+places and got three different answers:
+
+| Reader | Layouts searched |
+|---|---|
+| `_find_aggregate()` | `.analysis/<key>/`, `Shows/<key>/.analysis/<key>/`, `Shows/.analysis/<key>/` |
+| `_find_episodes()` | `.analysis/<key>/` only |
+| the `aggregate.csv` copy in `build()` | `.analysis/<key>/` only |
+
+"Little Bear (Full Series)" lives under the *second* layout. So its show page
+published an aggregate with **no episode table**, it contributed none of its
+episodes to the For Parents ranking, `build()` skipped the `if episodes:`
+branch and published its **stored** composite rather than the one re-derived
+against current ceilings, and the CSV copy looked in a directory that does not
+exist and so removed the file from the public download page.
+
+**Nothing about that is visible from the site.** An empty episode table reads
+as a show that has not been analysed yet — which is a state the site
+legitimately has, so the page looked *right*. The only symptom that ever
+surfaced was a file deletion in the deploy repo's `git status`, three readers
+away from the cause.
+
+**Avoid.** `_show_analysis_dir(show_key)` is now the single resolver and all
+three call it. A show key resolves to a directory; there is no second answer
+to that question, so there is no second place to answer it.
+
+**The general form.** This is the mirror of the season-collapsing defect
+already in this file. That one said: audit every *writer* of a collapsing key.
+This one says the same about *readers* whose lookup is a hard-coded path
+rather than a derivation — three readers of one key drift apart silently,
+because each is locally correct and no two are ever compared. The moment a
+lookup has more than one candidate location, exactly one function may know
+the candidate list.
+
+**Still open, and it is a provenance gap, not a bug.** Little Bear has an
+`aggregate.json` and an `aggregate.csv` but no per-episode JSONs, so the site
+*cannot* re-derive its composite the way it does for every other show — it
+publishes a frozen number written under whatever ceilings were in force at the
+time. See `TODO.md`.
+
+2026-09-16: Ambiguous 'newer' clip set resolved incorrectly to Seasons 2–4; user intended Season 1. Before packaging, verify season and exact selection manifest, show those identifiers explicitly, and never reuse neutral clip IDs across different package identities. Limited transition choices led wipes to be entered as hard cuts with notes; preserve notes and offer review flags, revising allowed types when evidence warrants.
+
+
+## A disposable test copy needs runtime assets too — 2026-09-17
+
+The first integration test copy contained tracked files but not the ignored
+CMU dictionary in `.analysis/nltk_data`, causing two readability failures.
+A sandbox also prevented Tcl/Tk initialization and access to pytest's old
+numbered temporary folder. Copy only the required runtime asset into the
+isolated test copy, allocate a fresh test directory, and enable the native
+runtime before interpreting those failures as regressions. The corrected
+full run passed 804 tests, with 13 media-dependent skips.
+
+The incoming validation wording also made the horizontal chart's footnote
+collide with its axis label. Render the combined UI after a merge even when
+both source branches have passing tests; text changes can alter layout.
+
+
+## Imported Python modules do not imply packaged resource files — 2026-09-17
+
+The v1.3.0 frozen smoke check analyzed video successfully but failed on Spache
+readability because `textstat/resources/en/easy_words.txt` was absent. Hidden
+imports included the formulas, not their word lists. `build.spec` now collects
+`textstat` data explicitly. The package check exercises all six readability
+formulas with the bundled CMU dictionary and must pass from a fresh extraction
+before publishing. Source tests cannot detect this missing-file build defect.
+
+## VLC cold imports must configure discovery first — 2026-10-23
+The Qt availability probe and player constructor imported python-vlc before the bundled-path setup in _libvlc. Native DLL loading occurs at import time. All Qt imports now go through one preparation helper, and tests exercise the availability entry point on a cold import. Frozen qualification must run that probe first and inspect the actual loaded DLL path so earlier initialization or installed VLC cannot mask the defect.
+
+
+## Release verification needs native execution — 2026-10-23
+The initial restricted source diagnostic loaded VLC but FFmpeg could not generate its scratch clip; restricted tests also hit environment failures. The same exact isolated source passed with native execution enabled (812 passed, 13 absent-media skips). The rebuilt and freshly extracted Windows executable then passed cold bundled-library loading, playback, and artifact equality checks. Do not interpret a sandbox restriction as a release regression, or use a preparation-only mock as proof that a cold executable can find its native libraries.
+
+
+## A rendering pass did not prove that the window fits — 2026-10-23
+The refreshed interface passed synthetic rendering but overflowed on the researcher's scaled display with a long folder path. The Constructs toolbar also set a wide minimum for every tab, including Library. Restoring compact styling alone retained that constraint. Separate functional zoom from the first toolbar row and elide the path with full tooltip/accessibility text. Verify actual window/control bounds at a display-scaled width as well as rendering individual views. The classic Tk path label already consumes remaining space rather than setting the toolbar width.
+
+
+2026-10-23 — The first window-bound regression ran before the offscreen Qt session had any real fonts and reported a spurious large minimum width. Explicitly loaded the actual Windows UI/monospace fonts for width checks; the real-font regression and full isolated suite passed. Packaged UI rendering also used real fonts at 150% scaling.
+
+
+## A drawn title bar was not working window management — 2026-10-23
+The compact UI rollback retained an older custom frame hook. It mixed screen-coordinate scaling with custom hit-testing, and a real user could neither drag reliably nor use maximize/restore after dismissing startup. Synthetic screenshots and programmatic startup survival did not detect it. Replaced the custom non-client path with the platform's real frame across both main and dialog entry points. Real desktop testing after welcome dismissal confirmed native maximize, restore and movement from (20,20) to (50,59). Tests must exercise modal dismissal and window controls; drag claims need actual desktop input. The classic Tk front-end already uses its ordinary platform frame.
+
+
+## Measurement success did not establish result discoverability — 2026-10-23
+The sampler accepted direct-root stimuli and saved four successful caches under `.analysis`, but Library discovery walked subfolders only. Qt also refreshed Index without importing the new cache rows. The screen incorrectly blamed extensions despite all four files being MP4. Fix shared discovery and both index synchronization entry points; store actual group paths instead of reconstructing them from labels. Verify cache bytes, emitted SQLite rows, scope filtering and the frozen views. Classic Tk already backfills Index and stores row paths, and benefits from the shared discovery fix.
+
+
+## Coding entry points must reach the matching sheet — 2026-10-25
+The Qt handcode_transitions and handcode_events pipeline entries both opened the event-only Code view. A label change alone would have left cut coding unreachable. The shared coding view now selects the existing transition or event schema, parser and lookup explicitly; tests click both choices and read the emitted CSV, and pipeline routing names each mode. Reserve selected-bold text width in the shared SubViews button constructor: the first preview clipped the longer Events label. A frozen check initially inherited output handles from a launcher that exited before analysis, producing Errno 22; waiting for Start-Process with redirected output yielded a passing check from the identical executable. Keep failure and corrected-run evidence separate.
+
+
+## Updating a build copy did not update the user's app — 2026-10-25
+The corrected dev3 executable was installed and verified under the project dist folder, but Samuel's shortcut launched a separate OneDrive/CMAT copy. A builder-side installation claim did not establish deployment to the actual user entry point. Inspect running executable paths before deciding the installation target, preserve that copy's own settings, and verify the new controls after reopening the same path. Moving the old OneDrive folder outside its sync parent stalled on cloud hydration; stopped before any move occurred, then preserved it with a same-parent rename and installed the fully local staged app.
+
+
+## Word reports need actual pagination checks — 2026-10-26
+The packaged DOCX renderer could not find LibreOffice on Windows. A hidden read-only Microsoft Word instance exported the document for local QA; bundled PDF tools rendered page images. The first visual pass caught an inherited blue Title border; the deterministic title sanitizer removed it. A subsequent paragraph change produced an empty page after a page-break paragraph; page-break-before on the following heading removed it. Final text and numeric cells were checked against the saved records and all four page images inspected. Keep QA PDFs/images internal when the requested deliverable is DOCX.

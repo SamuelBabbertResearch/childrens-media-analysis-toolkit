@@ -77,8 +77,10 @@ _duplicates_quarantined_*/
 # Pilot / test run data
 Pilot Trial Files/
 
-# Docs wiki (managed separately)
-docs/
+# Docs wiki (managed separately). Project documentation is versioned.
+docs/*
+!docs/project/
+!docs/project/**
 
 # Private paper notes — unpublished results and draft framings. NEVER push.
 FOR_PAPER.txt

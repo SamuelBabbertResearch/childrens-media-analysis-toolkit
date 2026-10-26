@@ -10,6 +10,9 @@ import sys
 
 
 def main() -> int:
+    if len(sys.argv) == 3 and sys.argv[1] == "--check-package":
+        from release_check import run
+        return run(sys.argv[2])
     try:
         from ui.main_window import run
     except ImportError as exc:               # noqa: BLE001

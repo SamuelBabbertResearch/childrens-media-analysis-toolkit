@@ -216,7 +216,7 @@ class HandCodingTab(tk.Frame):
         # Step 2 — code
         s2 = tk.LabelFrame(outer, text=" Step 2 — Code it ", padx=6, pady=6)
         s2.pack(fill=tk.X, pady=(8, 0))
-        b_tr = tk.Button(s2, text="Code transitions (cuts, dissolves, fades)",
+        b_tr = tk.Button(s2, text="Hand Code Cuts",
                          command=lambda: self._open_sheet("transitions"),
                          fg="#0055aa")
         b_tr.pack(fill=tk.X, pady=2)
@@ -227,7 +227,7 @@ class HandCodingTab(tk.Frame):
                    "— type your own category to use your lab's scheme.\n\n"
                    "Optionally label each hard cut within / change to get "
                    "scene-change rates.")
-        b_ev = tk.Button(s2, text="Code fantastical events",
+        b_ev = tk.Button(s2, text="Hand Code Fantastical Events",
                          command=lambda: self._open_sheet("events"),
                          fg="#884400")
         b_ev.pack(fill=tk.X, pady=2)

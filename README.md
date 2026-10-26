@@ -1,5 +1,9 @@
 # Children's Media Analysis Toolkit (CMAT)
 
+**Version 1.3.2:** [Download the Windows release](https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/releases/tag/v1.3.2)
+with the integrated methodological corrections, performance improvements,
+charts, and clip tools. See [what changed](CHANGELOG.md).
+
 **An open-source research application for quantitative analysis of children's
 audiovisual media.** CMAT is a Windows desktop application for researchers who
 need to measure formal media features in children's television: pacing and shot
@@ -47,8 +51,9 @@ does not prescribe one universal construct or a single composite score. The
 optional **Formal-Feature Composite (FFC)** is a configurable composite of
 observable audio-visual production and editing features. Its component measures
 remain visible, and its weights and normalization ceilings are configurable
-rather than theory-derived or validated. It is not a validated measure of
-viewer sensory load, arousal, or developmental impact.
+rather than theory-derived or validated. It summarizes the stimulus: it is
+not a validated measure of anything happening in a viewer — not arousal, not
+attention, not developmental impact.
 
 > **Scope:** CMAT measures the stimulus, not the viewer. It cannot account for
 > a child's age, temperament, sensory-processing profile, viewing context, or
@@ -220,7 +225,7 @@ A `0.0` in a CMAT export is a measured zero.
 
 | Measure | What it captures |
 |--------|-----------------|
-| **Formal-Feature Composite (FFC)** | A configurable composite of observable audio-visual production and editing features. It always displays its component parts and is not a validated measure of viewer sensory load, arousal, or developmental impact. |
+| **Formal-Feature Composite (FFC)** | A configurable composite of observable audio-visual production and editing features. It always displays its component parts and summarizes the stimulus only — it is not a validated measure of anything happening in a viewer. |
 
 ### Language metrics *(optional — requires subtitle files or Whisper AI)*
 
@@ -239,7 +244,7 @@ properties may be useful to measure; they do not establish causal effects or
 specify how to combine the properties into one number. The composite's weights
 and normalization ceilings are a configurable scaling convention, not derived
 from theory and not validated. Component measures are reported separately for
-that reason. See [CEILINGS.md](CEILINGS.md).
+that reason. See [CEILINGS.md](docs/project/CEILINGS.md).
 
 ---
 
@@ -249,7 +254,7 @@ that reason. See [CEILINGS.md](CEILINGS.md).
 
 <img width="960" height="443" alt="image" src="https://github.com/user-attachments/assets/bd56a61c-0817-489b-8a80-618d48652d6b" />
 <img width="739" height="503" alt="image" src="https://github.com/user-attachments/assets/91e23e9a-1a11-4df4-a5b6-c0560ef1940e" />
-<img width="1920" height="1250" alt="Sensory_load_(as_shipped)_v1" src="https://github.com/user-attachments/assets/668b51ea-bc85-4821-8c1f-92eb92b98472" />
+<img width="1920" height="1250" alt="Formal-Feature Composite, as shipped" src="https://github.com/user-attachments/assets/668b51ea-bc85-4821-8c1f-92eb92b98472" />
 
 
 
@@ -257,12 +262,18 @@ that reason. See [CEILINGS.md](CEILINGS.md).
 
 ## Download & Install (Windows)
 
-1. Go to the [Releases page](../../releases/latest)
-2. Download the latest `CMAT` Windows `.zip`
+1. Go to the [v1.3.2 Windows release](https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/releases/tag/v1.3.2)
+2. Download `CMAT-v1.3.2-windows.zip`
 3. Unzip anywhere (e.g. `C:\CMAT\`)
 4. Double-click `CMAT.exe`
 
 No Python, no FFmpeg, no other installs required. Everything is bundled.
+
+Use the named **Windows ZIP** under release assets. GitHub's separate
+"Source code" archives require Python and the source dependencies below.
+Unzip the whole Windows package and keep `_internal` beside `CMAT.exe`.
+FFmpeg, VLC, the English language model, and the pronunciation dictionary are
+included. Optional Whisper transcription downloads its model on first use.
 
 ---
 
@@ -514,8 +525,8 @@ preset changes every composite score and no raw measurement.
 
 **None of the shipped values is derived from anything.** The ceilings were
 fitted to what one 78-episode working corpus produced
-([CEILINGS.md](CEILINGS.md)); the weights have no recorded derivation at all
-([ARCHITECTURE.md](ARCHITECTURE.md) §8.1a). Each preset carries
+([CEILINGS.md](docs/project/CEILINGS.md)); the weights have no recorded derivation at all
+([ARCHITECTURE.md](docs/project/ARCHITECTURE.md) §8.1a). Each preset carries
 `"illustrative": true` and `"derivation": "none recorded"` in `config.json`, and
 the Settings dialog says so above the chooser in both front-ends.
 
@@ -750,6 +761,8 @@ metric, and a provenance block nobody reads protects nobody.
 
 ---
 
+For shared development across laptops, follow the [collaboration workflow](CONTRIBUTING.md).
+
 ## Building from source
 
 **Requirements:** Python 3.11+, FFmpeg on PATH
@@ -783,6 +796,11 @@ pytest tests/
 python -m PyInstaller build.spec -y
 copy config.json dist\CMAT\config.json
 ```
+
+Before publishing, run the opt-in packaged check and inspect its JSON report:
+`CMAT.exe --check-package report.json`. It uses synthetic temporary media to
+check analysis, language resources, Qt screens, and bundled VLC playback.
+See [release build notes](docs/project/RELEASE_1.3.2.md).
 
 ---
 

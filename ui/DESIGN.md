@@ -4,56 +4,35 @@ The visual language for the PySide6 front-end. Design detail lives here rather
 than in `CLAUDE.md` so that file stays a short rules-and-orientation document;
 `CLAUDE.md` §4 links here.
 
-## Current visual layer: modern scientific desktop (2026-09-17)
-
-The application now uses a flatter, contemporary visual finish while keeping
-the interaction model and research-oriented density specified below. The
-reference stylesheets remain the authority for component structure, table
-idioms, workflow vocabulary, and Windows-native behaviour. For palette,
-control height, corner radius, focus treatment, and tab treatment, the current
-tokens in `ui/tokens.py` and their translation in `ui/theme.py` supersede the
-older bevelled values in the extracted mockups.
-
-The current readability scale uses 14 logical px for body, table, and grid
-text; 12 px for secondary text; and 11 px for the smallest annotations.
-Controls are 30 px high and data rows are 29 px high. These remain compact
-desktop dimensions, but they are deliberately larger than the reference's
-11 px type and 19–20 px boxes. Document views and painted canvases read the
-same tokens, so no screen silently falls back to the older scale.
-
-The constraints did not move:
-
-- information-first, compact, and legible; no dashboard cards or display-size
-  headings;
-- one accent used for selection, focus, and the one primary action;
-- colour never carries status by itself;
-- numeric tables use a light selection wash so figures remain readable;
-- the visual Pipeline remains the primary orientation device;
-- native window, keyboard, DPI, accessibility, and dialog behaviours stay
-  intact;
-- nothing in the palette implies programme quality, appropriateness, or viewer
-  effect.
-
-### Constructs canvas zoom
-
-The Constructs toolbar provides labelled **Zoom out**, a percentage readout,
-**Zoom in**, and **Reset zoom** controls. Mouse-wheel zoom and these buttons
-share one clamped transform (30–250%) and one state signal, so the readout is
-never stale. Scaling is uniform over node boxes, painted text, labels, and
-wires. It changes only the current view: stored layout coordinates, recipe
-bindings, and measurement values remain unchanged. The 100% reset is the
-readable reference scale; the canvas remains pannable when the full graph does
-not fit in the window.
-
-This is a finish change, not a content redesign. The mockups still do not
-authorize invented labels, metrics, columns, or values.
-
 Each section gives the specification as written, then **Qt notes** — because Qt
 Style Sheets are a subset of CSS and will silently ignore what they do not
 support. A rule that is dropped rather than rejected is the worst kind, so the
 gaps are called out where they occur.
 
 ---
+
+## Standard Windows window management — 2026-10-23
+
+The main window and every dialog use the actual native title bar and frame.
+`ui.native_frame.apply_native_frame` is the shared configuration point for
+caption controls; the platform owns dragging, resizing, maximize/restore,
+minimize, system menus and snapping. No non-client event hooks, frame
+suppression or custom-painted caption controls are installed. This supersedes
+the historical custom-frame implementation described below. Compact content
+styling is independent of the native caption. Verify real interactions after
+dismissing the startup dialog; a rendered image is insufficient.
+
+## Restored compact styling — 2026-10-23
+
+At the researcher's request, the cosmetic refresh from `3f7903a` and the
+oversized Constructs treatment are superseded. Palette, gradients, controls,
+type and Pipeline geometry return to the pre-refresh v1.3.0 styling in
+`fbcf54c`. Qt body/table type is 11 logical px; controls are 20 px and rows
+19 px. The original reference CSS remains unchanged. Constructs uses compact
+cards and initially fits its graph; title wrapping and explicit zoom controls
+remain functional. Chart colors use the original palette through tokens;
+FFC numbers retain neutral accent coloring. Scientific computations and
+native Qt DPI handling are unchanged. The sections below define the style.
 
 ## 0. How to build a screen in this style
 
@@ -119,18 +98,18 @@ stated or the interface drifts. All of them live in `ui/tokens.py`:
 
 | Token | Value | Reference rule |
 |---|---|---|
-| `FONT_PX["body"]` | 14 | readable override of `body` |
-| `METRICS["row_h"]` | 29 | readable override of `.tree-row` |
-| `METRICS["control_h"]` | 30 | readable override of `.btn` |
-| `METRICS["dialog_input_h"]` | 30 | readable override of dialog inputs |
-| `METRICS["header_h"]` | 30 | readable override of `.data-table th` |
-| `METRICS["titlebar_h"]` | 38 | Windows caption plus larger type |
-| `METRICS["caption_btn_w"]` | 50 | Windows caption target width |
+| `FONT_PX["body"]` | 11 | `body` |
+| `METRICS["row_h"]` | 19 | `.tree-row` |
+| `METRICS["control_h"]` | 20 | `.btn` |
+| `METRICS["dialog_input_h"]` | 19 | `input` inside `.dialog-content` |
+| `METRICS["header_h"]` | 20 | `.data-table th` |
+| `METRICS["titlebar_h"]` | 30 | `.titlebar` — 24 in the mockups; see below |
+| `METRICS["caption_btn_w"]` | 34 | not in the mockups; Windows caption |
 
 Sizes are **device-independent pixels**. Qt 6 scales the whole interface by
-the display's device-pixel ratio, so `14px` is 14px at 100% and 21 physical
-pixels at 150%. This reverses the Tk rule: there a pixel was physical, which is
-why `FONT_PT` still exists and is marked Tk-only.
+the display's device-pixel ratio, so `11px` is 11px at 100% and 16.5 physical
+at 150%. This reverses the Tk rule: there a pixel was physical, which is why
+`FONT_PT` still exists and is marked Tk-only.
 
 ### 0.4 Qt behaviours that have already cost time
 
@@ -342,7 +321,7 @@ front-ends move together — do not introduce a second value.
   look.
 - **`inset` shadows are not supported.** Simulate a sunken edge with
   `border-top-color` darker than the other three, which Qt does honour.
-- **The custom title bar is built** (`ui/native_frame.py`, `TitleBar`), and the
+- **Historical custom title bar (superseded 2026-10-23):** the
   way it is built is the point. The usual route — `Qt.FramelessWindowHint` —
   strips `WS_THICKFRAME` and `WS_CAPTION`, and with them Aero Snap, edge
   resizing, the drop shadow, the maximise animation, Win+Arrow, and the

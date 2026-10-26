@@ -76,15 +76,21 @@ def _prepare_bundled_vlc() -> None:
         _dll_directory = os.add_dll_directory(str(vlc_dir))
 
 
+def _import_vlc():
+    """Configure native discovery before *every* entry point imports VLC."""
+    _prepare_bundled_vlc()
+    import vlc
+    return vlc
+
+
 def _libvlc():
     """The shared instance, or None if libvlc will not start."""
     global _instance, _log_sink
     if _instance is not None:
         return _instance
-    _prepare_bundled_vlc()
     try:
-        import vlc
-    except ImportError:
+        vlc = _import_vlc()
+    except (ImportError, OSError):
         return None
     try:
         inst = vlc.Instance("--no-video-title-show", "--quiet",
@@ -106,10 +112,12 @@ def _libvlc():
 def available() -> tuple[bool, str]:
     """(usable, explanation). Never raises — the caller shows the reason."""
     try:
-        import vlc                          # noqa: F401
+        _import_vlc()
     except ImportError:
         return False, ("python-vlc is not installed. Install it with "
                        "`pip install python-vlc`.")
+    except OSError as exc:
+        return False, f"libVLC could not be loaded: {exc}"
     if _libvlc() is None:
         return False, ("libVLC would not start. Source runs need a 64-bit VLC "
                        "installation; packaged releases include one.")
@@ -178,7 +186,7 @@ class VideoPlayer(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
-        import vlc
+        vlc = _import_vlc()
 
         self._vlc = vlc
         self._instance = _libvlc()

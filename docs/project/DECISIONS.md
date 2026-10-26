@@ -2021,6 +2021,100 @@ retaining adult prediction as a proxy outcome after removing children.
 rows, and citations keep the former title because changing them would break the
 historical hash chain. Active documents label those strings as legacy.
 
+### The public Index says "Formal-Feature Composite (FFC)" and nothing says "sensory load"
+
+**Decision.** Every reader-facing string on the Open Children's Media Index
+names the composite the **Formal-Feature Composite (FFC)**. The two remaining
+"load" column headers (`Avg load` on the homepage table, `Load` on the
+per-show episode table) became `Avg FFC` and `FFC`. The methodology
+disclaimer no longer disclaims "viewer sensory load" — it says the FFC is a
+summary of the stimulus and not a validated measure of anything happening in
+a viewer. The published `index.json` field `sensory_load_mean` became
+`ffc_mean`. The site also standardised on **hand-coded** rather than
+"human-coded" for the fantastical-event section, per the §3 terminology table.
+**Reason.** "Sensory load" names a viewer state. CMAT measures a stimulus and
+issues no verdict (CLAUDE.md §2.1), so a disclaimer phrased as "this is not a
+validated measure of viewer sensory load" still puts the construct in the
+reader's head and implies the tool is in that business. The composite has one
+name; using two on the same site is how a reader concludes there are two
+quantities.
+**Date.** 2026-09-07.
+**Not done.** The analysis engine's internal key family
+(`sensory_load_score`, `sensory_load_weights` in `config.json`,
+`analyzer/metrics_sensory.py`) is unchanged, so the published per-show
+`aggregate.json` and `aggregate.csv` still carry those column names. Renaming
+them is a data-model change across the engine, cache, presets and tests, and
+would break every stored result — a separate task. The Download page's new
+"Field names" section documents the mismatch and the `index.json` rename so a
+consumer is not left guessing.
+**Rejected.** Rewriting the engine's keys only at publish time — the CSV is
+copied verbatim from `.analysis/`, so the JSON and CSV in the same folder
+would have disagreed, and a researcher reproducing the analysis locally would
+have got different names again.
+
+### A show is a directory with an `aggregate.json`, and nothing else is
+
+**Decision.** `build_site.py`'s manifest auto-sync treats a directory under an
+analysis root as a show only when it contains an `aggregate.json`. A directory
+it cannot read is warned about and skipped, never fatal.
+**Reason.** The previous test — any directory containing a non-aggregate
+`.json` — matched CMAT's own internal stores (`recipes`, `constructs`,
+`study_workflow/`, Clip Finder run folders, `pipelines`), which were
+auto-added as "uncategorized" shows and published as empty rows on the public
+site. A positive test for the artefact that makes a show publishable needs no
+maintenance: an internal store never grows an aggregate. The `_SKIP` blocklist
+had eleven names and missed all of them, because a blocklist can only exclude
+what someone thought of.
+**Date.** 2026-09-07.
+**Also.** The stale `pipelines` entry was removed from
+`site_manifest.json` — a directory §2.3 says must never be committed, sitting
+in a tracked file. Its page was only ever built locally and never pushed, so
+it was not public; five other junk pages (`ghibili`, `jordan-peterson`,
+`my-neighbor-totoro`, `season-1`, `season-2`) were live and are now gone.
+**Rejected.** Extending `_SKIP` with the offending names — the same defect
+returns with the next internal store.
+
+### A composite that cannot be re-derived is withheld, not published
+
+**Decision.** When a show has no cached per-episode results, `build_site.py`
+drops its composite from the show page, the homepage table, `index.json` and
+the published `aggregate.json`, and does not publish its `aggregate.csv` (the
+CSV carries the same frozen columns). The show still appears, with its
+component metrics, a double-dagger marker and a sentence saying what was
+withheld and why. Raw component means are measurements rather than
+rescalings, so the ceiling change does not touch them.
+**Reason.** The 2026-08-15 retune moved every composite in the project.
+`build()` re-derives a show's composite from its cached episodes; a show
+without them keeps a frozen value computed under earlier ceilings. Published
+side by side, the two are indistinguishable — which is precisely the failure
+CLAUDE.md §2.5 names: *old results never silently look current*. Withholding a
+number is honest; publishing one whose ceilings are unknown, next to thirteen
+that are known, is not.
+**Date.** 2026-09-07.
+**Applies to.** "Little Bear (Full Series)" only, whose aggregate was written
+2026-07-01. The rule is in `build()`, not a per-show exception, so a future
+show in the same state is handled without anyone noticing it needs to be.
+**Rejected.** Publishing the frozen figure with a footnote — a footnote does
+not stop the number being read, sorted, downloaded and compared. Removing the
+show entirely — its component metrics and 62 language transcripts are current
+and accurate, and deleting them would lose real data to fix a rescaling.
+
+2026-09-16 — Mia coding package correction: agent confused newer set with Seasons 2–4 shortlist; user clarified Season 1. Preserved Downloads MIA01_coding_2026-09-16T19-30-26-989Z.json unchanged and source mapping under audio1_frame_coding/mia_received_wrong_set_20260916. All completion flags false; do not treat as finalized. Built separate mia_season1_correction06_20260916 from authoritative correction-06 selection with all 12 S01 IDs and checksum-verified historical media, including CUTS_2 replacement. New package/storage keys prevent cross-set import. Reviewed wrong-set coding: AUDIO_2 additional promising pair (8 hard cuts each; motion .0684/.0680; RMS .02930/.04849); AUDIO_1 four cuts each. Two Slide Cut notes visually confirmed as wipes, retained raw and documented separately. M03 visual cut begins566 rather than SB01 552. Added wipe/slide to simplified options, review flags remain separate. No participant selection or frozen calibration changes. See preserved export REVIEW.md.
+
+
+## Preserve both branches' contributions during September integration
+
+**Decision.** Keep the local documentation layout, clip tools, chart labels,
+and horizontal layout; combine them with the incoming measurement corrections
+and collection-based chart rendering. Preserve both histories through a merge.
+**Reason.** Selecting either complete chart file would lose independent work.
+The engine remains identical to Dr. Liu's version; UI reconciliation is confined
+to presentation and verification. **Date.** 2026-09-17.
+**Rejected.** Replacing local work with master or discarding upstream changes.
+See the [integration record](INTEGRATION_2026-09-17.md).
+
+---
+
 ### The interface uses a modern scientific-desktop finish without changing its interaction model
 
 **Decision.** Refresh the shared visual tokens and Qt translation to use flat
@@ -2072,3 +2166,19 @@ reproducible when a diagram is discussed or saved.
 **Rejected.** Automatically shrinking the graph to fit the viewport; an
 icon-only control with no accessible label; storing zoom as part of a recipe
 or treating it as a measurement setting.
+
+
+### Restore the compact desktop styling — 2026-10-23
+**Decision.** Supersede the September cosmetic refresh at Samuel's explicit request. Restore the v1.3.0 palette, gradients, compact shared type/control sizes and diagram geometry. Keep scientific corrections, performance work, neutral FFC coloring, title wrapping, functional zoom and the VLC cold-start fix. Fit the compact Constructs graph initially; put its zoom controls beside the context line so an inactive tab does not force every screen wider. Elide long library paths with full-path tooltips. **Reason.** A real Windows screenshot showed oversized controls and off-screen content; previous rendering checks used shorter paths and did not establish usable width under scaling. **Rejected.** Reverting the engine or reproducing known clipping/loading defects to recover an older appearance. This is a local 1.3.2.dev0 build; the published v1.3.1 artifact stays immutable.
+
+
+### Use the standard native Windows frame — 2026-10-23
+**Decision.** Retire custom-painted captions and Win32 non-client hooks for the main window and all dialogs. `ui.native_frame.apply_native_frame` configures actual Qt/native caption controls and preserves window type/modality. The shared dialog helper keeps each caller's close/minimize/maximize policy. **Reason.** Samuel reported failed title dragging and maximize/restore after closing the welcome dialog. A real desktop check reproduced stuck dragging; the native-frame source window then passed welcome dismissal, maximize, restore and dragging. Rendering tests had not established those interactions. This supersedes the 2026-08-10 custom-frame decision. Compact content styling remains. Local version: 1.3.2.dev1; no publication or email requested.
+
+
+### Include videos directly in the selected root — 2026-10-23
+The shared folder discovery includes the root itself when it contains supported videos, as well as existing nested show/category layouts. Preserve the sampler cache key `.` and use the folder name as the existing folder group label; do not infer programme metadata. Qt backfills its derived index on root opening and measurement completion, matching the classic front-end recovery path. No relocation or remeasurement of stimuli.
+
+
+### Direct choices for the two hand-coding tasks — 2026-10-23
+At Samuel's request, Human coding starts with Hand Code Cuts and Hand Code Fantastical Events. Put task selectors first and active-view actions on their own toolbar. Keep detector comparison and coder agreement as separate secondary views. Cut coding writes the established `_manual.csv` schema; events write `_events.csv`; pipeline entry points choose the corresponding mode. Shared player timestamp behavior and engine parsers remain authoritative.

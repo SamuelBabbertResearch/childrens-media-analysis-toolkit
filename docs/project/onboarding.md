@@ -1,13 +1,118 @@
 # CMAT — Onboarding
 
 Previously-on, for a session starting with zero memory. Read this, then
-`TODO.md`, then `DECISIONS.md` and `LEARNINGS.md`. `INDEX.md` points at
-everything else.
+`TODO.md`, then `DECISIONS.md` and `LEARNINGS.md`. [INDEX.md](../../INDEX.md)
+points at everything else, including the separate provenance-bound study record.
 
-**Last updated:** 2026-09-17 (readability scale and modern scientific-desktop visual refresh; the
-2026-09-16 methodological audit implementation, the
+**Last updated:** 2026-10-23 (combined interface refresh and Windows release; the
 2026-09-04 research-credibility audit, Formal-Feature Composite terminology,
 adult-only participant redesign, Clip Finder, and rating-scale entries follow.)
+
+---
+
+## Completed native window behavior fix — 2026-10-23
+
+The local **1.3.2.dev1** app is installed at the same
+`dist/CMAT-compact/CMAT.exe` path, from source
+`3d0eb2b11701d9edd8fde6b889cecf975d7c4643`. The main window and all shared dialogs now use the
+actual native frame and caption controls. Custom-painted captions, non-client
+suppression and manual hit-testing are retired. Compact content styling,
+measurement/performance improvements and the bundled VLC correction remain.
+
+**Verified against real interactions:** on both source and the rebuilt
+executable, dismissing Welcome leaves usable maximize/restore and title-bar
+dragging. The frozen app's Welcome X button closed it; maximize/restore changed
+the native state, and dragging changed its observed screen origin. Then the
+existing idle local app was replaced, reopened with its preserved preferences,
+and its Welcome X and maximize button were exercised again. It is left open
+in the normal maximized work area. No research analysis was started.
+
+The full isolated suite passed **814 tests, 13 absent-media skips**. Source
+and frozen diagnostics pass, including the new welcome-close/maximize/restore
+sequence, VLC loading/playback, bundled FFmpeg, language and rendering. Synthetic
+metrics and readability match v1.3.1 exactly. All local user files were retained;
+config and preferences were checked byte-for-byte. The complete previous app
+is backed up at `dist/CMAT-compact-backup-dev0-20261023`.
+Executable SHA-256: `572c97263e3fc21fc56f742ac7e66b8f85c76cfedb4a1ab241ce7b4ed7420bbd`.
+
+Reports: `build/native-window-20261023/install-complete.json`,
+`staging-qualification.json`, `frozen-interaction-proof.json` and
+`source-interaction-proof.json`. This supersedes the earlier pending native
+rebuild note. Changes are local/unpublished; published v1.3.1 is immutable.
+Unrelated study work is preserved outside the local fix commits.
+
+---
+
+## Completed local compact UI restoration — 2026-10-23
+
+The local **1.3.2.dev0** app is ready at `dist/CMAT-compact/CMAT.exe`, built
+from `eb037e8035d03fbf43e7ef182ba823d44d2ffece`. It restores the pre-refresh palette, gradients,
+compact shared type/control sizes and diagram geometry, retaining functional
+zoom, title wrapping, scientific/performance changes and bundled VLC discovery.
+Long paths elide with complete tooltip/accessibility text. Zoom controls no
+longer make an inactive Constructs tab force Library beyond the window width.
+Real-font window bounds checked at 1280 logical px, including 150% scaling.
+
+Verification: **811 passed, 13 absent-media skips** in the isolated full suite;
+source and freshly copied frozen diagnostics passed, including cold bundled
+VLC loading, bundled FFmpeg, synthetic playback/analysis, readability formulas,
+rendering and zoom controls. Raw metrics and readability match both the source
+and v1.3.1 exactly. Ordinary offscreen startup stayed alive for 15 seconds.
+Local folder preferences and config were carried from the prior local app only
+after synthetic qualification. No actual research library was opened by tests.
+Executable SHA-256: `8a29fc3829522ab6977a39ac6eb8960a3a12480f5772cbe033df7a574ce26a40`.
+
+This is a local, unpublished revision; the GitHub release remains v1.3.1.
+These checks do not establish separate clean-PC or audible-playback validation.
+The earlier pending local-build note is superseded. Unrelated study changes are
+still uncommitted and preserved; the two local restoration commits are not pushed.
+
+---
+
+## Published Windows release — 2026-10-23
+
+[v1.3.1](https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/releases/tag/v1.3.1) fixes bundled VLC discovery before cold imports and completes the existing interface integration. Source/tag: `v1.3.1` / `d85f8bd63e6e8da9898b09b9d7a84e9e48c4038d` on `codex/integrate-liu-september-updates`; master is unchanged. The isolated source suite passed **812 tests**, with **13 absent-media skips**. Source and fresh-extraction frozen diagnostics passed: bundled VLC DLL path, bundled FFmpeg, synthetic analysis, all readability formulas, interface/chart/Clip Finder rendering, Constructs zoom, and synthetic VLC playback. Source and frozen metrics/readability matched exactly; ordinary offscreen startup remained running for 15 seconds. The archive passed CRC/integrity checks and contains no personal preferences, research library, pipelines, or private paper notes.
+
+Archive: `CMAT-v1.3.1-windows.zip`, 355,445,077 bytes. SHA-256: `b61fc8729fc88f8c56ec36bbdc8531bde29b24460a290810362f9b46b3797d4b`. GitHub's uploaded-asset digest matches. Checks are on the Windows build machine; separate clean-PC testing and on-device audible playback remain unverified. This publication supersedes the earlier pending-build notes. Unrelated local Study Runner changes remain outside this release.
+
+---
+
+## What changed on 2026-09-18: v1.3.1 interface integration
+
+The integration branch now includes Dr. Liu's `3f7903a` and `6221971`, including
+larger type, the shared visual refresh, and Constructs zoom controls. Chart
+conflicts preserve local horizontal layouts and unique labels while adopting
+the new palette and wrapped validation notes. Both documentation histories are
+retained under `docs/project/`. Long Constructs titles now wrap after real-font
+visual inspection exposed clipping. See [v1.3.1 notes](RELEASE_1.3.1.md).
+Publishing this release does not merge the integration branch into `master`.
+
+---
+
+## What changed on 2026-09-18: Windows release packaging
+
+Version 1.3.0 was published as a GitHub release with a verified Windows
+ZIP, checksum, and source tag `7781d60`. See
+[release build notes](RELEASE_1.3.0.md) for the synthetic package checks and
+resource-file fix. `cmat_qt.py` now supports the opt-in `--check-package`
+diagnostic; normal startup is unchanged. Shared development across laptops is
+documented in [CONTRIBUTING.md](../../CONTRIBUTING.md). The integration still
+needs review/merge into `master`; publishing a release does not merge it.
+
+---
+
+## What changed on 2026-09-17: local/upstream integration
+
+The local checkpoint `723c8a5` and Dr. Liu's commits through `5d187a1` are
+combined on `codex/integrate-liu-september-updates`. Unique episode labels,
+horizontal charts, clip tools, the relocated documentation, and September 7
+public Index fixes are preserved alongside the methodological corrections and
+performance changes. The full isolated suite passed: **804 passed, 13 skipped**
+(the skips require absent Little Bear media). See the [integration record](INTEGRATION_2026-09-17.md)
+for conflict decisions, visual checks, and limitations. The subsequent source
+push targets that integration branch, with [update notes](../../CHANGELOG.md)
+and source-download links. It does not publish a Windows build or the Index
+website.
 
 ---
 
@@ -102,6 +207,79 @@ headline number recomputed; a synthetic caption file reproduced the overlap
 defect. The complete suite did not run in this environment because one Python
 installation could not load QtCore and the other lacked OpenCV. That is recorded
 in the report rather than represented as a pass.
+
+---
+
+## What changed on 2026-09-07: documentation layout
+
+Engineering, product, decision, and working-session documents now live in
+`docs/project/`; its [README](README.md) is the local map. The repository-root
+[INDEX.md](../../INDEX.md) remains the cross-project entry point. Study files
+remain at the root because their existing paths are recorded in the study's
+SHA-256 provenance inventory; use [STUDY_INDEX.md](../../STUDY_INDEX.md) for
+that separate record.
+
+---
+
+## What changed on 2026-09-07: the public Index's terminology
+
+The FFC rename was settled for the tool on 2026-09-04, but `build_site.py` had
+never been swept, so OpenChildrensMediaIndex.org was still saying "load" in
+three reader-facing places: the homepage table's `Avg load` header, the
+per-show episode table's `Load` header, and a methodology sentence that
+disclaimed being "a validated measure of viewer sensory load, arousal, or
+developmental impact". A disclaimer is still an appearance of the term — it
+names a viewer state in order to deny it, which leaves the reader thinking the
+tool is in that business. The sentence now reads that the FFC is a summary of
+the stimulus and is not a validated measure of anything happening in a viewer.
+
+The published flat file `data/index.json` renamed `sensory_load_mean` to
+`ffc_mean`. **The engine's keys were deliberately not touched**, so the
+per-show `aggregate.json` and `aggregate.csv` still carry `sensory_load_score`
+and its component columns — a rename there is a data-model change across the
+schema, `config.json`, the cache and the tests. The Download page gained a
+*Field names* section that states the mismatch outright rather than leaving a
+consumer to infer that two names mean two quantities.
+
+The site also standardised on **hand-coded** over "human-coded" for the
+fantastical-event sections, per the `CLAUDE.md` §3 terminology table, and
+dropped the framing "unlike the automated metrics above, these are human
+judgments" — hand coding is a measurement in its own right (§2.5), not the
+fallback where automation ran out.
+
+### Two defects the terminology work uncovered
+
+`python build_site.py` **had been dead since 2026-08-17** and nobody knew.
+Four ACL-locked `pytest-tmp*` directories, left inside the real `.analysis/`
+by a test (a `CLAUDE.md` §6 violation), made `_sync_manifest()` abort on
+`PermissionError` before it rendered anything. The scan now warns and skips an
+unreadable directory rather than aborting — an analysis root is real user
+data, and one unreadable entry in it is not a reason to publish nothing. **The
+four directories are still there**; removing them needs an elevated shell
+(`takeown` fails as the current user), so that is a manual step for Samuel.
+
+Unblocking the build then exposed the second defect, which had been masked by
+the first. `_sync_manifest()` treated *any* directory containing a stray
+`.json` as a show, so CMAT's own internal stores — `recipes`, `constructs`,
+`study_workflow/qualification`, the Clip Finder run folders, `pipelines` —
+were auto-added to `site_manifest.json` as "uncategorized" shows and published
+as empty rows, while `build()` printed `no aggregate found` for each. The
+manifest and the aggregate lookup disagreed about what a show is. A show is
+now a directory with an `aggregate.json` and nothing else is, which is the
+test the surrounding comment already claimed to apply and needs no blocklist
+to maintain. A stale `pipelines` entry from an earlier auto-add was removed
+from the manifest — a personal-data directory name (`CLAUDE.md` §2.3) in a
+tracked file. Its page was only ever built locally and never pushed. Five junk
+pages that *were* live (`ghibili`, `jordan-peterson`, `my-neighbor-totoro`,
+`season-1`, `season-2`) were removed by the republish.
+
+The site builds 19 pages and 14 shows, and **was published on 2026-09-07**
+(`open-childrens-media-index` `013e66d`). That republish also delivered the
+2026-08-15 ceiling retune to the public index for the first time: every
+composite moved, +2.7% to +19.3% across twelve shows and -11.0% for SpongeBob,
+with raw measurements unchanged. Little Bear's composite is withheld rather
+than restated — see `DECISIONS.md`. Verified against the produced HTML and
+`data/index.json`, not against the source.
 
 ---
 
@@ -1957,3 +2135,40 @@ The three things most worth knowing before choosing what to do next:
 All three items above are closed as of 2026-08-17 — this section is kept as a
 record of what "picking it up cold" looked like that day, not as live status.
 For current status read the top of this file.
+
+2026-09-16 — Mia coding package correction: agent confused newer set with Seasons 2–4 shortlist; user clarified Season 1. Preserved Downloads MIA01_coding_2026-09-16T19-30-26-989Z.json unchanged and source mapping under audio1_frame_coding/mia_received_wrong_set_20260916. All completion flags false; do not treat as finalized. Built separate mia_season1_correction06_20260916 from authoritative correction-06 selection with all 12 S01 IDs and checksum-verified historical media, including CUTS_2 replacement. New package/storage keys prevent cross-set import. Reviewed wrong-set coding: AUDIO_2 additional promising pair (8 hard cuts each; motion .0684/.0680; RMS .02930/.04849); AUDIO_1 four cuts each. Two Slide Cut notes visually confirmed as wipes, retained raw and documented separately. M03 visual cut begins566 rather than SB01 552. Added wipe/slide to simplified options, review flags remain separate. No participant selection or frozen calibration changes. See preserved export REVIEW.md.
+
+## Windows VLC startup correction — 2026-10-23
+The v1.3.1 source configures bundled native discovery before every Qt VLC import. The package diagnostic now exercises cold availability first and verifies the loaded native DLL path. No separate VLC installation is required. Rebuild and fresh-extraction qualification are in progress; see RELEASE_1.3.1.md. Later local study handoffs remain outside this release.
+
+
+## Local compact UI restoration — 2026-10-23
+Samuel requested reversal of the cosmetic refresh after a Windows screenshot showed oversized UI and off-screen controls. The local 1.3.2.dev0 source restores v1.3.0 colors, gradients, type/control sizes and diagram dimensions; scientific/performance changes and VLC startup correction remain. Functional zoom and label wrapping remain, with zoom moved beside the context line and initial diagram fitting restored. Library paths elide without hiding the full tooltip or accessibility text. Full verification and a local rebuild are in progress; v1.3.1 remains the published release.
+
+
+## Native window behavior correction in progress — 2026-10-23
+The compact local app still used the historical custom non-client frame. Samuel reported stuck dragging and maximize/restore after dismissing the startup popup. The source now uses actual native frames for main/dialog windows through one helper, retaining compact content and per-dialog caption policies. A real desktop source check confirmed welcome dismissal, maximize/restore and title dragging. Regression tests cover modal release and caption state; packaged checks now include the welcome-close path. Local 1.3.2.dev1 rebuild and executable interaction verification remain pending. Unrelated study edits remain outside this work.
+
+
+## Direct-root stimuli recovery — 2026-10-23
+Local 1.3.2.dev2 includes direct-root videos in shared discovery (cache key `.`), alongside nested shows/categories. Qt now backfills Index from cache on opening a root and after measurement completion/cancellation. Root group selection stores its actual folder path. Existing raw caches are never rewritten by this recovery. Regression checks exercise reopening, completed-run refresh, sample scope, mixed layouts, and season-like root names. Replacement package and real four-result recovery verification are pending; see build/root-videos-20261023.
+
+
+### Direct-root recovery verified and installed — 2026-10-23
+Supersedes the pending package note above. Installed local 1.3.2.dev2 from source 0dd2a3a at dist/CMAT-compact/CMAT.exe (SHA256 9a0530d242bab374eca0e6866f35079d290a5f9c6c534dd2e1059a396879bf15). Full isolated suite: 817 passed, 13 absent-media skips. Frozen cold-VLC, playback, native-frame and direct-root Library/Index checks passed; synthetic metrics/language equal dev1. Actual four-result project recovered from 0 to 4 Index rows, with all four original cache hashes unchanged and no reanalysis. Real desktop Library showed 4/4 analyzed; Index showed all four records and matching values. Prior app/settings preserved in dist/CMAT-compact-backup-dev1-20261023. CMAT left open on Index. Evidence: build/root-videos-20261023/{install-complete,recovery-proof,staging-qualification}.json and desktop-index.txt. No publication or email.
+
+
+## Direct hand-coding choices — 2026-10-23
+Local 1.3.2.dev3 presents Hand Code Cuts and Hand Code Fantastical Events first, with view-specific actions in a separate second toolbar. Qt cut coding now uses the same player/stamping path and the existing transition CSV/parser; fantastical coding retains its event schema. Pipeline stages route to their matching mode. Classic Tk labels match; its existing editor already supports both schemas. Targeted checks: 108 passed. Isolated full suite and frozen build/install pending; see build/coding-choices-20261023.
+
+
+### Hand-coding choices verified and installed — 2026-10-25
+Supersedes the pending dev3 note above. Local 1.3.2.dev3 is installed at dist/CMAT-compact/CMAT.exe, source e659bae, SHA256 c94132eb60b7ac01a70c1cb53f3437dcf227c189ece2eb82814ce927f0aef164. Full isolated suite: 819 passed, 13 absent-media skips. Frozen checks clicked both direct choices, saved separate temporary sheets, and read them through their matching engine parsers; cold VLC, playback and root-video recovery also passed. Synthetic metrics/language match dev2. Real desktop verification on October 23 confirmed both selectors, real-video playback in Cuts, the separate Events screen, and reachable controls when maximized. October 25 checksum verification confirms the installed executable and all four original analysis caches unchanged. Settings and prior complete app preserved in dist/CMAT-compact-backup-dev2-20261023. Evidence: build/coding-choices-20261023/completion-proof.json, staging-qualification.json, install-complete.json and full-tests.log. Local only; nothing published or emailed.
+
+
+### Update the actual OneDrive launch target — 2026-10-25
+Samuel was launching C:/Users/Samuel/OneDrive - Cedarville University/CMAT/CMAT.exe, which still had the old Code view. Updated that exact path to the qualified dev3 executable (SHA256 c94132eb60b7ac01a70c1cb53f3437dcf227c189ece2eb82814ce927f0aef164), preserved its config.json and user_prefs.json byte-for-byte, and reopened it. Both Hand Code Cuts and Hand Code Fantastical Events were verified visible on the real desktop. App left maximized on Human coding. Prior OneDrive app is preserved in sibling CMAT-backup-before-dev3-20261025. Evidence: build/onedrive-install-20261025/install-proof.json and desktop.txt. The project dist copy remains a build/test copy; the OneDrive path is the user's actual launch target.
+
+
+## Published v1.3.2 and researcher report — 2026-10-26
+Published v1.3.2 from exact source/tag f30148fd74ec0efcba6fa6a05d265c086973aa04. Windows ZIP is 355447329 bytes, SHA256 addfceba85d1e3cc5a3c89fa5994f93a5c8b6e76bf62b83e6b28e0d1dca7f564; GitHub digest matches. Full isolated suite: 819 passed, 13 absent-media skips. Fresh-extraction diagnostic passed cold bundled VLC, synthetic analysis/readability, native controls, direct-root Library/Index, both coding choices and CSV readback, zoom and playback; exact metrics/language equality to qualified dev3. Both coding choices also verified on the real release desktop. PR #16 brings integration to master for review under CONTRIBUTING.md; not merged. Existing OneDrive app was left untouched during release qualification. Private four-page researcher DOCX is in outputs/UConn_report_20261026, not Git or release assets. Its 92 numeric result cells and four source hashes were verified, all four Word-rendered pages inspected, and original analysis caches remain unchanged. Report retains original dev1/dirty-run provenance rather than attributing old measurements to the new release. Evidence: build/release-1.3.2-20261026/{qualification,report-qa,published-release}.json. No email sent.

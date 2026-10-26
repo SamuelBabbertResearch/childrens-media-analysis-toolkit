@@ -15,116 +15,123 @@ target age, or educational value.
 from __future__ import annotations
 
 COLORS: dict[str, str] = {
-    # --- modern scientific desktop surfaces ------------------------------
-    "chrome_top":     "#fbfcfd",
-    "chrome_bottom":  "#f4f6f8",
-    "chrome_line":    "#d5dbe3",
-    "window_bg":      "#f3f5f7",
-    "surface_top":    "#ffffff",
-    "surface_bottom": "#f8fafc",
-    "inspector_bg":   "#f8fafc",
-    "footer_bg":      "#f1f4f7",
+    # Original categorical chart palette, shared by every chart consumer.
+    "chart_1": "#4e79a7",
+    "chart_2": "#76b7b2",
+    "chart_3": "#8cd17d",
+    "chart_4": "#f1ce63",
+    "chart_5": "#e15759",
+    "chart_6": "#b07aa1",
+    # --- window chrome (early OS X) ---------------------------------------
+    "chrome_top":     "#f4f5f7",
+    "chrome_bottom":  "#dcdee2",
+    "chrome_line":    "#a8abb1",
+    "window_bg":      "#ececec",
+    "surface_top":    "#fbfbfc",
+    "surface_bottom": "#eef0f3",
+    "inspector_bg":   "#f6f7f8",
+    "footer_bg":      "#e8eaed",
 
     # --- panels and separators --------------------------------------------
     "panel_bg":     "#ffffff",
-    "panel_border": "#d5dbe3",
-    "panel_header": "#f4f6f8",
-    "hairline":     "#e1e5ea",
-    "grid_dot":     "#dde3e9",
-    "tab_bg":       "#eef1f4",
-    "tab_fg":       "#52606d",
-    "tab_active":   "#f8fafc",
+    "panel_border": "#b8b8b8",
+    "panel_header": "#e2e2e2",
+    "hairline":     "#c8cbd0",
+    "grid_dot":     "#d7dade",
+    "tab_bg":       "#e1e1e1",
+    "tab_fg":       "#444444",
+    "tab_active":   "#eaebed",
 
     # --- type --------------------------------------------------------------
-    "text":           "#1f2933",
-    "text_dim":       "#52606d",
-    "text_faint":     "#7b8794",
-    "text_disabled":  "#a6afb9",
+    "text":           "#202122",
+    "text_dim":       "#54595d",
+    "text_faint":     "#8d9198",
+    "text_disabled":  "#a9adb3",
     "text_on_accent": "#ffffff",
-    "link":           "#2563eb",
+    "link":           "#3366cc",
 
     # --- one accent, used only for selection and focus ---------------------
-    "accent":             "#2563eb",
-    "accent_dark":        "#1d4ed8",
-    "accent_glow":        "#bfdbfe",
-    "accent_fill_top":    "#eff6ff",
-    "accent_fill_bottom": "#dbeafe",
+    "accent":             "#2b73de",
+    "accent_dark":        "#1255b8",
+    "accent_glow":        "#a9c8ea",
+    "accent_fill_top":    "#f6faff",
+    "accent_fill_bottom": "#dbe8f8",
 
     # --- controls ----------------------------------------------------------
     "control_top":             "#ffffff",
-    "control_bottom":          "#ffffff",
-    "control_border":          "#c3cad3",
+    "control_bottom":          "#e2e2e2",
+    "control_border":          "#999999",
     # Darker top edge only — how a sunken control is drawn when the toolkit
     # has no inset shadow.
-    "control_border_dark":     "#aeb7c2",
+    "control_border_dark":     "#666666",
     "control_gloss":           "#ffffff",
-    "control_fg":              "#273444",
-    "control_shadow":          "#d9dee5",
-    "control_disabled_top":    "#f4f6f8",
-    "control_disabled_bottom": "#f4f6f8",
-    "control_hover_top":       "#f8fafc",
-    "control_hover_bottom":    "#f8fafc",
-    "control_pressed_top":     "#e8edf3",
-    "control_pressed_bottom":  "#e8edf3",
+    "control_fg":              "#222222",
+    "control_shadow":          "#c2c5ca",
+    "control_disabled_top":    "#f2f3f4",
+    "control_disabled_bottom": "#e9eaec",
+    "control_hover_top":       "#ffffff",
+    "control_hover_bottom":    "#eaecf0",
+    "control_pressed_top":     "#d0d0d0",
+    "control_pressed_bottom":  "#e6e6e6",
 
     # --- MediaWiki data presentation ---------------------------------------
     "mw_bg":           "#ffffff",
     "mw_subtle_bg":    "#f8f9fa",
-    "mw_header_bg":    "#f3f5f7",
-    "mw_label_bg":     "#f6f8fa",
-    "mw_border":       "#d5dbe3",
-    "mw_row_line":     "#e7ebef",
-    "row_selected_bg": "#eaf2ff",
+    "mw_header_bg":    "#eaecf0",
+    "mw_label_bg":     "#f2f2f2",
+    "mw_border":       "#a2a9b1",
+    "mw_row_line":     "#eaecf0",
+    "row_selected_bg": "#e8f2ff",
 
     # --- menu bar and tab strip (see ui/DESIGN.md §8) -----------------------
-    "menu_bg":       "#ffffff",
-    "menu_line":     "#e1e5ea",
-    "tabstrip_top":    "#f8fafc",
-    "tabstrip_bottom": "#f8fafc",
-    "tab_inactive_top":    "#f8fafc",
-    "tab_inactive_bottom": "#f8fafc",
+    "menu_bg":       "#e5e5e5",
+    "menu_line":     "#c0c0c0",
+    "tabstrip_top":    "#d5d5d5",
+    "tabstrip_bottom": "#c0c0c0",
+    "tab_inactive_top":    "#cecece",
+    "tab_inactive_bottom": "#b8b8b8",
 
     # --- sub-toolbar: per-tab controls, below the tab strip -----------------
-    "subbar_top":    "#f8fafc",
-    "subbar_bottom": "#f8fafc",
+    "subbar_top":    "#ececec",
+    "subbar_bottom": "#d8d8d8",
 
     # --- toolbar ------------------------------------------------------------
-    "toolbar_top":    "#ffffff",
-    "toolbar_bottom": "#ffffff",
+    "toolbar_top":    "#e6e6e6",
+    "toolbar_bottom": "#d5d5d5",
 
     # --- status bar ---------------------------------------------------------
-    "statusbar_top":    "#ffffff",
-    "statusbar_bottom": "#ffffff",
-    "statusbar_line":   "#dfe4ea",
-    "statusbar_fg":     "#52606d",
+    "statusbar_top":    "#e2e2e2",
+    "statusbar_bottom": "#cccccc",
+    "statusbar_line":   "#a6a6a6",
+    "statusbar_fg":     "#333333",
 
     # --- graph canvas -------------------------------------------------------
-    "canvas_bg":   "#eef2f6",
-    "canvas_grid": "#dce3ea",
+    "canvas_bg":   "#eaeaea",
+    "canvas_grid": "#e0e0e0",
     "node_bg":     "#ffffff",
-    "node_border": "#cbd3dc",
-    "node_rule":   "#e7ebef",
-    "node_status": "#6b7785",
+    "node_border": "#999999",
+    "node_rule":   "#ececec",
+    "node_status": "#888888",
     "port_fill":   "#ffffff",
-    "port_border": "#7b8794",
-    "wire":        "#7b8794",
+    "port_border": "#666666",
+    "wire":        "#666666",
 
     # --- default (Aqua) button ---------------------------------------------
-    "aqua_top":     "#2563eb",
-    "aqua_bottom":  "#2563eb",
-    "aqua_border":  "#1d4ed8",
-    "aqua_pressed_top":    "#1d4ed8",
-    "aqua_pressed_bottom": "#1d4ed8",
+    "aqua_top":     "#429ce3",
+    "aqua_bottom":  "#1066c7",
+    "aqua_border":  "#0f4f96",
+    "aqua_pressed_top":    "#0d56aa",
+    "aqua_pressed_bottom": "#257ecb",
 
     # --- inspector key/value grid -------------------------------------------
-    "kv_key_bg":   "#f6f8fa",
-    "kv_key_fg":   "#52606d",
-    "kv_val_fg":   "#1f2933",
-    "kv_key_line": "#e1e5ea",
-    "kv_row_line": "#e7ebef",
+    "kv_key_bg":   "#f0f0f0",
+    "kv_key_fg":   "#444444",
+    "kv_val_fg":   "#222222",
+    "kv_key_line": "#e0e0e0",
+    "kv_row_line": "#e5e5e5",
 
     # --- report typography and note boxes -----------------------------------
-    "section_title": "#1d4ed8",   # section headings, same blue as the ambox
+    "section_title": "#0f4f96",   # section headings, same blue as the ambox
     "note_bg":       "#f8f9fa",
     "note_border":   "#e0e0e0",
     "rule_soft":     "#d9d9d9",
@@ -134,28 +141,19 @@ COLORS: dict[str, str] = {
     # window chrome, the window colour and the one accent. An earlier mockup
     # gave dialogs their own #F0F0F0 ground, 22px buttons and a second blue;
     # that file was the odd one out of the three and is superseded.
-    "dialog_content_bg": "#f3f5f7",
+    "dialog_content_bg": "#ececec",
     "fieldset_bg":       "#ffffff",
-    "legend_fg":         "#273444",
+    "legend_fg":         "#333333",
     "total_ok_fg":       "#1b7a2b",
 
     # --- views --------------------------------------------------------------
-    "row_hover":      "#f3f7fc",
-    "scroll_handle":       "#c6ced8",
-    "scroll_handle_hover": "#9eabb8",
-    "table_header":   "#f3f5f7",
-    "table_alt_row":  "#fafbfc",
-    "table_cell_line": "#e2e7ec",
-    "table_gridline":  "#e2e7ec",
-
-    # --- categorical chart series ----------------------------------------
-    # Identity only: order and legend name each component; no hue is a verdict.
-    "chart_1": "#2563eb",
-    "chart_2": "#0f766e",
-    "chart_3": "#7c3aed",
-    "chart_4": "#b45309",
-    "chart_5": "#be4b74",
-    "chart_6": "#475569",
+    "row_hover":      "#f0f4f9",
+    "scroll_handle":       "#bfc2c7",
+    "scroll_handle_hover": "#9fa3a9",
+    "table_header":   "#eaeaea",
+    "table_alt_row":  "#f9f9f9",
+    "table_cell_line": "#d0d0d0",
+    "table_gridline":  "#d8d8d8",
 
     # --- video surface ------------------------------------------------------
     # The letterbox libvlc draws into. Black because that is what a video
@@ -164,30 +162,26 @@ COLORS: dict[str, str] = {
     "video_surface_text": "#8a8a8a",
 
     # --- path display -------------------------------------------------------
-    "path_text": "#1e40af",
+    "path_text": "#003a70",
 
     # --- modal framing (see ui/DESIGN.md §1) --------------------------------
-    "window_ring":   "#cbd3dc",
-    "dialog_seam":   "#d5dbe3",
-    "action_bar_top":    "#f8fafc",
-    "action_bar_bottom": "#f8fafc",
-    # The application draws its own title bar (ui/native_frame.py) while the
-    # window keeps its real Win32 frame styles, so snap, edge resizing, the
-    # system menu and the maximise animation still come from Windows.
-    # The caption CONTROLS are Windows' own — minimise, maximise, close, left
-    # to right — not the reference's three round lights. This is a Windows
-    # application; see the note at the top of ui/modal.py.
-    "titlebar_top":    "#ffffff",
-    "titlebar_bottom": "#f7f9fb",
-    "titlebar_line":   "#dfe4ea",
-    "titlebar_fg":     "#1f2933",
+    "window_ring":   "#7a7a7a",
+    "dialog_seam":   "#b0b0b0",
+    "action_bar_top":    "#e2e2e2",
+    "action_bar_bottom": "#d0d0d0",
+    # Legacy caption-paint values remain for compatibility; active windows
+    # use the platform's own frame and caption controls (ui/native_frame.py).
+    "titlebar_top":    "#e6e6e6",
+    "titlebar_bottom": "#d1d1d1",
+    "titlebar_line":   "#a6a6a6",
+    "titlebar_fg":     "#1d1d1d",
     # Windows caption-button hover, its red close included.
-    "caption_hover":       "#e9edf2",
+    "caption_hover":       "#d0d0d0",
     "caption_close_hover": "#c42b1c",
 
     # --- list views (see ui/DESIGN.md §3) -----------------------------------
-    "list_divider":     "#e7ebef",
-    "list_sunken_edge": "#aeb7c2",
+    "list_divider":     "#f0f0f0",
+    "list_sunken_edge": "#666666",
     # Secondary text on a selected row, where the fill is the solid accent.
     "text_on_accent_dim": "#e0ecff",
 
@@ -196,10 +190,10 @@ COLORS: dict[str, str] = {
     "valid_ok": "#1b7a2b",
 
     # --- callouts (ambox) ---------------------------------------------------
-    "info_bg":     "#eff6ff",
-    "info_border": "#bfdbfe",
-    "info_rule":   "#2563eb",
-    "info_text":   "#1e40af",
+    "info_bg":     "#f0f6ff",
+    "info_border": "#a3c7ee",
+    "info_rule":   "#3366cc",
+    "info_text":   "#0f4f96",
     "warn_bg":     "#fffbe6",
     "warn_border": "#e8d9a0",
     "warn_rule":   "#a76a00",
@@ -240,39 +234,39 @@ COLORS: dict[str, str] = {
 # controls. Qt's own defaults are considerably airier, so every box metric has
 # to be stated explicitly or the interface drifts 20-50% taller than intended.
 FONT_PX: dict[str, int] = {
-    "tiny":    11,
-    "small":   12,
-    "body":    14,
-    "table":   14,
-    "grid":    14,
-    "heading": 16,
-    "title":   18,
-    "caption": 13,   # window title, the platform caption size
+    "tiny":    9,
+    "small":   10,
+    "body":    11,
+    "table":   11,
+    "grid":    11,   # library grid rows; .tree-row in the reference
+    "heading": 12,
+    "title":   13,
+    "caption": 12,   # window title, the platform caption size
 }
 
 # Control geometry, likewise from the reference layouts.
 METRICS: dict[str, int] = {
-    "control_h":   30,   # compact, with room for the readable type scale
-    "row_h":       29,   # dense research tables still fit many rows
-    "header_h":    30,
-    "titlebar_h":  38,
-    "caption_btn_w": 50,
-    "dialog_input_h":  30,
-    "tab_pad_x":   12,
-    "tab_pad_y":   7,
-    "radius":      6,
-    "radius_tight": 4,
+    "control_h":   20,   # buttons, inputs, combos
+    "row_h":       19,   # tree and table rows
+    "header_h":    20,   # view header sections
+    "titlebar_h":  30,   # Windows caption controls need the room
+    "caption_btn_w": 34,
+    "dialog_input_h":  19,   # input/select height in a dialog
+    "tab_pad_x":   10,
+    "tab_pad_y":   3,
+    "radius":      3,
+    "radius_tight": 2,
 }
 
 # Retained for the Tkinter front-end, which measures in points. Do not use for
 # Qt — see FONT_PX above.
 FONT_PT: dict[str, int] = {
-    "tiny":    9,
-    "small":   9,
-    "body":    10,
-    "table":   10,
-    "heading": 12,
-    "title":   14,
+    "tiny":    8,
+    "small":   8,
+    "body":    9,
+    "table":   9,
+    "heading": 11,
+    "title":   13,
     "caption": 12,   # window title, the platform caption size
 }
 
@@ -280,13 +274,12 @@ FONT_PT: dict[str, int] = {
 # Windows. The reference asks for
 #     -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto,
 #     Helvetica, Arial
-# in which every face ahead of Segoe UI is a macOS system font, so on Windows
+# in which every face ahead of Segoe UI is a other-platform system font, so on Windows
 # it renders in Segoe UI. Naming a Lucida first was a mistake: it is the
 # closer period reference, but it is wide and softly hinted at 11px, and it
 # changed the texture of every string in the application away from the
 # reference rather than towards it.
-UI_FAMILY_PREFERENCE = ("Segoe UI Variable", "Segoe UI", "Roboto",
-                        "Helvetica", "Arial", "Tahoma")
+UI_FAMILY_PREFERENCE = ("Segoe UI", "Roboto", "Helvetica", "Arial", "Tahoma")
 
 # Fixed-pitch, for content needing column-exact CHARACTERS: coding-sheet
 # timestamps, raw provenance. NOT for table numbers — every face above renders
