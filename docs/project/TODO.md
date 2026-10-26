@@ -839,5 +839,3 @@ Verify and install local 1.3.2.dev2, then confirm the four cached BUBBLES stimul
 The dev2 build/install/recovery item above is complete: 817 passed, 13 absent-media skips; frozen package checks passed; all four actual caches unchanged, four Library entries and four Index records verified. Local correction only; published v1.3.1 unchanged.
 
 
-## Hand-coding entry points — 2026-10-23
-Finish isolated regression, frozen package and desktop verification for local dev3; install at the existing CMAT-compact path while preserving user settings and coding files.
