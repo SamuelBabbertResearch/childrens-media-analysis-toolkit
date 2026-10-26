@@ -2277,3 +2277,7 @@ The Qt handcode_transitions and handcode_events pipeline entries both opened the
 
 ## Updating a build copy did not update the user's app — 2026-10-25
 The corrected dev3 executable was installed and verified under the project dist folder, but Samuel's shortcut launched a separate OneDrive/CMAT copy. A builder-side installation claim did not establish deployment to the actual user entry point. Inspect running executable paths before deciding the installation target, preserve that copy's own settings, and verify the new controls after reopening the same path. Moving the old OneDrive folder outside its sync parent stalled on cloud hydration; stopped before any move occurred, then preserved it with a same-parent rename and installed the fully local staged app.
+
+
+## Word reports need actual pagination checks — 2026-10-26
+The packaged DOCX renderer could not find LibreOffice on Windows. A hidden read-only Microsoft Word instance exported the document for local QA; bundled PDF tools rendered page images. The first visual pass caught an inherited blue Title border; the deterministic title sanitizer removed it. A subsequent paragraph change produced an empty page after a page-break paragraph; page-break-before on the following heading removed it. Final text and numeric cells were checked against the saved records and all four page images inspected. Keep QA PDFs/images internal when the requested deliverable is DOCX.

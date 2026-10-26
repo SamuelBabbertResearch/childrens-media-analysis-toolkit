@@ -49,3 +49,12 @@ Source is published on `codex/integrate-liu-september-updates`; the release tag
 does not merge the branch into master. The public Index website and Study
 Runner remain separate products. Researcher reports and stimulus files are
 not release assets.
+
+
+## Published qualification record — 2026-10-26
+
+[v1.3.2](https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/releases/tag/v1.3.2) is published as the latest stable Windows release. Source/tag commit: `f30148fd74ec0efcba6fa6a05d265c086973aa04`. The full isolated suite passed **819 tests**, with **13 absent-media skips**. The fresh ZIP extraction passed all packaged checks described above; synthetic metrics and language values matched the previous qualified dev3 build exactly. Both direct hand-coding choices were also verified on the real release desktop after startup dismissal.
+
+Archive: `CMAT-v1.3.2-windows.zip`, **355447329 bytes**. SHA256: `addfceba85d1e3cc5a3c89fa5994f93a5c8b6e76bf62b83e6b28e0d1dca7f564`. GitHub's uploaded-asset digest matches. ZIP integrity and exclusion of personal preferences and research data were checked. Testing was on the build machine; separate clean-PC and audible-device checks remain unverified.
+
+[Integration PR #16](https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/pull/16) awaits the project's review before merging to master. The release tag remains pinned to its exact tested source; this subsequent documentation record does not change that artifact.
