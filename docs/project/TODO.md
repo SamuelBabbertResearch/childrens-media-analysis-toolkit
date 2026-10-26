@@ -5,6 +5,10 @@ removed, not ticked. Longer-term work lives in `ROADMAP.md`.
 
 ---
 
+## Current release integration — 2026-10-26
+
+v1.3.2 is published and verified. Review and merge [PR #16](https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/pull/16) into master under CONTRIBUTING.md, then update both laptops. Source/tag f30148f; see RELEASE_1.3.2.md. The private researcher report is complete and stays outside GitHub assets.
+
 ## Shared baseline after the v1.3.0 release
 
 Review and merge `codex/integrate-liu-september-updates` into `master`, then
