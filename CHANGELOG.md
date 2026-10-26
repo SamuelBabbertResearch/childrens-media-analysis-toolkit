@@ -1,5 +1,17 @@
 # Update history
 
+## v1.3.2 — Direct hand coding and Windows workflow fixes, 2026-10-26
+
+- Adds explicit Hand Code Cuts and Hand Code Fantastical Events choices with separate task controls and compatible CSV sheets.
+- Routes each hand-coding pipeline stage to the correct mode; keeps detector comparison separate.
+- Finds videos directly inside the library root and backfills Index from saved results on opening a root and after measurement.
+- Uses native Windows title bars and window controls across main and dialog entry points.
+- Restores compact styling, retains useful diagram zoom and title wrapping, and fits long path and workflow labels.
+- Preserves bundled VLC loading and automated measurement formulas; export schema remains 3.
+
+[Windows release and assets](https://github.com/SamuelBabbertResearch/childrens-media-analysis-toolkit/releases/tag/v1.3.2)
+· [Build and verification notes](docs/project/RELEASE_1.3.2.md)
+
 ## v1.3.1 — Windows VLC startup fix and interface update, 2026-10-23
 
 - Fixes Windows startup loading of bundled VLC: configure `_internal/vlc` before importing python-vlc from the availability probe or player constructor. No separate VLC installation is required.
