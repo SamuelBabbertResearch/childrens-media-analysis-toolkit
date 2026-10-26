@@ -839,3 +839,6 @@ Verify and install local 1.3.2.dev2, then confirm the four cached BUBBLES stimul
 The dev2 build/install/recovery item above is complete: 817 passed, 13 absent-media skips; frozen package checks passed; all four actual caches unchanged, four Library entries and four Index records verified. Local correction only; published v1.3.1 unchanged.
 
 
+
+
+Local deployment note (2026-10-25): the verified dev3 app is now also installed at the actual OneDrive/CMAT/CMAT.exe launch target; both coding choices verified there. Use onboarding.md for the canonical local app and backup paths.
